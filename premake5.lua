@@ -36,6 +36,8 @@ IncludeDir["lua"]   = "Source/ThirdParty/lua/src"
 IncludeDir["sol2"]  = "Source/ThirdParty/sol2/include"
 IncludeDir["miniaudio"]  = "Source/ThirdParty/miniaudio"
 IncludeDir["nanosvg"] = "Source/ThirdParty/nanosvg"
+IncludeDir["PhysX"] = "Source/ThirdParty/PhysX/include"
+IncludeDir["PxShared"] = "Source/ThirdParty/PhysX/pxshared/include"
 
 -- premake의 filter는 project()를 만나면 초기화된다.
 -- 두 프로젝트가 같은 런타임(/MDd vs /MD)으로 컴파일되지 않으면 링크가 실패하므로
@@ -184,6 +186,53 @@ project "HitoriHeaderTool"
 		"Source/Programs/HitoriHeaderTool/**.cpp",
 	}
 
+
+-- PhysX SDK 연동
+-- Editor·Game의 PhysX 링크와 구성별 DLL 복사
+local function LinkPhysX()
+	includedirs {
+		"%{IncludeDir.PhysX}",
+		"%{IncludeDir.PxShared}",
+	}
+	links {
+		"PhysX_64.lib",
+		"PhysXCommon_64.lib",
+		"PhysXFoundation_64.lib",
+		"PhysXCooking_64.lib",
+		"PhysXExtensions_static_64.lib",
+		"PhysXVehicle_static_64.lib",
+		"PhysXPvdSDK_static_64.lib",
+	}
+
+	local Dlls = {
+		"PhysX_64.dll",
+		"PhysXCommon_64.dll",
+		"PhysXFoundation_64.dll",
+		"PhysXCooking_64.dll",
+	}
+
+	for _, Config in ipairs({
+		"Debug", "Release", "Shipping", "ObjViewer", "Benchmark",
+		"Benchmark_Debug", "DebugPublishSymbols", "ReleasePublishSymbols",
+	}) do
+		local IsDebug = Config == "Debug" or Config == "Benchmark_Debug" or Config == "DebugPublishSymbols"
+		local SdkConfig = IsDebug and "debug" or "release"
+		local Commands = {}
+
+		for _, Dll in ipairs(Dlls) do
+			local DllPath = path.join("Source/ThirdParty/PhysX", "bin", SdkConfig, Dll)
+			table.insert(Commands, '{COPYFILE} %[' .. DllPath .. '] "%{cfg.targetdir}"')
+		end
+
+		filter ("configurations:" .. Config)
+			libdirs { path.join("Source/ThirdParty/PhysX", "lib", SdkConfig) }
+			postbuildcommands (Commands)
+	end
+
+	filter {}
+end
+
+
 -- 런타임. 에디터를 모른다. include 경로에 Source/Editor가 없는 것이 그 방벽이다.
 -- location이 소스 루트와 같아야 "모든 파일 표시"에서 폴더가 보인다.
 project "HitoriEngine"
@@ -213,6 +262,8 @@ project "HitoriEngine"
 		"%{IncludeDir.miniaudio}",
 		"%{IncludeDir.lua}",
 		"%{IncludeDir.sol2}",
+		"%{IncludeDir.PhysX}",
+		"%{IncludeDir.PxShared}",
 	}
 
 	links { "Lua" }
@@ -242,6 +293,8 @@ project "HitoriEditor"
 	location "Source/Editor"
 	kind     "WindowedApp"
 	CommonSettings()
+
+	LinkPhysX()
 
 	-- FBX 해석은 Editor에서 수행하고 Runtime/Game은 SDK에 의존하지 않는다.
 	includedirs { path.join(FbxSdkRoot, "include") }
@@ -336,6 +389,8 @@ project "HitoriGame"
 	pchsource "Source/Game/GamePCH.cpp"
 
 	links { "HitoriEngine", "Lua" }
+
+	LinkPhysX()
 
 	-- 에디터와 같은 이유. 게임 코드는 라이트 액터 등을 직접 참조하지 않아 특히 빠지기 쉽다.
 	linkoptions { "/WHOLEARCHIVE:HitoriEngine" }
