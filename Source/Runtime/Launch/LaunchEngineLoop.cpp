@@ -25,6 +25,7 @@
 #include "Core/Stats/LightweightStats.h"
 #include "Core/Async/TaskPool.h"
 #include "Tasks/Tasks.h"
+#include "Physics/PhysXSDK.h"
 
 #include "Render/RealtimeGPUProfiler.h"
 
@@ -188,6 +189,13 @@ bool FEngineLoop::Init()
 	// 워커 스레드는 에셋 로드가 끝난 뒤, 엔진이 생기기 전에 켠다. 끄는 것도 이 클래스의 Exit가 한다.
 	Tasks::FTaskScheduler::Get().Initialize();
 
+	// PhysX SDK는 엔진이 생기기 전에 초기화한다. 해제도 이 클래스의 Exit이 한다.
+	if (!PhysXSDK::Initialize())
+	{
+		FSplashScreen::Hide();
+		return false;
+	}
+
 	GEngine = NewObject<UEngine>(nullptr, PendingEngineClass);
 	if (!GEngine)
 	{
@@ -310,6 +318,7 @@ void FEngineLoop::Exit()
 	{
 		RenderDevice->Shutdown();
 	}
+	PhysXSDK::Shutdown();
 }
 
 void FEngineLoop::BeginBackbufferPass()
