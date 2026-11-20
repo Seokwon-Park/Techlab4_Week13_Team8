@@ -83,8 +83,8 @@ FTransform FTransform::FromMatrix(const FMatrix& M)
 
 	FMatrix RotationMatrix = FMatrix::Identity;
 	RotationMatrix.SetAxis(0, XAxis.Normalized());
-	RotationMatrix.SetAxis(1, XAxis.Normalized());
-	RotationMatrix.SetAxis(2, XAxis.Normalized());
+	RotationMatrix.SetAxis(1, YAxis.Normalized());
+	RotationMatrix.SetAxis(2, ZAxis.Normalized());
 	Result.Rotation = MatrixToRotator(RotationMatrix).Quaternion();
 
 	return Result;
