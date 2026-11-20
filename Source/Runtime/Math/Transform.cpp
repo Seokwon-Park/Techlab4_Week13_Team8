@@ -70,3 +70,22 @@ FTransform FTransform::GetRelativeTransform(const FTransform& Other) const
 	Result.Location = FVector(Delta.X * InvScale.X, Delta.Y * InvScale.Y, Delta.Z * InvScale.Z);
 	return Result;
 }
+
+FTransform FTransform::FromMatrix(const FMatrix& M)
+{
+	FVector XAxis(M[0][0], M[0][1], M[0][2]);
+	FVector YAxis(M[1][0], M[1][1], M[1][2]);
+	FVector ZAxis(M[2][0], M[2][1], M[2][2]);
+
+	FTransform Result;
+	Result.Location = FVector(M[3][0], M[3][1], M[3][2]);
+	Result.Scale = FVector(XAxis.Size(), YAxis.Size(), ZAxis.Size());
+
+	FMatrix RotationMatrix = FMatrix::Identity;
+	RotationMatrix.SetAxis(0, XAxis.Normalized());
+	RotationMatrix.SetAxis(1, XAxis.Normalized());
+	RotationMatrix.SetAxis(2, XAxis.Normalized());
+	Result.Rotation = MatrixToRotator(RotationMatrix).Quaternion();
+
+	return Result;
+}

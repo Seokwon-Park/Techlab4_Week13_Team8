@@ -4,8 +4,8 @@
 
 class FPhysicsScene;
 class UPrimitiveComponent;
-struct FConstraintInstance;
 class UBodySetup;
+struct FConstraintInstance;
 
 namespace physx
 {
@@ -51,6 +51,11 @@ struct FBodyInstance
 
     // 차량 설정용 빌린 액터 포인터, 미초기화·정적 바디는 nullptr
     physx::PxRigidDynamic* GetRigidDynamic();
+
+    int32 InstanceBodyIndex = INDEX_NONE;
+    int32 InstanceBoneIndex = INDEX_NONE;
+    bool IsValidBodyInstance() const { return Actor != nullptr; }
+    void SetLinearVelocity(const FVector& NewVel, bool bAddToCurrent);
 
 private:
     friend class FPhysicsScene;
