@@ -69,6 +69,8 @@ public:
 	void UpdateRotation(float DeltaTime); // 마우스 우클릭 회전
 	void UpdateZoom(float DeltaTime);     // 마우스 휠 줌
 
+	const FDepthOfFieldSettings& GetDepthOfFieldSettings() const { return DepthOfField; }
+
 protected:
 	float FieldOfView = 60.0f;
 	float AspectRatio = 16.0f / 9.0f;

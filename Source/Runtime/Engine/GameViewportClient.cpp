@@ -183,6 +183,7 @@ FSceneView FGameViewportClient::CalcSceneView(const FRect& InViewRect)
 			OutView.OrthoWidth = POV.OrthoWidth;
 			OutView.bIsPerspective = !POV.bIsOrthogonal;
 			OutView.bIsWireframe = false;
+			OutView.DepthOfField = POV.DepthOfField;
 
 			// 프러스텀 후 반환
 			OutView.Frustum = ExtractFrustumPlanes(OutView.ViewProjectionMatrix);
@@ -225,6 +226,7 @@ FSceneView FGameViewportClient::CalcSceneView(const FRect& InViewRect)
 		OutView.NearClip = CameraComponent->GetNearZ();
 		OutView.FarClip = CameraComponent->GetFarZ();
 		OutView.OrthoWidth = CameraComponent->GetOrthoWidth();
+		OutView.DepthOfField = CameraComponent->GetDepthOfFieldSettings();
 		OutView.bIsPerspective = !CameraComponent->GetIsOrthogonal();
 		OutView.bIsWireframe = false;
 	}
