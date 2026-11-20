@@ -8,6 +8,11 @@
 #include "imgui_internal.h"
 #include "Editor/HitoriEd/EditorDragDrop.h"
 #include "Editor/HitoriEd/LevelUndoHistory.h"
+#include "Editor/HitoriEd/EditorActorUtils.h"
+#include "Editor/EditorUI/ComponentTypeInfo.h"
+#include <algorithm>
+#include <cctype>
+#include <cstring>
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -1432,50 +1437,250 @@ namespace
 		}
 	}
 
-	void DrawActorHeader(AActor* Actor, UActorComponent*& OutSelectedComponent)
+	// ---------------- 컴포넌트 아이콘과 Add 메뉴 ----------------
+	// 아이콘, 보기 좋은 이름, 분류는 Outliner와 함께 쓰도록 ComponentTypeInfo에 있다.
+	using ComponentTypeInfo::GetComponentIcon;
+	using ComponentTypeInfo::GetComponentDisplayName;
+
+	// 아이콘 + 글자 한 줄짜리 선택 항목. 눌리면 true. Suffix는 이름 뒤에 흐리게 붙는다.
+	bool IconSelectable(const char* Id, EEditorIcon Icon, ImU32 IconColor, const char* Label, const char* Suffix, bool bSelected)
+	{
+		const float S = EditorIcons::GetScale();
+		const float H = ImGui::GetTextLineHeight() + 6.0f * S;
+		const ImVec2 Min = ImGui::GetCursorScreenPos();
+		const bool bPressed = ImGui::Selectable(Id, bSelected, ImGuiSelectableFlags_None, ImVec2(0.0f, H));
+
+		ImDrawList* DL = ImGui::GetWindowDrawList();
+		const float IconSize = 14.0f * S;
+		const float MidY = Min.y + H * 0.5f;
+		float X = Min.x + 4.0f * S;
+		EditorIcons::Draw(DL, Icon, ImVec2(X + IconSize * 0.5f, MidY), IconSize, IconColor);
+		X += IconSize + 6.0f * S;
+
+		const float TextY = MidY - ImGui::GetFontSize() * 0.5f;
+		DL->AddText(ImVec2(X, TextY), ImGui::GetColorU32(ImGuiCol_Text), Label);
+		if (Suffix && Suffix[0])
+		{
+			X += ImGui::CalcTextSize(Label).x + 5.0f * S;
+			DL->AddText(ImVec2(X, TextY), ImGui::GetColorU32(ImGuiCol_TextDisabled), Suffix);
+		}
+		return bPressed;
+	}
+
+	// 컴포넌트 트리 노드 줄에 아이콘, 이름, 흐린 종류 이름을 그린다. 이름 편집 중이면 아이콘만 그린다.
+	// 이름 칸이 시작할 곳(라벨 시작에서 떨어진 거리)을 돌려준다.
+	float DrawComponentRowLabel(const UActorComponent* Component, const ImVec2& Min, const ImVec2& Max, bool bDrawName)
+	{
+		const float S = EditorIcons::GetScale();
+		const float IconSize = 14.0f * S;
+		const float MidY = (Min.y + Max.y) * 0.5f;
+		float X = Min.x + ImGui::GetTreeNodeToLabelSpacing();
+
+		EEditorIcon Icon;
+		ImU32 Color;
+		GetComponentIcon(Component->GetClass(), Icon, Color);
+		ImDrawList* DL = ImGui::GetWindowDrawList();
+		EditorIcons::Draw(DL, Icon, ImVec2(X + IconSize * 0.5f, MidY), IconSize, Color);
+		const float NameOffset = IconSize + 6.0f * S;
+		X += NameOffset;
+
+		if (bDrawName)
+		{
+			const float TextY = MidY - ImGui::GetFontSize() * 0.5f;
+			const FString Name = Component->GetName();
+			DL->AddText(ImVec2(X, TextY), ImGui::GetColorU32(ImGuiCol_Text), Name.c_str());
+			X += ImGui::CalcTextSize(Name.c_str()).x + 5.0f * S;
+			const FString Kind = "(" + GetComponentDisplayName(Component->GetClass()->Name) + ")";
+			DL->AddText(ImVec2(X, TextY), ImGui::GetColorU32(ImGuiCol_TextDisabled), Kind.c_str());
+		}
+		return NameOffset;
+	}
+
+	// Add 메뉴의 분류 제목. UE5처럼 흐린 글자 아래에 얇은 선을 긋는다.
+	void ComponentMenuSection(const char* Title)
+	{
+		const float S = EditorIcons::GetScale();
+		ImGui::Dummy(ImVec2(0.0f, 2.0f * S));
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 2.0f * S);
+		ImGui::TextDisabled("%s", Title);
+		ImGui::Separator();
+	}
+
+	// Add 메뉴 팝업. 검색 칸에 쓴 글자가 이름(띄어 쓴 이름이나 클래스 이름)에 들어간 컴포넌트만 보여 준다.
+	// Enter를 누르면 맨 위 항목을 붙인다. 붙인 컴포넌트를 돌려준다.
+	UActorComponent* DrawAddComponentPopup(AActor* Actor, char* Search, size_t SearchSize)
+	{
+		const float S = EditorIcons::GetScale();
+		UActorComponent* Added = nullptr;
+
+		if (ImGui::IsWindowAppearing())
+			ImGui::SetKeyboardFocusHere();
+		EditorIcons::SearchBox("##ComponentSearch", Search, SearchSize, "Search Components");
+		const bool bSearchEnter = (ImGui::IsItemActive() || ImGui::IsItemDeactivated()) &&
+			(ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false));
+
+		// 메뉴에 내놓을 클래스를 분류별로 모은다. 목록에 있는 것은 목록 순서, 나머지(Other)는 이름순이다.
+		TArray<UClass*> AllClasses;
+		GetDerivedClasses(UActorComponent::StaticClass(), AllClasses);
+
+		auto Matches = [Search](const FString& ClassName)
+		{
+			return EditorIcons::MatchesFilter(GetComponentDisplayName(ClassName).c_str(), Search) ||
+				EditorIcons::MatchesFilter(ClassName.c_str(), Search);
+		};
+
+		UClass* Picked = nullptr;
+		UClass* FirstMatch = nullptr;
+
+		ImGui::BeginChild("##ComponentList", ImVec2(0.0f, 380.0f * S));
+		int32 EntryCount = 0;
+		int32 CategoryCount = 0;
+		const ComponentTypeInfo::FEntry* Entries = ComponentTypeInfo::GetEntries(EntryCount);
+		const char* const* Categories = ComponentTypeInfo::GetCategories(CategoryCount);
+		for (int32 CategoryIndex = 0; CategoryIndex < CategoryCount; ++CategoryIndex)
+		{
+			const char* Category = Categories[CategoryIndex];
+			TArray<UClass*> Classes;
+			if (std::strcmp(Category, "Other") != 0)
+			{
+				for (int32 EntryIndex = 0; EntryIndex < EntryCount; ++EntryIndex)
+				{
+					const ComponentTypeInfo::FEntry& Entry = Entries[EntryIndex];
+					if (std::strcmp(Entry.Category, Category) != 0) continue;
+					UClass* Class = FindClass(Entry.ClassName);
+					if (Class && Class->IsChildOf(UActorComponent::StaticClass()) && Matches(Class->Name))
+						Classes.Add(Class);
+				}
+			}
+			else
+			{
+				for (UClass* Class : AllClasses)
+				{
+					if (!Class || ComponentTypeInfo::IsAbstractComponentClass(Class->Name) || ComponentTypeInfo::FindExactEntry(Class->Name))
+						continue;
+					if (Matches(Class->Name))
+						Classes.Add(Class);
+				}
+				std::sort(Classes.begin(), Classes.end(),
+					[](const UClass* A, const UClass* B) { return A->Name < B->Name; });
+			}
+
+			if (Classes.IsEmpty())
+				continue;
+
+			ComponentMenuSection(Category);
+			for (UClass* Class : Classes)
+			{
+				if (!FirstMatch)
+					FirstMatch = Class;
+
+				EEditorIcon Icon;
+				ImU32 Color;
+				GetComponentIcon(Class, Icon, Color);
+				const FString Label = GetComponentDisplayName(Class->Name);
+				ImGui::PushID(Class);
+				if (IconSelectable("##AddComponentItem", Icon, Color, Label.c_str(), nullptr, false))
+					Picked = Class;
+				ImGui::SetItemTooltip("%s", Class->Name.c_str());
+				ImGui::PopID();
+			}
+		}
+		if (!FirstMatch)
+			ImGui::TextDisabled("No components match \"%s\"", Search);
+		ImGui::EndChild();
+
+		if (!Picked && bSearchEnter)
+			Picked = FirstMatch;
+		if (Picked)
+		{
+			// 이름은 비워 두어 겹치지 않는 이름을 받는다. 붙인 뒤 트리에서 바로 이름을 고칠 수 있다.
+			Added = Actor->AddComponent(Picked, NAME_None);
+			if (Added)
+				FLevelUndoHistory::MarkDirty();
+			ImGui::CloseCurrentPopup();
+		}
+		return Added;
+	}
+
+	void DrawActorHeader(AActor* Actor, UActorComponent*& OutSelectedComponent, UActorComponent*& OutAddedComponent)
 	{
 		if (!Actor) { return; }
 
-		static char ComponentNameInputBuf[256] = {};
+		static char ActorNameBuf[256] = {};
+		static char ComponentSearch[128] = {};
 
-		// UE5 Details 맨 위: [액터 이름 ............ + Add], 아래 줄에 흐린 UUID
+		// UE5 Details 맨 위: [액터 아이콘] [이름 입력 칸 ............] [+ Add]
 		const float S = EditorIcons::GetScale();
-		const char* AddLabel = "+ Add";
-		const float AddWidth = ImGui::CalcTextSize(AddLabel).x + ImGui::GetStyle().FramePadding.x * 2.0f + 8.0f * S;
+		const float RowH = ImGui::GetFrameHeight() + 4.0f * S;
+		const float LineY = ImGui::GetCursorPosY();
+		const float AddWidth = EditorIcons::CalcButtonWidth(true, "Add", false, RowH);
+		ImDrawList* DL = ImGui::GetWindowDrawList();
 
-		ImGui::AlignTextToFramePadding();
-		ImGui::TextUnformatted(Actor->GetName().c_str());
+		// 액터 아이콘은 루트 컴포넌트 종류를 따른다.
+		{
+			EEditorIcon Icon;
+			ImU32 Color;
+			USceneComponent* Root = Actor->GetRootComponent();
+			GetComponentIcon(Root ? Root->GetClass() : USceneComponent::StaticClass(), Icon, Color);
+			const float IconSize = 18.0f * S;
+			const ImVec2 P = ImGui::GetCursorScreenPos();
+			EditorIcons::Draw(DL, Icon, ImVec2(P.x + IconSize * 0.5f, P.y + RowH * 0.5f), IconSize, Color);
+			ImGui::Dummy(ImVec2(IconSize, RowH));
+		}
+
+		// 액터 이름은 입력 칸에서 바로 고친다. Enter나 다른 곳 클릭으로 확정, Esc로 되돌린다.
+		// 입력 중이 아닐 때는 매 프레임 지금 이름으로 채워, 다른 곳(Outliner, 실행 취소)에서 바뀐 이름을 따라간다.
+		ImGui::SameLine(0.0f, 6.0f * S);
+		ImGui::SetCursorPosY(LineY + (RowH - ImGui::GetFrameHeight()) * 0.5f);
+		const ImGuiID NameFieldId = ImGui::GetID("##ActorName");
+		if (ImGui::GetActiveID() != NameFieldId)
+			strncpy_s(ActorNameBuf, sizeof(ActorNameBuf), Actor->GetName().c_str(), _TRUNCATE);
+
+		const bool bEditorActor = Actor->GetWorld() && Actor->GetWorld()->GetWorldType() == EWorldType::Editor;
+		ImGui::SetNextItemWidth(ImMax(60.0f * S, ImGui::GetContentRegionAvail().x - AddWidth - 8.0f * S));
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f * S);
+		ImGui::BeginDisabled(!bEditorActor);
+		const bool bNameEntered = ImGui::InputText("##ActorName", ActorNameBuf, sizeof(ActorNameBuf),
+			ImGuiInputTextFlags_EnterReturnsTrue);
+		const bool bNameCommitted = bNameEntered || ImGui::IsItemDeactivatedAfterEdit();
+		ImGui::EndDisabled();
+		ImGui::PopStyleVar();
+		if (bEditorActor)
+			ImGui::SetItemTooltip("Actor name (UUID %u)", Actor->GetUUID());
+		else
+			ImGui::SetItemTooltip("Actors can be renamed only outside Play (UUID %u)", Actor->GetUUID());
+		// 실패하면(빈 이름, 겹치는 이름) 다음 프레임에 원래 이름으로 돌아간다.
+		if (bNameCommitted && bEditorActor)
+			FEditorActorUtils::RenameActor(Actor, ActorNameBuf);
+
+		// [+ Add] 버튼. UE5처럼 테두리 있는 버튼에 초록 + 를 단다.
 		ImGui::SameLine();
 		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImMax(0.0f, ImGui::GetContentRegionAvail().x - AddWidth));
-		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(EditorIcons::PlayGreen));
-		const bool bAddClicked = ImGui::Button(AddLabel, ImVec2(AddWidth, 0.0f));
-		ImGui::PopStyleColor();
+		ImGui::SetCursorPosY(LineY);
+		const ImVec2 AddMin = ImGui::GetCursorScreenPos();
+		const ImVec2 AddMax(AddMin.x + AddWidth, AddMin.y + RowH);
+		DL->AddRectFilled(AddMin, AddMax, ImGui::GetColorU32(ImGuiCol_FrameBg), 4.0f * S);
+		DL->AddRect(AddMin, AddMax, ImGui::GetColorU32(ImGuiCol_Border), 4.0f * S);
+		const bool bAddClicked = EditorIcons::Button("##AddComponent", EEditorIcon::Plus, EditorIcons::PlayGreen, "Add",
+			false, false, RowH);
 		ImGui::SetItemTooltip("Add a new component to this actor");
-		ImGui::TextDisabled("UUID %u", Actor->GetUUID());
+		ImGui::Dummy(ImVec2(0.0f, 2.0f * S));
 
 		if (bAddClicked)
 		{
+			ComponentSearch[0] = '\0';
 			ImGui::OpenPopup("AddComponentPopup");
 		}
 
+		// 버튼 바로 아래, 오른쪽 끝을 맞춰 연다.
+		ImGui::SetNextWindowPos(ImVec2(AddMax.x, AddMax.y + 2.0f * S), ImGuiCond_Appearing, ImVec2(1.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(300.0f * S, 0.0f), ImGuiCond_Appearing);
 		if (ImGui::BeginPopup("AddComponentPopup"))
 		{
-			ImGui::Text("Component Name:");
-			ImGui::SameLine();
-			ImGui::InputText("##Component Name", ComponentNameInputBuf, sizeof(ComponentNameInputBuf));
-			TArray<UClass*> Classes;
-			GetDerivedClasses(UActorComponent::StaticClass(), Classes);
-			// 이름순 정렬하면 메뉴가 안정적
-			for (UClass* Class : Classes)
+			if (UActorComponent* Added = DrawAddComponentPopup(Actor, ComponentSearch, sizeof(ComponentSearch)))
 			{
-				//if (!IsSpawnableComponent(Class)) continue;
-				if (ImGui::MenuItem(Class->Name.c_str()))
-				{
-					OutSelectedComponent = Actor->AddComponent(Class, FString(ComponentNameInputBuf));
-				FLevelUndoHistory::MarkDirty();
-					ComponentNameInputBuf[0] = '\0';
-					ImGui::CloseCurrentPopup();
-				}
+				OutSelectedComponent = Added;
+				OutAddedComponent = Added;
 			}
 			ImGui::EndPopup();
 		}
@@ -1594,7 +1799,15 @@ void FDetailsPanel::OnRender()
 
 		UActorComponent* SelectCandidateComponent = TargetComponent;
 
-		DrawActorHeader(TargetActor, TargetComponent);
+		UActorComponent* AddedComponent = nullptr;
+		DrawActorHeader(TargetActor, TargetComponent, AddedComponent);
+		// UE5처럼 방금 붙인 컴포넌트는 바로 이름을 고칠 수 있게 한다. 이름 편집은 트리에 있는 씬 컴포넌트만 된다.
+		if (AddedComponent && Cast<USceneComponent>(AddedComponent))
+		{
+			EditingNameComponent = AddedComponent;
+			strncpy_s(ComponentNameEditBuffer, sizeof(ComponentNameEditBuffer), AddedComponent->GetName().c_str(), _TRUNCATE);
+			bFocusNameEdit = true;
+		}
 		DrawCompoenetList(TargetActor, TargetComponent);
 		ImGui::Separator();
 
@@ -1692,18 +1905,36 @@ void FDetailsPanel::DrawCompoenetList(AActor* SelectedActor, UActorComponent*& O
 		TryReparent(PendingDroppedComponent, PendingDragComponent);
 		PendingDragComponent = nullptr;
 		PendingDroppedComponent = nullptr;
+		FLevelUndoHistory::MarkDirty();
 	}
 
 	USceneComponent* Root = SelectedActor->GetRootComponent();
+	const float S = EditorIcons::GetScale();
 
-	if (Root && CategoryHeader("Components"))
+	// UE5처럼 테두리 있는 상자 안에 [액터 (Instance)] 줄과 컴포넌트 트리를 그린다.
+	// 내용만큼 늘어나다가 너무 길어지면 상자 안에서 스크롤한다.
+	ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4.0f * S, 4.0f * S));
+	ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, 260.0f * S));
+	ImGui::BeginChild("##ComponentTree", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
+
+	// 맨 위 줄은 액터 자신이다. 누르면 컴포넌트 선택을 풀고 액터 프로퍼티만 본다.
+	bool bInstanceClicked = false;
+	{
+		EEditorIcon Icon;
+		ImU32 Color;
+		GetComponentIcon(Root ? Root->GetClass() : USceneComponent::StaticClass(), Icon, Color);
+		const FString Label = SelectedActor->GetName();
+		bInstanceClicked = IconSelectable("##ActorInstance", Icon, Color, Label.c_str(), "(Instance)", OutSelectedComponent == nullptr);
+	}
+
+	ImGui::Indent(14.0f * S);
+	if (Root)
 	{
 		DrawSceneComponentNode(Root, Root, OutSelectedComponent);
 	}
 
-	ImGui::Separator();
-
-	// Draw ActorComponent
+	// 위치가 없는 컴포넌트(이동, 스크립트 등)는 트리 아래에 따로 늘어놓는다.
 	for (UActorComponent* ActorComp : SelectedActor->GetComponents())
 	{
 		if (!ActorComp || Cast<USceneComponent>(ActorComp))
@@ -1712,36 +1943,38 @@ void FDetailsPanel::DrawCompoenetList(AActor* SelectedActor, UActorComponent*& O
 		}
 
 		ImGui::PushID(ActorComp);
-		ImGuiTreeNodeFlags Flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanAvailWidth;
-		if (ActorComp == OutSelectedComponent)
-		{
-			Flags |= ImGuiTreeNodeFlags_Selected;
-		}
-
-		FString Label = ActorComp->GetName();
-		const ImVec2 RowStart = ImGui::GetCursorScreenPos();
-		const float RowWidth = ImGui::GetContentRegionAvail().x;
-
-		ImGui::TreeNodeEx("ActorComponentNode", Flags, "%s", Label.c_str());
-
-		if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+		EEditorIcon Icon;
+		ImU32 Color;
+		GetComponentIcon(ActorComp->GetClass(), Icon, Color);
+		const FString Name = ActorComp->GetName();
+		const FString Kind = "(" + GetComponentDisplayName(ActorComp->GetClass()->Name) + ")";
+		if (IconSelectable("##ActorComponentNode", Icon, Color, Name.c_str(), Kind.c_str(), ActorComp == OutSelectedComponent))
 		{
 			OutSelectedComponent = ActorComp;
 		}
 
 		if (ImGui::BeginPopupContextItem("Component Context"))
 		{
-			if (ImGui::MenuItem("Delete", nullptr, false, ActorComp != Root))
+			if (ImGui::MenuItem("Delete"))
 				PendingDeleteComponent = ActorComp;
 			ImGui::EndPopup();
 		}
-
-		const FString ClassName = std::format("({})", ActorComp->GetClass()->Name);
-		const float TextX = RowStart.x + RowWidth - ImGui::CalcTextSize(ClassName.c_str()).x;
-		ImGui::GetWindowDrawList()->AddText(ImVec2(TextX, RowStart.y), IM_COL32(200, 200, 200, 255), ClassName.c_str());
-
 		ImGui::PopID();
 	}
+	ImGui::Unindent(14.0f * S);
+
+	ImGui::EndChild();
+	ImGui::PopStyleVar();
+	ImGui::PopStyleColor();
+
+	if (bInstanceClicked)
+	{
+		// 선택을 비우면 에디터가 디테일 대상을 액터의 루트로 되돌리므로, 그 뒤에 컴포넌트 대상을 다시 비운다.
+		SelectComponent(nullptr);
+		TargetComponent = nullptr;
+		OutSelectedComponent = nullptr;
+	}
+	ImGui::Dummy(ImVec2(0.0f, 2.0f * S));
 }
 
 void FDetailsPanel::DrawSceneComponentNode(USceneComponent* Component, USceneComponent* Root, UActorComponent*& OutSelectedComponent)
@@ -1773,14 +2006,11 @@ void FDetailsPanel::DrawSceneComponentNode(USceneComponent* Component, USceneCom
 		Flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 	}
 
-	FString Label = Component->GetName();
-	if (Component == Root)
-		Label += " (Root)";
-
 	ImGui::PushID(Component);
-	const ImVec2 RowStart = ImGui::GetCursorScreenPos();
-	const float RowWidth = ImGui::GetContentRegionAvail().x;
-	const bool bOpen = ImGui::TreeNodeEx("ComponentNode", Flags, "%s", bIsEditingName ? "" : Label.c_str());
+	// 글자는 비워 두고 아래에서 아이콘과 함께 직접 그린다. 펼침 화살표와 선택 영역은 트리 노드가 맡는다.
+	const bool bOpen = ImGui::TreeNodeEx("ComponentNode", Flags, "%s", "");
+	const ImVec2 NodeMin = ImGui::GetItemRectMin();
+	const ImVec2 NodeMax = ImGui::GetItemRectMax();
 
 	USceneComponent* DragComponent = Component;
 
@@ -1821,21 +2051,21 @@ void FDetailsPanel::DrawSceneComponentNode(USceneComponent* Component, USceneCom
 			ImGui::EndPopup();
 		}
 
-		const FString ClassName = std::format("({})", Component->GetClass()->Name);
-		const float TextX = RowStart.x + RowWidth - ImGui::CalcTextSize(ClassName.c_str()).x;
-		ImGui::GetWindowDrawList()->AddText(ImVec2(TextX, RowStart.y), IM_COL32(200, 200, 200, 255), ClassName.c_str());
+		DrawComponentRowLabel(Component, NodeMin, NodeMax, true);
 	}
 	else
 	{
-		ImGui::SameLine();
+		const float NameOffset = DrawComponentRowLabel(Component, NodeMin, NodeMax, false);
+		ImGui::SameLine(0.0f, NameOffset);
+		ImGui::SetNextItemWidth(-FLT_MIN);
 		if (bFocusNameEdit)
 		{
 			ImGui::SetKeyboardFocusHere();
 			bFocusNameEdit = false;
 		}
 
-		const bool bConfirmed = ImGui::InputText("Rename", ComponentNameEditBuffer,
-			sizeof(ComponentNameEditBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
+		const bool bConfirmed = ImGui::InputText("##Rename", ComponentNameEditBuffer,
+			sizeof(ComponentNameEditBuffer), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
 		const bool bCancelled = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
 		const bool bFinished = bConfirmed || ImGui::IsItemDeactivatedAfterEdit();
 		if (bCancelled || bFinished)

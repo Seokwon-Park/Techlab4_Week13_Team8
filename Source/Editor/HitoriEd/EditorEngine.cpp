@@ -388,7 +388,7 @@ void UEditorEngine::InitCommands()
 	CopyCommand.Execute = [this]() { CopySelectedActor(); };
 
 	PasteCommand = { "Paste", "Paste the copied actor", nullptr, White, { EKeyCode::V, true } };
-	PasteCommand.CanExecute = [this]() { return CanEditLevelHistory() && FActorClipboard::LooksLikeActorText(ImGui::GetClipboardText()); };
+	PasteCommand.CanExecute = [this]() { return CanPasteActor(); };
 	PasteCommand.Execute = [this]() { PasteActor(); };
 
 	DuplicateCommand = { "Duplicate", "Duplicate the selected actor", nullptr, White, { EKeyCode::D, true } };
@@ -1031,6 +1031,12 @@ void UEditorEngine::DeleteActor(AActor* Actor)
 	SelectNone(true);
 	DetailsPanel->SelectComponent(nullptr);
 
+	// 붙어 있던 자식 액터는 지우지 않고 지금 자리에 남긴다 (UE와 같다).
+	TArray<AActor*> AttachedActors;
+	Actor->GetAttachedActors(AttachedActors);
+	for (AActor* Child : AttachedActors)
+		Child->DetachFromActor(EAttachmentRule::KeepWorld);
+
 	Actor->Destroy();
 	FLevelUndoHistory::MarkDirty();
 }
@@ -1290,6 +1296,11 @@ void UEditorEngine::CopySelectedActor()
 	AActor* Actor = SelectedActors ? SelectedActors->GetTop<AActor>() : nullptr;
 	if (FActorClipboard::CopyToClipboard(Actor))
 		HTR_LOG(Info, "Copied actor {}", Actor->GetName());
+}
+
+bool UEditorEngine::CanPasteActor() const
+{
+	return CanEditLevelHistory() && FActorClipboard::LooksLikeActorText(ImGui::GetClipboardText());
 }
 
 void UEditorEngine::PasteActor()

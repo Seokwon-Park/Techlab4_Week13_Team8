@@ -323,6 +323,8 @@ void UWorld::ClearWorld()
 			Actor->RegisterAllActorTickFunctions(false);
 		}
 		Level->ClearActors();
+		// 폴더 목록도 씬의 일부다. 비우지 않으면 새 씬이나 예전 씬 파일에 이전 씬의 폴더가 남는다.
+		Level->EditorFolders.clear();
 	}
 	// 액터 EndPlay에서 새로 등록한 작업까지 최종 정리한다.
 	CoroutineScheduler.Reset();
