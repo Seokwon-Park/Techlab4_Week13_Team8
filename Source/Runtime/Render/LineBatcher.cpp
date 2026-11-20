@@ -17,7 +17,7 @@ bool FLineBatcher::Init(FRenderer* InRenderer, UWorld* InWorld)
 	Renderer = InRenderer;
 	World = InWorld;
 
-	LineShader = FRenderResourceManager::GetShaderProgram("Resources/Shader/BoundingBoxShader.hlsl");
+	LineShader = FRenderResourceManager::GetShaderProgram("Resources/Shader/LineShader.hlsl");
 
 	PipelineState.Shader = LineShader;
 	PipelineState.Topology = EPrimitiveTopology::LineList;
@@ -59,8 +59,8 @@ void FLineBatcher::AddLine(const FVector& A, const FVector& B, const FVector4& C
 	if (VertexCount + 2 > MaxVertices)
 		return;   // 넘치면 버림
 
-	*VertexBufferPtr++ = { A, FVector2(), Color };
-	*VertexBufferPtr++ = { B, FVector2(), Color };
+	*VertexBufferPtr++ = { A, Color };
+	*VertexBufferPtr++ = { B, Color };
 
 	VertexCount += 2;
 }
@@ -175,6 +175,164 @@ void FLineBatcher::AddSphere(const FVector& Center, float Radius, const FVector4
 		AddLine(Center + FVector(0.0f, CosA, SinA), Center + FVector(0.0f, CosB, SinB), Color);
 	}
 }
+
+void FLineBatcher::AddCapsule(const FVector& Center, const FVector& Up, const FVector& Right,
+	float Radius, float HalfHeight, const FVector4& Color, int32 Segments)
+{
+	constexpr float Pi = PI;
+
+	const float Segment = std::max(HalfHeight - Radius, 0.0f);
+	const FVector CapsuleA = Center + Up * Segment;
+	const FVector CapsuleB = Center - Up * Segment;
+	const FVector Y = Up.Cross(Right).GetSafeNormal();
+	
+
+	// 위·아래 고리
+	AddWireArc(CapsuleA, Right, Y, Radius, 0, 2 * Pi, Color, Segments);
+	AddWireArc(CapsuleB, Right, Y, Radius, 0, 2 * Pi, Color, Segments);
+	// 위 반구 , 아래 반구
+	AddWireArc(CapsuleA, Right, Up, Radius, 0, Pi, Color, Segments);
+	AddWireArc(CapsuleA, Y, Up, Radius, 0, Pi, Color, Segments);
+	AddWireArc(CapsuleB, Right, Up, Radius, 0, -Pi, Color, Segments);
+	AddWireArc(CapsuleB, Y, Up, Radius, 0, -Pi, Color, Segments);
+	// 옆선 4개
+	for (const FVector& Side : { Right, Right * -1.0f, Y, Y * -1.0f })
+		AddLine(CapsuleA + Side * Radius, CapsuleB + Side * Radius, Color);
+}
+
+void FLineBatcher::AddSwingCone(const FVector& Apex, const FVector& Axis, const FVector& Right,
+	float Swing1Rad, float Swing2Rad, float Length, const FVector4& Color, int32 Segments)
+{
+	if (Length <= 0.0f || Segments < 3)
+	{
+		return;
+	}
+
+	const FVector Up2 = Axis.Cross(Right).GetSafeNormal();
+
+	// 두 각이 모두 0이면 축 방향 선 하나만 그린다.
+	if (Swing1Rad <= 0.0f && Swing2Rad <= 0.0f)
+	{
+		AddLine(Apex, Apex + Axis * Length, Color);
+		return;
+	}
+
+	// 고리 위의 점: Axis를 W 방향으로 |W|만큼 기울인 끝점
+	auto PointAt = [&](float T)
+	{
+		const FVector W = Right * (Swing1Rad * std::cos(T)) + Up2 * (Swing2Rad * std::sin(T));
+		const float Theta = W.Length();
+		if (Theta < 1e-6f)
+		{
+			return Apex + Axis * Length;   // 한쪽 각이 0일 때 그 방향은 축 그대로
+		}
+		const FVector Dir = Axis * std::cos(Theta) + (W / Theta) * std::sin(Theta);
+		return Apex + Dir * Length;
+	};
+
+	// 옆선은 4개 (Right, Up2, -Right, -Up2 방향)
+	const int32 SideStep = std::max(Segments / 4, 1);
+
+	FVector Prev = PointAt(0.0f);
+	AddLine(Apex, Prev, Color);
+	for (int32 i = 1; i <= Segments; ++i)
+	{
+		const FVector P = PointAt(2.0f * PI * i / Segments);
+		AddLine(Prev, P, Color);
+		if (i % SideStep == 0 && i != Segments)
+		{
+			AddLine(Apex, P, Color);
+		}
+		Prev = P;
+	}
+}
+
+void FLineBatcher::AddConvex(const TArray<FVector>& LocalVertices, const TArray<uint32>& Indices,
+	const FMatrix& WorldMatrix, const FVector4& Color)
+{
+	const uint32 VertexNum = static_cast<uint32>(LocalVertices.Num());
+	if (VertexNum == 0 || Indices.Num() % 3 != 0)
+	{
+		return;
+	}
+
+	// 정점을 먼저 한 번씩만 월드로 옮긴다
+	TArray<FVector> WorldVertices;
+	WorldVertices.Reserve(VertexNum);
+	for (const FVector& V : LocalVertices)
+	{
+		const FVector4 W = FVector4(V, 1.0f) * WorldMatrix;
+		WorldVertices.Add(FVector(W.X, W.Y, W.Z));
+	}
+
+	// 이웃 삼각형이 공유하는 엣지는 한 번만 그린다.
+	TSet<uint64> Drawn;
+	auto DrawEdge = [&](uint32 A, uint32 B)
+	{
+		if (A >= VertexNum || B >= VertexNum)
+		{
+			return;
+		}
+		const uint64 Key = (static_cast<uint64>(std::min(A, B)) << 32) | std::max(A, B);
+		if (Drawn.Add(Key))
+		{
+			AddLine(WorldVertices[A], WorldVertices[B], Color);
+		}
+	};
+
+	for (int32 i = 0; i < Indices.Num(); i += 3)
+	{
+		DrawEdge(Indices[i], Indices[i + 1]);
+		DrawEdge(Indices[i + 1], Indices[i + 2]);
+		DrawEdge(Indices[i + 2], Indices[i]);
+	}
+}
+
+void FLineBatcher::AddTwistArc(const FVector& Center, const FVector& Axis, const FVector& Ref,
+	float LimitRad, float Radius, const FVector4& Color, int32 Segments)
+{
+	if (Radius <= 0.0f)
+	{
+		return;
+	}
+
+	const FVector Up2 = Axis.Cross(Ref).GetSafeNormal();
+
+	AddLine(Center, Center + Ref * Radius, Color);
+
+	if (LimitRad <= 0.0f)
+	{
+		return;
+	}
+
+	if (LimitRad >= PI)
+	{
+		AddWireArc(Center, Ref, Up2, Radius, -PI, PI, Color, Segments);
+		return;
+	}
+
+	// 부채꼴: 호 + 양 끝 반지름 선
+	AddWireArc(Center, Ref, Up2, Radius, -LimitRad, LimitRad, Color, Segments);
+	const FVector EndPlus = Center + (Ref * std::cos(LimitRad) + Up2 * std::sin(LimitRad)) * Radius;
+	const FVector EndMinus = Center + (Ref * std::cos(LimitRad) - Up2 * std::sin(LimitRad)) * Radius;
+	AddLine(Center, EndPlus, Color);
+	AddLine(Center, EndMinus, Color);
+}
+
+
+void FLineBatcher::AddWireArc(const FVector& Center, const FVector& AxisA, const FVector& AxisB,
+	float Radius, float StartRad, float EndRad, const FVector4& Color, int32 Segments)
+{
+	auto PointAt = [&](float T) { return Center + AxisA * (std::cos(T) * Radius) + AxisB * (std::sin(T) * Radius); };
+	FVector Prev = PointAt(StartRad);
+	for (int32 i = 1; i <= Segments; ++i)
+	{
+		const FVector P = PointAt(StartRad + (EndRad - StartRad) * i / Segments);
+		AddLine(Prev, P, Color);
+		Prev = P;
+	}
+}
+
 
 void FLineBatcher::Flush()
 {
