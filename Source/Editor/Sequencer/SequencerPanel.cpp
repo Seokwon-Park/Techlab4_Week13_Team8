@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "Editor/Sequencer/SequencerPanel.h"
+#include "Editor/HitoriEd/LevelUndoHistory.h"
 
 #include "LevelSequence/LevelSequence.h"
 #include "LevelSequence/LevelSequencePlayer.h"
@@ -328,6 +329,7 @@ void FSequencerPanel::DrawToolbar()
 		Sequence->SaveToFile(AssetPath);
 		if (ALevelSequenceActor* Actor = World->SpawnActor<ALevelSequenceActor>())
 			Actor->LevelSequenceAsset = AssetPath;
+		FLevelUndoHistory::MarkDirty();
 	}
 	ImGui::EndDisabled();
 }
