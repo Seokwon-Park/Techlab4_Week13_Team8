@@ -4,6 +4,7 @@
 #include "../Components/SceneComponent.h"
 #include "../Math/EngineMath.h"
 #include "../Math/Rotator.h"
+#include "Camera/DepthOfFieldSettings.h"
 #include "CameraComponent.generated.h"
 
 struct FMinimalViewInfo;
@@ -76,6 +77,9 @@ protected:
 
 	bool bIsOrthogonal = false;
 	float OrthoWidth = 16.0f;
+
+	UPROPERTY(EditAnywhere)
+	FDepthOfFieldSettings DepthOfField;
 	
 	float MoveSpeed = 10.0f;
 	float MouseSensitivity = 0.05f;
