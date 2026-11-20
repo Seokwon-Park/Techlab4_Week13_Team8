@@ -41,6 +41,7 @@
 #include "Text/TextRenderer.h"
 
 #include "Editor/HitoriEd/GamePackager.h"
+#include "Editor/HitoriEd/LevelUndoHistory.h"
 
 #include <Engine\GameViewportClient.h>
 
@@ -232,6 +233,11 @@ private:
 	FEditorCommand SaveAs;
 	FEditorCommand NewScene;
 	FEditorCommand OpenSceneCommand;  // OpenScene()과 이름이 겹치지 않게 Command를 붙인다
+	FEditorCommand UndoCommand;
+	FEditorCommand RedoCommand;
+	FEditorCommand CopyCommand;
+	FEditorCommand PasteCommand;
+	FEditorCommand DuplicateCommand;
 
 	FEditorCommand Play;
 	FEditorCommand Pause;
@@ -253,6 +259,36 @@ private:
 	void OpenScene();
 	void SaveCurrentScene();
 	void SaveSceneAs();
+
+	// 레벨 편집의 실행 취소. PIE 중에는 에디터 월드를 건드리지 않으므로 쓸 수 없다.
+	void UndoLevelEdit();
+	void RedoLevelEdit();
+	bool CanEditLevelHistory() const;
+	// 프레임 끝에 조작이 모두 끝났으면 표시된 편집을 한 단계로 확정한다.
+	void TickLevelUndo();
+	// 스냅샷으로 에디터 월드를 되돌린다. 액터가 모두 새로 만들어지므로 선택은 이름으로 다시 잡는다.
+	void ApplyLevelSnapshot(const TArray<uint8>& Snapshot);
+
+	// 레벨 에디터 탭에 포커스가 있는가. 에셋 에디터 탭도 같은 단축키(Ctrl+Z, Ctrl+C, F)를 쓰므로 이것으로 가른다.
+	bool IsLevelEditorFocused() const;
+
+	// 선택한 액터가 활성 뷰포트 화면에 꽉 차도록 카메라를 부드럽게 옮긴다. F 키가 부른다.
+	// UE의 UEditorEngine::MoveViewportCamerasToActor와 같은 자리다.
+	void FocusSelection();
+
+	// 선택한 액터를 복사, 붙여넣기, 복제한다. 붙여넣은 액터를 새로 선택한다.
+	void CopySelectedActor();
+	void PasteActor();
+	void DuplicateSelectedActor();
+	// 붙여넣거나 복제한 액터를 선택하고 실행 취소 기록에 남긴다.
+	void OnActorPasted(AActor* NewActor);
+
+	FLevelUndoHistory LevelUndo;
+	// 메뉴와 단축키는 요청만 남기고, 패널을 다 그린 뒤 TickLevelUndo가 처리한다.
+	// UI를 그리는 도중에 월드를 지우면 뒤에 그릴 패널이 지워진 액터를 읽기 때문이다. -1 Undo, 1 Redo.
+	int32 PendingLevelHistoryStep = 0;
+	// 다른 경로로 씬이 바뀌었는지 알아보려고 마지막으로 본 씬 경로를 기억한다.
+	FString LevelUndoScenePath;
 
 	bool bGameMouseCaptured = false;
 	// PIE 시작 / SIE → 게임 복귀 시 다음 입력 틱에서 자동 캡처 (UE bCaptureMouseOnLaunch)
