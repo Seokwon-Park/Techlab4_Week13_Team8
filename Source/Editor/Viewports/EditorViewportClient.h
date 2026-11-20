@@ -102,6 +102,10 @@ public:
 	// 카메라 전방 벡터
 	FVector GetViewForward() const;
 	void FocusOnBounds(const FBoxSphereBounds& Bounds);
+	// 경계가 화면에 꽉 차도록 카메라를 Duration초 동안 부드럽게 옮긴다. 보는 방향은 그대로다.
+	// 옮기는 도중에 사용자가 카메라를 조작(우클릭, 휠)하면 그 자리에서 멈춘다. UE의 F(Focus Selected)와 같다.
+	void StartFocusOnBounds(const FBoxSphereBounds& Bounds, float Duration = 0.25f);
+	bool IsFocusing() const { return bFocusing; }
 
 	// 씬 뷰 생성
 	FSceneView CalcSceneView(const FRect& InViewRect) const;
@@ -187,4 +191,18 @@ protected:
 	float FarClip = 10000.0f;
 	float OrthoWidth = 10.0f;
 	float MaxRange = 50.0f;
+
+private:
+	// FocusOnBounds가 옮길 카메라 위치와 직교 폭. FarClip도 경계가 잘리지 않게 늘린다.
+	void ComputeFocusTarget(const FBoxSphereBounds& Bounds, FVector& OutLocation, float& OutOrthoWidth);
+	// 진행 중인 부드러운 포커스를 한 프레임 진행한다.
+	void TickFocus(float DeltaTime);
+
+	bool bFocusing = false;
+	float FocusElapsed = 0.0f;
+	float FocusDuration = 0.0f;
+	FVector FocusStartLocation;
+	FVector FocusTargetLocation;
+	float FocusStartOrthoWidth = 10.0f;
+	float FocusTargetOrthoWidth = 10.0f;
 };

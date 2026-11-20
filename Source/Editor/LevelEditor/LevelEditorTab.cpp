@@ -70,8 +70,11 @@ void FLevelEditorTab::DrawMenuBar()
 
 	if (ImGui::BeginMenu("Edit"))
 	{
-		if (UndoCommand) EditorCommandUI::MenuItem(*UndoCommand);
-		if (RedoCommand) EditorCommandUI::MenuItem(*RedoCommand);
+		for (const FEditorCommand* Command : EditCommands)
+		{
+			if (Command) EditorCommandUI::MenuItem(*Command);
+			else         ImGui::Separator();
+		}
 		ImGui::EndMenu();
 	}
 

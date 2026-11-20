@@ -235,6 +235,9 @@ private:
 	FEditorCommand OpenSceneCommand;  // OpenScene()과 이름이 겹치지 않게 Command를 붙인다
 	FEditorCommand UndoCommand;
 	FEditorCommand RedoCommand;
+	FEditorCommand CopyCommand;
+	FEditorCommand PasteCommand;
+	FEditorCommand DuplicateCommand;
 
 	FEditorCommand Play;
 	FEditorCommand Pause;
@@ -265,6 +268,20 @@ private:
 	void TickLevelUndo();
 	// 스냅샷으로 에디터 월드를 되돌린다. 액터가 모두 새로 만들어지므로 선택은 이름으로 다시 잡는다.
 	void ApplyLevelSnapshot(const TArray<uint8>& Snapshot);
+
+	// 레벨 에디터 탭에 포커스가 있는가. 에셋 에디터 탭도 같은 단축키(Ctrl+Z, Ctrl+C, F)를 쓰므로 이것으로 가른다.
+	bool IsLevelEditorFocused() const;
+
+	// 선택한 액터가 활성 뷰포트 화면에 꽉 차도록 카메라를 부드럽게 옮긴다. F 키가 부른다.
+	// UE의 UEditorEngine::MoveViewportCamerasToActor와 같은 자리다.
+	void FocusSelection();
+
+	// 선택한 액터를 복사, 붙여넣기, 복제한다. 붙여넣은 액터를 새로 선택한다.
+	void CopySelectedActor();
+	void PasteActor();
+	void DuplicateSelectedActor();
+	// 붙여넣거나 복제한 액터를 선택하고 실행 취소 기록에 남긴다.
+	void OnActorPasted(AActor* NewActor);
 
 	FLevelUndoHistory LevelUndo;
 	// 메뉴와 단축키는 요청만 남기고, 패널을 다 그린 뒤 TickLevelUndo가 처리한다.

@@ -27,8 +27,8 @@ public:
 	TDelegate<const FString&> OnLevelLoaded;
 
 	void SetIsPackagingQuery(std::function<bool()> InQuery) { IsPackaging = std::move(InQuery); }
-	// Edit 메뉴의 Undo/Redo. 커맨드는 에디터 엔진이 갖는다.
-	void SetEditCommands(const FEditorCommand* InUndo, const FEditorCommand* InRedo) { UndoCommand = InUndo; RedoCommand = InRedo; }
+	// Edit 메뉴 항목. 커맨드는 에디터 엔진이 갖는다. nullptr 자리에는 구분선을 그린다.
+	void SetEditCommands(TArray<const FEditorCommand*> InCommands) { EditCommands = std::move(InCommands); }
 
 	FLevelEditorToolbar* GetToolbar() { return &Toolbar; }
 	TArray<TUniquePtr<IEditorPanel>>& GetPanels() { return Panels; }
@@ -71,8 +71,7 @@ private:
 	bool bResetLayoutRequested = false;
 
 	std::function<bool()> IsPackaging;
-	const FEditorCommand* UndoCommand = nullptr;
-	const FEditorCommand* RedoCommand = nullptr;
+	TArray<const FEditorCommand*> EditCommands;
 	FLevelEditorToolbar Toolbar;
 	TArray<TUniquePtr<IEditorPanel>> Panels;
 	bool bUseDockSpace = true;
