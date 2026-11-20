@@ -2,6 +2,7 @@
 #include "Editor/Outliner/OutlinerPanel.h"
 #include "Editor/HitoriEd/Editor.h"
 #include "Editor/EditorUI/EditorIcons.h"
+#include "Editor/HitoriEd/LevelUndoHistory.h"
 
 #include "Engine/Level.h"
 #include "Engine/World.h"
@@ -179,6 +180,7 @@ void FOutlinerPanel::DrawActorNode(AActor* Actor)
     {
         if (USceneComponent* Root = Actor->GetRootComponent())
             Root->SetVisibility(!bVisible, true);
+            FLevelUndoHistory::MarkDirty();
     }
     ImGui::SetItemTooltip(bVisible ? "Hide actor in the viewport" : "Show actor in the viewport");
 

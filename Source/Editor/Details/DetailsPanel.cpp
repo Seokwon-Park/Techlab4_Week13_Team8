@@ -7,6 +7,7 @@
 
 #include "imgui_internal.h"
 #include "Editor/HitoriEd/EditorDragDrop.h"
+#include "Editor/HitoriEd/LevelUndoHistory.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -1471,6 +1472,7 @@ namespace
 				if (ImGui::MenuItem(Class->Name.c_str()))
 				{
 					OutSelectedComponent = Actor->AddComponent(Class, FString(ComponentNameInputBuf));
+				FLevelUndoHistory::MarkDirty();
 					ComponentNameInputBuf[0] = '\0';
 					ImGui::CloseCurrentPopup();
 				}
@@ -1654,6 +1656,9 @@ void FDetailsPanel::OnRender()
 		}
 		GPropertyFilter = nullptr;
 	}
+	// 프로퍼티 값, 이름, 에셋 슬롯, 부모 바꾸기 등 이 패널의 편집은 모두 여기서 잡는다.
+	// 실제로 바뀌었는지는 실행 취소 기록이 확정할 때 월드를 비교해 가린다.
+	FLevelUndoHistory::NotePanelInteraction();
 	ImGui::End();
 }
 
