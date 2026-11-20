@@ -24,7 +24,7 @@ class UBillboardComponent;
 class APawn;
 class APlayerController;
 class AParticleEventManager;
-
+class FPhysicsScene;
 struct FViewContext;
 
 UCLASS()
@@ -108,6 +108,7 @@ public:
 	void SetPaused(bool bPaused) { bIsPaused = bPaused; }
 
 	FScene& GetScene() { return Scene; }
+	FPhysicsScene* GetPhysicsScene() const { return PhysicsScene.get(); }
 	FTickTaskManager& GetTickTaskManager() { return TickTaskManager; }
 	FCoroutineScheduler& GetCoroutineScheduler() { return CoroutineScheduler; }
 
@@ -175,6 +176,7 @@ private:
 	TArray<ULevel*> Levels;
 
 	FScene Scene;
+	TUniquePtr<FPhysicsScene> PhysicsScene;
 
 	// GatherRenderPackets가 매 프레임 채우는 컬링 결과. 용량을 재사용한다.
 	TArray<FPrimitiveSceneProxy*> VisibleProxies;

@@ -88,34 +88,52 @@ UWorld* UEngine::CreatePIEWorldByDuplication(FWorldContext& Context, UWorld* Sou
 
 void UEngine::DestroyWorldContext(UWorld* InWorld)
 {
+	// 유효한 월드의 소속 컨텍스트 조회
+	if (!InWorld){ return; }
+
+	if (FWorldContext* Context = GetWorldContextFromWorld(InWorld))
+	{
+		DestroyWorldContext(*Context);
+	}
+}
+
+void UEngine::DestroyWorldContext(FWorldContext& Context)
+{
 	for (int32 idx = 0; idx < WorldContextlist.Num(); ++idx)
 	{
-		if (WorldContextlist[idx].World() == InWorld)
+		if (&WorldContextlist[idx] == &Context)
 		{
-			const EWorldType ContextType = WorldContextlist[idx].WorldType;
-			if (WorldContextlist[idx].GameViewport)
+			// 컨텍스트 제거 후에도 필요한 월드와 타입 보관
+			UWorld* World = Context.World();
+			const EWorldType WorldType = Context.WorldType;
+
+			if (Context.GameViewport)
 			{
-				WorldContextlist[idx].GameViewport->LostFocus();
-				WorldContextlist[idx].GameViewport->Reset();
+				Context.GameViewport->LostFocus();
+				Context.GameViewport->Reset();
 			}
-			if (WorldContextlist[idx].OwningGameInstance)
+
+			if (UGameInstance* Instance = Context.OwningGameInstance)
 			{
-				UGameInstance* Instance = WorldContextlist[idx].OwningGameInstance;
 				Instance->Shutdown();
 				delete Instance;
 			}
-			WorldContextlist[idx].SetCurrentWorld(nullptr);
+
+			Context.SetCurrentWorld(nullptr);
 			WorldContextlist.RemoveAt(idx);
-			if (
-				ContextType == EWorldType::PIE ||
-				ContextType == EWorldType::Game ||
-				ContextType == EWorldType::EditorPreview
-			)
+
+			// 실제 월드를 가진 플레이 컨텍스트의 오디오와 월드 정리
+			const bool bOwnsWorld = WorldType == EWorldType::PIE ||	WorldType == EWorldType::Game || WorldType == EWorldType::EditorPreview;
+			if (World && bOwnsWorld)
 			{
-				if (MainAudioDevice) MainAudioDevice->Flush(InWorld);
-				DestroyWorld(InWorld);
+				if (MainAudioDevice)
+				{
+					MainAudioDevice->Flush(World);
+				}
+				DestroyWorld(World);
 			}
-			break;
+
+			return;
 		}
 	}
 }
