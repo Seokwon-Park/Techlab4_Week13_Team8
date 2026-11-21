@@ -10,6 +10,7 @@
 #include "Core/EngineLog.h"
 #include "Core/Misc/Paths.h"
 #include "Engine/Blueprint.h"
+#include "Editor/HitoriEd/LevelUndoHistory.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "Math/BoxSphereBounds.h"
@@ -115,6 +116,8 @@ bool FBlueprintEditor::Save()
 
 	SerializeTemplate(SavedBytes);
 	bDirty = false;
+	// 저장하면 레벨에 놓인 이 BP 액터들도 새 기본값으로 갱신되므로 레벨 실행 취소 기록에 남긴다.
+	FLevelUndoHistory::MarkDirty();
 	HTR_LOG(Info, "Blueprint saved: {}", GetAssetPath());
 	return true;
 }

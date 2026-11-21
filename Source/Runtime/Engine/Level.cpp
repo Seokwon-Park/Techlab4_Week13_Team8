@@ -76,6 +76,13 @@ void ULevel::Serialize(FStructuredArchive::FRecord Record)
 			{
 				FString NativeClassName = FBlueprint::GetNativeClass(Actor->GetClass())->Name;
 				ActorRecord << SA_VALUE("NativeClass", NativeClassName);
+				// BP 액터는 BP 기본값과 다른 값만 쓴다. 그래야 BP를 고쳤을 때 이 액터도 따라간다.
+				FString Delta;
+				if (FBlueprint::MakeInstanceDelta(Actor, Delta))
+				{
+					ActorRecord << SA_VALUE("BlueprintDelta", Delta);
+					continue;
+				}
 			}
 			Actor->Serialize(ActorRecord);
 		}
@@ -119,7 +126,21 @@ void ULevel::Serialize(FStructuredArchive::FRecord Record)
 
 		if (Actor)
 		{
-			Actor->Serialize(ActorRecord);
+			// BP 액터의 차이 기록이 있으면 (SpawnActor가 적용한) 지금 BP 기본값 위에 얹는다.
+			// 없으면 예전 형식(모든 값)이거나 C++ 액터다. BP가 사라져 C++ 조상으로 만든 경우에는 차이를 적용할 기본값이 없다.
+			FString Delta;
+			bool bHasDelta = false;
+			if (TOptional<FStructuredArchive::FSlot> DeltaField = ActorRecord.TryEnterField("BlueprintDelta", false); DeltaField.IsSet())
+			{
+				DeltaField.GetValue() << Delta;
+				bHasDelta = true;
+			}
+			if (bHasDelta && FBlueprint::IsBlueprintClass(Actor->GetClass()))
+				FBlueprint::ApplyInstanceDelta(Actor, Delta);
+			else if (bHasDelta)
+				HTR_LOG(Warning, "Load: {} was a blueprint instance; its overrides could not be applied", ActorName);
+			else
+				Actor->Serialize(ActorRecord);
 		}
 	}
 
