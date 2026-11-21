@@ -1,4 +1,5 @@
 #include "EnginePCH.h"
+#include "Engine/Blueprint.h"
 #include "Launch/LaunchEngineLoop.h"
 
 #include <shellapi.h>
@@ -169,6 +170,12 @@ bool FEngineLoop::PreInit(HINSTANCE hInstance, UClass* EngineClass)
 				FSplashScreen::SetText("Loading " + Path);
 				FSplashScreen::SetProgress(AssetStart + (AssetEnd - AssetStart) * Loaded / Total);
 			});
+	}
+
+	{
+		// 씬 파일이 BP 클래스 이름으로 액터를 저장하므로 씬을 열기 전에 BP 클래스를 모두 등록한다.
+		FLoadStageTimer Timer{ "Phase/RegisterBlueprints" };
+		FBlueprint::RegisterAll("Assets");
 	}
 
 	{
