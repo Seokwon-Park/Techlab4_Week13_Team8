@@ -95,7 +95,7 @@ void UCharacterMovementComponent::PhysFalling(float DeltaTime)
 		SafeMoveWithSlide(Horizontal, Rotation);   // 벽에 막히면 미끄러진다 (Velocity.Z는 아직 0)
 
 	// 수직: 중력 적분 (사다리꼴)
-	const float GravityZ = -Gravity * GravityScale;   // 월드 단위 m/s²
+	const float GravityZ = -GetEffectiveGravity() * GravityScale;   // 월드 단위 m/s²
 	const float NewVerticalSpeed = std::max(VerticalSpeed + GravityZ * DeltaTime, -TerminalVelocity * CmToWorld);
 	const float DeltaZ = 0.5f * (VerticalSpeed + NewVerticalSpeed) * DeltaTime;
 	Velocity.Z = NewVerticalSpeed;

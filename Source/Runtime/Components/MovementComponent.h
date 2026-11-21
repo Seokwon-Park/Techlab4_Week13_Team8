@@ -18,6 +18,9 @@ public:
 	UPROPERTY(EditAnywhere)
 	float Gravity = 9.81f;
 
+	// 실제로 쓸 중력 크기(아래 방향이 양수). World Settings에서 월드 중력을 덮어쓰면 그 값을, 아니면 Gravity를 쓴다.
+	float GetEffectiveGravity() const;
+
 	// ActorComponent  Interface
 	virtual void InitializeComponent() override;
 	virtual void BeginPlay() override;

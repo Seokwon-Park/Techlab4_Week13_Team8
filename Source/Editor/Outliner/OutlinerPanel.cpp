@@ -51,6 +51,12 @@ namespace
             Root->SetVisibility(bVisible, true);
     }
 
+    // 표 한 줄의 높이. 아이콘(15px)과 글자가 위아래 여유를 두고 들어가도록 UE5 줄 높이에 맞춘다.
+    float GetOutlinerRowHeight()
+    {
+        return ImGui::GetTextLineHeight() + 9.0f * EditorIcons::GetScale();
+    }
+
     // ---------------- 폴더 경로 ----------------
     // 폴더 경로는 "Lighting/Sky"처럼 /로 나눈다. 빈 문자열이 맨 위(월드 바로 아래)다.
 
@@ -404,7 +410,7 @@ void FOutlinerPanel::DrawTable(ULevel* Level)
         ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 0.38f);
         ImGui::TableHeadersRow();
 
-        const float RowHeight = ImGui::GetTextLineHeight() + 6.0f * S;
+        const float RowHeight = GetOutlinerRowHeight();
         ImGuiListClipper Clipper;
         Clipper.Begin(static_cast<int>(Rows.size()), RowHeight);
         // 이름을 바꾸는 줄은 화면 밖이어도 그려야 입력 칸이 살아 있다.
@@ -436,7 +442,7 @@ void FOutlinerPanel::DrawTable(ULevel* Level)
 void FOutlinerPanel::DrawRow(const FRow& Row, ULevel* Level)
 {
     const float S = EditorIcons::GetScale();
-    const float RowHeight = ImGui::GetTextLineHeight() + 6.0f * S;
+    const float RowHeight = GetOutlinerRowHeight();
     const bool bEditable = IsEditable();
 
     switch (Row.Type)
@@ -461,8 +467,12 @@ void FOutlinerPanel::DrawRow(const FRow& Row, ULevel* Level)
     ImGui::TableNextRow(ImGuiTableRowFlags_None, RowHeight);
     ImGui::TableSetColumnIndex(0);
     const ImVec2 RowStart = ImGui::GetCursorPos();
+    // 줄 전체를 덮는 Selectable은 강조와 마우스 영역을 ItemSpacing.y의 절반만큼 위아래로 넓힌다.
+    // 표의 칸 여백이 0이라 그만큼 이웃 줄과 겹쳐 보이고 마우스도 옆 줄을 집으므로, 이 줄에서만 간격을 0으로 둔다.
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
     ImGui::Selectable("##Row", bSelected,
         ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, RowHeight));
+    ImGui::PopStyleVar();
 
     // ---- 클릭과 더블클릭 ----
     const bool bLeftClicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
@@ -893,6 +903,8 @@ void FOutlinerPanel::DrawBackgroundContextMenu(ULevel* Level)
     MenuSectionLine("Hierarchy");
     if (IconMenuItem("Create Folder", EEditorIcon::Folder, nullptr, bEditable, FolderColor))
         Defer([this, Level]() { BeginRenameFolder(CreateFolder(Level, FString())); });
+    if (IconMenuItem("World Settings", EEditorIcon::World, nullptr, OpenWorldSettingsCallback != nullptr) && OpenWorldSettingsCallback)
+        OpenWorldSettingsCallback();
     if (IconMenuItem("Cleanup Folders", EEditorIcon::Reset, nullptr, bEditable))
         Defer([this, Level]() { CleanupFolders(Level); });
     if (IconBeginMenu("Edit", EEditorIcon::Settings))

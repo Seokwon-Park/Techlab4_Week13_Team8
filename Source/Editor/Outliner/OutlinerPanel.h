@@ -23,6 +23,8 @@ public:
     ~FOutlinerPanel() = default;
 
     void SetDeleteActorCallback(DeleteActorCallback InCallback) { DeleteCallback = InCallback; }
+    // 빈 곳 오른쪽 클릭 메뉴의 World Settings가 부른다.
+    void SetOpenWorldSettingsCallback(std::function<void()> InCallback) { OpenWorldSettingsCallback = std::move(InCallback); }
 
     bool Init() override;
     void Tick(float DeltaTime) override;
@@ -95,6 +97,7 @@ private:
 
     UWorld* World = nullptr;
     DeleteActorCallback DeleteCallback;
+    std::function<void()> OpenWorldSettingsCallback;
 
     char SearchBuffer[128] = {};
 

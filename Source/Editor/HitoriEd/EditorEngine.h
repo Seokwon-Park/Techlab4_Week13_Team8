@@ -23,6 +23,7 @@
 #include "Editor/AssetEditor/EditorManager.h"
 #include "Editor/OutputLog/OutputLogPanel.h"
 #include "Editor/Details/DetailsPanel.h"
+#include "Editor/WorldSettings/WorldSettingsPanel.h"
 #include "Editor/EditorControls/EditorControlsPanel.h"
 #include "Editor/Settings/SettingsPanel.h"
 #include "Editor/Sequencer/SequencerPanel.h"
@@ -206,6 +207,7 @@ private:
 	FOutputLogPanel* OutputLogPanel = nullptr;
 
 	FDetailsPanel* DetailsPanel = nullptr;
+	FWorldSettingsPanel* WorldSettingsPanel = nullptr;
 	FEditorControlsPanel* EditorControlsPanel = nullptr;
 	FSettingsPanel* SettingsPanel = nullptr;
 	FSequencerPanel* SequencerPanel = nullptr;

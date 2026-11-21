@@ -237,6 +237,10 @@ void UEditorEngine::InitPanels()
 		});
 
 
+	// UE5처럼 Details 옆 탭에 World Settings를 둔다.
+	WorldSettingsPanel = LevelEditorTab->AddPanel<FWorldSettingsPanel>();
+	WorldSettingsPanel->SetWorld(GetActiveWorld());
+
 	EditorControlsPanel = LevelEditorTab->AddPanel<FEditorControlsPanel>();
 	ViewportsPanel = LevelEditorTab->AddPanel<FViewportsPanel>();
 	ContentDrawerPanel = LevelEditorTab->AddPanel<FContentDrawerPanel>();
@@ -299,6 +303,7 @@ void UEditorEngine::InitPanels()
 		}
 	);
 
+	OutlinerPanel->SetOpenWorldSettingsCallback([this]() { if (WorldSettingsPanel) WorldSettingsPanel->Focus(); });
 	OutlinerPanel->SetDeleteActorCallback(
 		[this](AActor* Actor)
 		{
@@ -1001,6 +1006,7 @@ void UEditorEngine::PreExit()
 	LevelEditorTab = nullptr;
 	OutputLogPanel = nullptr;
 	DetailsPanel = nullptr;
+	WorldSettingsPanel = nullptr;
 	EditorControlsPanel = nullptr;
 	SettingsPanel = nullptr;
 	SequencerPanel = nullptr;
@@ -1080,6 +1086,7 @@ void UEditorEngine::OnActiveWorldChanged()
 
 	if (OutlinerPanel) OutlinerPanel->SetWorld(ActiveWorld);
 	if (DetailsPanel) DetailsPanel->SetWorld(ActiveWorld);
+	if (WorldSettingsPanel) WorldSettingsPanel->SetWorld(ActiveWorld);
 	if (EditorControlsPanel) EditorControlsPanel->SetWorld(ActiveWorld);
 	if (SettingsPanel) SettingsPanel->SetWorld(ActiveWorld);
 	if (SequencerPanel) SequencerPanel->SetWorld(ActiveWorld, ActiveWorld == EditorWorld);
