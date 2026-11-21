@@ -404,6 +404,12 @@ void UAssetManager::CreateDefaultMeshes()
 	FStaticMeshData* GizmoSphereData = FGeometryGenerator::GetMeshData("GizmoSphere");
 	RegisterAsset("GizmoSphere", CreateStaticMesh(GizmoSphereData));
 
+	for (const char* GizmoMeshName : { "GizmoArrow", "GizmoScaleHandle", "GizmoRing", "GizmoScreenRing",
+		"GizmoCenterSphere", "GizmoCenterCube", "GizmoDisc", "GizmoQuad" })
+	{
+		RegisterAsset(GizmoMeshName, CreateStaticMesh(FGeometryGenerator::GetMeshData(GizmoMeshName)));
+	}
+
 	const FParticleVertex Vertices[] =
 	{
 		{ FVector(0.0f, -0.5f,  0.5f), FVector2(0.0f, 0.0f) },

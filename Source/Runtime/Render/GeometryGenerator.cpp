@@ -466,6 +466,46 @@ TUniquePtr<FStaticMeshData> FGeometryGenerator::CreateSphere(float Radius, uint3
 	return SphereMeshData;
 }
 
+TUniquePtr<FStaticMeshData> FGeometryGenerator::CreateDisc(float Radius, int Segments, const FVector4& Color)
+{
+	TUniquePtr<FStaticMeshData> Data = MakeUnique<FStaticMeshData>();
+
+	Data->Vertices.Add({ FVector(0.0f, 0.0f, 0.0f), FVector(0.0f, 0.0f, 1.0f), FVector4(1.0f, 0.0f, 0.0f, 1.0f), FVector2(0.5f, 0.5f), Color });
+	for (int i = 0; i <= Segments; ++i)
+	{
+		const float Angle = (float)i / Segments * 2.0f * PI;
+		const float C = cosf(Angle);
+		const float S = sinf(Angle);
+		Data->Vertices.Add({ FVector(Radius * C, Radius * S, 0.0f), FVector(0.0f, 0.0f, 1.0f), FVector4(1.0f, 0.0f, 0.0f, 1.0f), FVector2(0.5f + 0.5f * C, 0.5f + 0.5f * S), Color });
+	}
+	for (int i = 0; i < Segments; ++i)
+	{
+		Data->Indices.Add(0);
+		Data->Indices.Add(1 + i + 1);
+		Data->Indices.Add(1 + i);
+	}
+
+	CalculateNormals(Data->Vertices, Data->Indices);
+	Data->AABB = CalculateAABB(Data->Vertices);
+	return Data;
+}
+
+TUniquePtr<FStaticMeshData> FGeometryGenerator::CreateUnitQuad(const FVector4& Color)
+{
+	TUniquePtr<FStaticMeshData> Data = MakeUnique<FStaticMeshData>();
+
+	const FVector2 Corners[4] = { FVector2(0.0f, 0.0f), FVector2(1.0f, 0.0f), FVector2(1.0f, 1.0f), FVector2(0.0f, 1.0f) };
+	for (const FVector2& Corner : Corners)
+		Data->Vertices.Add({ FVector(Corner.X, Corner.Y, 0.0f), FVector(0.0f, 0.0f, 1.0f), FVector4(1.0f, 0.0f, 0.0f, 1.0f), Corner, Color });
+
+	Data->Indices.Add(0); Data->Indices.Add(2); Data->Indices.Add(1);
+	Data->Indices.Add(0); Data->Indices.Add(3); Data->Indices.Add(2);
+
+	CalculateNormals(Data->Vertices, Data->Indices);
+	Data->AABB = CalculateAABB(Data->Vertices);
+	return Data;
+}
+
 FStaticMeshData* FGeometryGenerator::GetMeshData(const FString& InName)
 {
 	TUniquePtr<FStaticMeshData>* MeshData = MeshDataMap.Find(InName);
@@ -487,4 +527,15 @@ void FGeometryGenerator::CreateDefaultMeshDatas()
 	MeshDataMap["Ring"] = CreateRing(1.0f, 0.03f, 32, 16, FVector4(1.0f, 0.0f, 0.0f, 1.0f));
 	MeshDataMap["ScaleBar"] = CreateScaleBar(0.1f, 1.0f, 0.4f, 20, FVector4(1.0f, 0.0f, 0.0f, 1.0f));
 	MeshDataMap["GizmoSphere"] = CreateSphere(0.2f, 100, 50, FVector4(1.0f, 1.0f, 1.0f, 1.0f));
+
+	// 에디터 기즈모 전용 메시. 치수는 FGizmo의 GizmoHandle 상수(피킹 범위)와 맞춘다.
+	const FVector4 White(1.0f, 1.0f, 1.0f, 1.0f);
+	MeshDataMap["GizmoArrow"] = CreateArrow(0.016f, 0.95f, 0.06f, 0.30f, 24, White);         // 끝 = 1.25
+	MeshDataMap["GizmoScaleHandle"] = CreateScaleBar(0.016f, 1.08f, 0.12f, 24, White);       // 끝 = 1.20
+	MeshDataMap["GizmoRing"] = CreateRing(1.0f, 0.013f, 128, 8, White);
+	MeshDataMap["GizmoScreenRing"] = CreateRing(1.2f, 0.011f, 128, 8, White);
+	MeshDataMap["GizmoCenterSphere"] = CreateSphere(0.08f, 32, 16, White);
+	MeshDataMap["GizmoCenterCube"] = CreateCube(0.14f, White);
+	MeshDataMap["GizmoDisc"] = CreateDisc(1.2f, 128, White);
+	MeshDataMap["GizmoQuad"] = CreateUnitQuad(White);
 }
