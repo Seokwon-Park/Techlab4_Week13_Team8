@@ -74,6 +74,7 @@ FGameSettings FGameSettings::Load(const FString& Path)
 	Options.LightCullingMode = ParseLightCullingMode(Config.GetString("Rendering", "LightCullingMode", ""), Options.LightCullingMode);
 	Settings.ShowFlags.AntiAliasing = Config.GetBool("Rendering", "EnableFXAA", Settings.ShowFlags.AntiAliasing);
 	Options.bGammaCorrection = Config.GetBool("Rendering", "GammaCorrection", Options.bGammaCorrection);
+	Settings.ShowFlags.DepthOfField = Config.GetBool("Rendering", "ShowDepthOfField", Settings.ShowFlags.DepthOfField);
 	Settings.ShowFlags.Vignette = Config.GetBool("Rendering", "ShowVignette", Settings.ShowFlags.Vignette);
 	Settings.ShowFlags.CameraOverlay = Config.GetBool("Rendering", "ShowCameraOverlay", Settings.ShowFlags.CameraOverlay);
 	Settings.ShowFlags.SkeletalMeshes = Config.GetBool("Rendering", "ShowSkeletalMesh", Settings.ShowFlags.SkeletalMeshes);

@@ -56,6 +56,7 @@ void FLevelEditorViewportClient::Draw(FViewport* InViewport, FUIRenderer* Canvas
 		// 설정 창은 "모든 뷰포트에 한꺼번에 적용"으로 쓰여서, 설정 값이 바뀐 플래그만 옮긴다.
 		FEngineShowFlags SettingsFlags = LastSettingsShowFlags;
 		SettingsFlags.AntiAliasing = S.bEnableFXAA;
+		SettingsFlags.DepthOfField = S.bShowDepthOfField;
 		SettingsFlags.Vignette = S.bShowVignette;
 		SettingsFlags.CameraOverlay = S.bShowCameraOverlay;
 		SettingsFlags.SkeletalMeshes = S.bShowSkeletalMesh;
@@ -67,6 +68,7 @@ void FLevelEditorViewportClient::Draw(FViewport* InViewport, FUIRenderer* Canvas
 				EngineShowFlags.*Flag = SettingsFlags.*Flag;
 		};
 		SyncFlag(&FEngineShowFlags::AntiAliasing);
+		SyncFlag(&FEngineShowFlags::DepthOfField);
 		SyncFlag(&FEngineShowFlags::Vignette);
 		SyncFlag(&FEngineShowFlags::CameraOverlay);
 		SyncFlag(&FEngineShowFlags::SkeletalMeshes);
