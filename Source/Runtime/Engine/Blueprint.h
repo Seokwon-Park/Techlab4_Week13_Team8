@@ -34,9 +34,13 @@ namespace FBlueprint
 	// 실패하면 nullptr이고 이유를 OutError에 쓴다.
 	UClass* LoadBlueprint(const std::filesystem::path& File, FString* OutError = nullptr);
 
-	// Template 액터의 지금 상태를 기본값으로 삼아 .bp를 쓰고 다시 읽는다. Template이 없으면 부모 기본값 그대로다.
+	// Template 액터의 지금 상태를 기본값으로 삼아 .bp를 쓰고 다시 읽는다. Template이 없으면 부모 클래스의 CDO를 쓴다.
 	// ParentClass는 AActor 계열이어야 한다. 쓴 뒤 등록된 클래스를 돌려준다.
 	UClass* SaveBlueprint(const std::filesystem::path& File, UClass* ParentClass, AActor* Template, FString& OutError);
+
+	// BP 기본값의 문자열 프로퍼티 하나만 바꿔 .bp에 쓰고 다시 읽는다 (World Settings에서 GameMode BP 칸을 고칠 때).
+	// 실패하면 false이고 이유를 OutError에 쓴다.
+	bool SetDefaultStringProperty(UClass* BlueprintClass, const FString& PropertyName, const FString& Value, FString& OutError);
 
 	bool IsBlueprintClass(const UClass* Class);
 	// BP 클래스의 에셋 경로(Assets 기준). BP가 아니면 빈 문자열.

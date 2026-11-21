@@ -89,6 +89,12 @@ private:
 	bool bOpenCreateWidget = false;
 	bool bOpenCreateParticle = false;
 	bool bOpenNewFolder = false;
+	bool bOpenCreateBlueprint = false;
+
+	// Blueprint Class 만들기 창: 고른 부모 클래스와 "모든 클래스" 목록의 검색 칸
+	FString BlueprintParentClass = "AActor";
+	char BlueprintClassSearch[64] = {};
+	void DrawCreateBlueprintPopup();
 
 	fs::path AssetRootPath = "Assets";
 	fs::path SceneRootPath = "Scenes";

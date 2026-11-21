@@ -11,6 +11,7 @@
 #include "GameFramework/Actor.h"
 #include "UObject/Class.h"
 #include "UObject/UObjectHash.h"
+#include "Json/Dom/JsonObject.h"
 
 #include "Serialization/MemoryWriter.h"
 #include "Serialization/MemoryReader.h"
@@ -265,6 +266,11 @@ UClass* FBlueprint::SaveBlueprint(const std::filesystem::path& File, UClass* Par
 		return nullptr;
 	}
 
+	// 템플릿이 없으면(새로 만드는 BP) 부모 클래스의 기본 객체를 그대로 기본값으로 쓴다.
+	// 비워 두면 읽을 때마다 "필드 없음" 경고가 나오므로 부모 값을 채워 둔다.
+	if (!Template)
+		Template = Cast<AActor>(ParentClass->GetDefaultObject());
+
 	TArray<uint8> Bytes;
 	FMemoryWriter Writer(Bytes);
 	Writer.SetIsPersistent(true);   // 씬 파일처럼 Transient는 쓰지 않는다
@@ -322,4 +328,37 @@ void FBlueprint::ApplyActorDefaults(AActor* Actor)
 {
 	if (Actor)
 		ApplyChain(Actor->GetClass(), Actor, true);
+}
+
+bool FBlueprint::SetDefaultStringProperty(UClass* BlueprintClass, const FString& PropertyName, const FString& Value, FString& OutError)
+{
+	const FBlueprintData* Data = FindData(BlueprintClass);
+	if (!Data)
+	{
+		OutError = "not a blueprint class";
+		return false;
+	}
+
+	// 기본값 전체를 다시 쓰지 않고 그 프로퍼티만 고친다. 컴포넌트 구성 등 나머지는 그대로 남는다.
+	FJsonObject Root = FJsonObject::parse(Data->FileBytes.begin(), Data->FileBytes.end(), nullptr, false);
+	if (Root.is_discarded() || !Root.is_object())
+	{
+		OutError = "file is not valid JSON";
+		return false;
+	}
+	Root["Defaults"]["Properties"][PropertyName] = Value;
+	const std::string Text = Root.dump(1, '\t');
+
+	const std::filesystem::path File = FPaths::FromUtf8(Data->AssetPath.find(':') == FString::npos
+		? "Assets/" + Data->AssetPath : Data->AssetPath);
+	{
+		std::ofstream Stream(File, std::ios::binary | std::ios::trunc);
+		if (!Stream)
+		{
+			OutError = "cannot write " + Data->AssetPath;
+			return false;
+		}
+		Stream.write(Text.data(), static_cast<std::streamsize>(Text.size()));
+	}
+	return LoadBlueprint(File, &OutError) != nullptr;
 }
