@@ -23,6 +23,7 @@
 #include "Editor/AssetEditor/EditorManager.h"
 #include "Editor/OutputLog/OutputLogPanel.h"
 #include "Editor/Details/DetailsPanel.h"
+#include "Editor/WorldSettings/WorldSettingsPanel.h"
 #include "Editor/EditorControls/EditorControlsPanel.h"
 #include "Editor/Settings/SettingsPanel.h"
 #include "Editor/Sequencer/SequencerPanel.h"
@@ -69,6 +70,17 @@ public:
 	void DrawPIEDebug(UWorld* World, const FMatrix& ViewProjection);
 	void DeleteActor(AActor* Actor);
 	void DeleteComponent(UActorComponent* Component);
+
+	// 선택한 액터가 활성 뷰포트 화면에 꽉 차도록 카메라를 부드럽게 옮긴다. F 키와 Outliner 메뉴가 부른다.
+	// UE의 UEditorEngine::MoveViewportCamerasToActor와 같은 자리다.
+	void FocusSelection();
+
+	// 선택한 액터를 복사, 붙여넣기, 복제한다. 붙여넣은 액터를 새로 선택한다.
+	void CopySelectedActor();
+	void PasteActor();
+	void DuplicateSelectedActor();
+	// 붙여넣을 액터가 클립보드에 있고 에디터 월드를 고칠 수 있는가 (Outliner 메뉴가 항목을 켤지 정한다).
+	bool CanPasteActor() const;
 
 	//Play 버튼을 눌렀을때 Play Session 실행을 요청한다.
 	inline void RequestPlaySession() { bPlaySessionRequested = true; }
@@ -195,6 +207,7 @@ private:
 	FOutputLogPanel* OutputLogPanel = nullptr;
 
 	FDetailsPanel* DetailsPanel = nullptr;
+	FWorldSettingsPanel* WorldSettingsPanel = nullptr;
 	FEditorControlsPanel* EditorControlsPanel = nullptr;
 	FSettingsPanel* SettingsPanel = nullptr;
 	FSequencerPanel* SequencerPanel = nullptr;
@@ -272,14 +285,6 @@ private:
 	// 레벨 에디터 탭에 포커스가 있는가. 에셋 에디터 탭도 같은 단축키(Ctrl+Z, Ctrl+C, F)를 쓰므로 이것으로 가른다.
 	bool IsLevelEditorFocused() const;
 
-	// 선택한 액터가 활성 뷰포트 화면에 꽉 차도록 카메라를 부드럽게 옮긴다. F 키가 부른다.
-	// UE의 UEditorEngine::MoveViewportCamerasToActor와 같은 자리다.
-	void FocusSelection();
-
-	// 선택한 액터를 복사, 붙여넣기, 복제한다. 붙여넣은 액터를 새로 선택한다.
-	void CopySelectedActor();
-	void PasteActor();
-	void DuplicateSelectedActor();
 	// 붙여넣거나 복제한 액터를 선택하고 실행 취소 기록에 남긴다.
 	void OnActorPasted(AActor* NewActor);
 

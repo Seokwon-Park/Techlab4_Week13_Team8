@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "MovementComponent.h"
 #include "GameFramework/Actor.h"
+#include "Engine/World.h"
 
 void UMovementComponent::InitializeComponent()
 {
@@ -87,4 +88,11 @@ FVector UMovementComponent::ConstrainDirectionToPlane(FVector Direction) const
 	}
 
 	return Direction;
+}
+
+float UMovementComponent::GetEffectiveGravity() const
+{
+	if (const UWorld* World = GetWorld(); World && World->IsWorldGravityOverridden())
+		return -World->GetWorldGravityZ();
+	return Gravity;
 }

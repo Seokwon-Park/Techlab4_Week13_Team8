@@ -108,4 +108,11 @@ void ULevel::Serialize(FStructuredArchive::FRecord Record)
 			Actor->Serialize(ActorRecord);
 		}
 	}
+
+	// 다른 액터에 붙어 있던 액터는 부모 액터가 만들어진 뒤에야 붙일 수 있다.
+	for (AActor* Actor : Actors)
+	{
+		if (Actor)
+			Actor->ResolvePendingActorAttachments();
+	}
 }

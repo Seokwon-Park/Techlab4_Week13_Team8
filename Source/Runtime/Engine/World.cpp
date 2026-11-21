@@ -12,10 +12,13 @@
 #include "GameFramework/DefaultPawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/MyPlayerController.h"
+#include "GameFramework/GameModeBase.h"
+#include "GameFramework/GameplayInfoActors.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Input/InputSystem.h"
 
 #include "UObject/UObjectIterator.h"
+#include "UObject/UObjectHash.h"
 
 #include "Collision/Ray.h"
 #include "Components/BillboardComponent.h"
@@ -323,7 +326,11 @@ void UWorld::ClearWorld()
 			Actor->RegisterAllActorTickFunctions(false);
 		}
 		Level->ClearActors();
+		// 폴더 목록도 씬의 일부다. 비우지 않으면 새 씬이나 예전 씬 파일에 이전 씬의 폴더가 남는다.
+		Level->EditorFolders.clear();
 	}
+	// World Settings도 씬의 일부다. 비우지 않으면 새 씬이나 이 값이 없는 예전 씬 파일에 이전 값이 남는다.
+	ResetWorldSettings();
 	// 액터 EndPlay에서 새로 등록한 작업까지 최종 정리한다.
 	CoroutineScheduler.Reset();
 	// 액터를 지우기 전에 렌더 프록시와 틱 등록부터 푼다. ClearActors는 액터를 delete만 하므로,
@@ -901,13 +908,31 @@ void UWorld::BeginPlay()
 			if (APawn* Pawn = Cast<APawn>(Actor)) { PlayerPawn = Pawn; break; }
 		}
 	}
+	// World Settings의 GameMode를 만들고, 그 GameMode가 정한 클래스로 나머지를 만든다 (UE의 순서와 같다).
+	if (!GameMode)
+		GameMode = Cast<AGameModeBase>(SpawnActor(ResolveGameModeClass()));
+	if (GameMode && !GameState)
+		GameState = Cast<AGameStateBase>(SpawnActor(AGameModeBase::ResolveClass(GameMode->GameStateClass,
+			AGameStateBase::StaticClass(), AGameStateBase::StaticClass())));
+
 	if (!PlayerPawn)
 	{
 		FTransform Transform = MainCamera ? MainCamera->GetActorTransform() : FTransform::Identity;
-		PlayerPawn = SpawnActor<ADefaultPawn>(NAME_None, &Transform);
+		// 놓인 Pawn이 없으면 GameMode의 Default Pawn Class로 만든다.
+		UClass* PawnClass = GameMode
+			? AGameModeBase::ResolveClass(GameMode->DefaultPawnClass, APawn::StaticClass(), ADefaultPawn::StaticClass())
+			: ADefaultPawn::StaticClass();
+		PlayerPawn = Cast<APawn>(SpawnActor(PawnClass, NAME_None, &Transform));
 	}
 	if (!PlayerController) 
-		PlayerController = SpawnActor<AMyPlayerController>();
+		PlayerController = Cast<APlayerController>(SpawnActor(GameMode
+			? AGameModeBase::ResolveClass(GameMode->PlayerControllerClass, APlayerController::StaticClass(), AMyPlayerController::StaticClass())
+			: AMyPlayerController::StaticClass()));
+	if (GameMode && !PlayerState)
+		PlayerState = Cast<APlayerState>(SpawnActor(AGameModeBase::ResolveClass(GameMode->PlayerStateClass,
+			APlayerState::StaticClass(), APlayerState::StaticClass())));
+	if (GameMode && !HUD)
+		HUD = Cast<AHUD>(SpawnActor(AGameModeBase::ResolveClass(GameMode->HUDClass, AHUD::StaticClass(), AHUD::StaticClass())));
 	
 	if (PlayerController)
 		PlayerController->SpawnPlayerCameraManager();
@@ -947,6 +972,10 @@ void UWorld::EndPlay()
 	}
 	PlayerController = nullptr;
 	PlayerPawn = nullptr;
+	GameMode = nullptr;
+	GameState = nullptr;
+	PlayerState = nullptr;
+	HUD = nullptr;
 	bIsPaused = false;
 	MyParticleEventManager = nullptr;
 }
@@ -1140,6 +1169,19 @@ void UWorld::UpdateOverlaps()
 			}
 		}
 	}
+}
+
+void UWorld::ResetWorldSettings()
+{
+	GameModeOverride.clear();
+	bOverrideWorldGravity = false;
+	WorldGravityZ = -9.81f;
+	GlobalTimeDilation = 1.0f;
+}
+
+UClass* UWorld::ResolveGameModeClass() const
+{
+	return AGameModeBase::ResolveClass(GameModeOverride, AGameModeBase::StaticClass(), AGameModeBase::StaticClass());
 }
 
 float UWorld::GetEffectiveTimeDilation() const
