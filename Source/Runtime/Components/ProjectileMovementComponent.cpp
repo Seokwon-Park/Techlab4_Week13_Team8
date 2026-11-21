@@ -171,7 +171,7 @@ FVector UProjectileMovementComponent::ComputAcceleration(const FVector& InVeloci
 {
 	FVector Acceleration(FVector::ZeroVector);	
 
-	Acceleration.Z -= Gravity * ProjectileGravityScale;
+	Acceleration.Z -= GetEffectiveGravity() * ProjectileGravityScale;
 	
 	Acceleration += PendingForceThisUpdate;
 

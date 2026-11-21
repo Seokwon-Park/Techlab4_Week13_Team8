@@ -190,6 +190,7 @@ void FLevelEditorTab::BuildDefaultLayout(ImGuiID DockSpaceId, const ImVec2& Size
 	ImGui::DockBuilderDockWindow("Viewports", Center);
 	ImGui::DockBuilderDockWindow("Outliner", RightTop);
 	ImGui::DockBuilderDockWindow("Details", RightBottom);
+	ImGui::DockBuilderDockWindow("World Settings", RightBottom);
 	ImGui::DockBuilderDockWindow("Settings", RightBottom);
 	ImGui::DockBuilderDockWindow("Editor Controls", RightBottom);
 	ImGui::DockBuilderDockWindow("Output Log", Bottom);

@@ -108,6 +108,9 @@ AActor* FActorClipboard::ImportActor(UWorld* World, const FString& Text)
 		return nullptr;
 	}
 
+	// 원본이 다른 액터에 붙어 있었으면 같은 부모에 붙인다. 부모 기준 Transform이라 원본과 같은 자리에 놓인다.
+	Actor->ResolvePendingActorAttachments();
+
 	// 레벨 로드처럼 피킹과 컬링에 쓰는 BVH를 다시 만든다.
 	World->GetScene().BuildBVH();
 	return Actor;

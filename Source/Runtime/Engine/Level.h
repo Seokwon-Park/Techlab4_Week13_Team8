@@ -26,6 +26,11 @@ public:
     void AddActor(AActor* Actor);
     void ClearActors();
 
+    // 에디터 Outliner의 폴더 목록. 액터가 하나도 없는 빈 폴더도 남도록 레벨에 적어 둔다.
+    // 액터가 들어 있는 폴더는 액터의 FolderPath로도 알 수 있다. 한 줄에 경로 하나씩 줄바꿈으로 잇는다.
+    UPROPERTY()
+    FString EditorFolders;
+
     using Super::Serialize;
     virtual void Serialize(FStructuredArchive::FRecord Record) override;
 

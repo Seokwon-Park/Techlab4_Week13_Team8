@@ -237,6 +237,10 @@ void UEditorEngine::InitPanels()
 		});
 
 
+	// UE5처럼 Details 옆 탭에 World Settings를 둔다.
+	WorldSettingsPanel = LevelEditorTab->AddPanel<FWorldSettingsPanel>();
+	WorldSettingsPanel->SetWorld(GetActiveWorld());
+
 	EditorControlsPanel = LevelEditorTab->AddPanel<FEditorControlsPanel>();
 	ViewportsPanel = LevelEditorTab->AddPanel<FViewportsPanel>();
 	ContentDrawerPanel = LevelEditorTab->AddPanel<FContentDrawerPanel>();
@@ -299,6 +303,7 @@ void UEditorEngine::InitPanels()
 		}
 	);
 
+	OutlinerPanel->SetOpenWorldSettingsCallback([this]() { if (WorldSettingsPanel) WorldSettingsPanel->Focus(); });
 	OutlinerPanel->SetDeleteActorCallback(
 		[this](AActor* Actor)
 		{
@@ -388,7 +393,7 @@ void UEditorEngine::InitCommands()
 	CopyCommand.Execute = [this]() { CopySelectedActor(); };
 
 	PasteCommand = { "Paste", "Paste the copied actor", nullptr, White, { EKeyCode::V, true } };
-	PasteCommand.CanExecute = [this]() { return CanEditLevelHistory() && FActorClipboard::LooksLikeActorText(ImGui::GetClipboardText()); };
+	PasteCommand.CanExecute = [this]() { return CanPasteActor(); };
 	PasteCommand.Execute = [this]() { PasteActor(); };
 
 	DuplicateCommand = { "Duplicate", "Duplicate the selected actor", nullptr, White, { EKeyCode::D, true } };
@@ -1001,6 +1006,7 @@ void UEditorEngine::PreExit()
 	LevelEditorTab = nullptr;
 	OutputLogPanel = nullptr;
 	DetailsPanel = nullptr;
+	WorldSettingsPanel = nullptr;
 	EditorControlsPanel = nullptr;
 	SettingsPanel = nullptr;
 	SequencerPanel = nullptr;
@@ -1030,6 +1036,12 @@ void UEditorEngine::DeleteActor(AActor* Actor)
 
 	SelectNone(true);
 	DetailsPanel->SelectComponent(nullptr);
+
+	// 붙어 있던 자식 액터는 지우지 않고 지금 자리에 남긴다 (UE와 같다).
+	TArray<AActor*> AttachedActors;
+	Actor->GetAttachedActors(AttachedActors);
+	for (AActor* Child : AttachedActors)
+		Child->DetachFromActor(EAttachmentRule::KeepWorld);
 
 	Actor->Destroy();
 	FLevelUndoHistory::MarkDirty();
@@ -1074,6 +1086,7 @@ void UEditorEngine::OnActiveWorldChanged()
 
 	if (OutlinerPanel) OutlinerPanel->SetWorld(ActiveWorld);
 	if (DetailsPanel) DetailsPanel->SetWorld(ActiveWorld);
+	if (WorldSettingsPanel) WorldSettingsPanel->SetWorld(ActiveWorld);
 	if (EditorControlsPanel) EditorControlsPanel->SetWorld(ActiveWorld);
 	if (SettingsPanel) SettingsPanel->SetWorld(ActiveWorld);
 	if (SequencerPanel) SequencerPanel->SetWorld(ActiveWorld, ActiveWorld == EditorWorld);
@@ -1290,6 +1303,11 @@ void UEditorEngine::CopySelectedActor()
 	AActor* Actor = SelectedActors ? SelectedActors->GetTop<AActor>() : nullptr;
 	if (FActorClipboard::CopyToClipboard(Actor))
 		HTR_LOG(Info, "Copied actor {}", Actor->GetName());
+}
+
+bool UEditorEngine::CanPasteActor() const
+{
+	return CanEditLevelHistory() && FActorClipboard::LooksLikeActorText(ImGui::GetClipboardText());
 }
 
 void UEditorEngine::PasteActor()
