@@ -51,4 +51,19 @@ namespace FBlueprint
 	// 스폰한 액터에 BP 기본값(프로퍼티와 컴포넌트)을 덮어쓴다. 부모 BP의 기본값부터 차례로 적용한다.
 	// UWorld::SpawnActor가 부른다.
 	void ApplyActorDefaults(AActor* Actor);
+
+	// ---------------- 놓인 BP 액터의 차이 저장 (UE의 delta serialization) ----------------
+	// 씬에는 BP 액터를 통째로 쓰지 않고, BP 기본값과 다른 값만 쓴다. 불러올 때는 지금의 BP 기본값 위에
+	// 그 차이를 얹는다. 그래서 BP를 고치면 인스턴스가 따로 바꾸지 않은 값은 새 기본값을 따라간다.
+	//
+	// 차이는 AActor::Serialize가 쓰는 JSON에서 계산한다.
+	//   - 프로퍼티: 기본값과 다른 키만 남긴다 (구조체는 안쪽까지 비교).
+	//   - 컴포넌트: 이름으로 짝지어 같은 방식으로 비교하고, BP에 없는 컴포넌트는 통째로 남긴다.
+	//   - 루트 컴포넌트의 Transform은 항상 남긴다 (스폰 위치가 기본값의 위치를 덮어쓰기 때문이다).
+	// 인스턴스에서 지운 BP 컴포넌트는 기록하지 않는다 (다시 열면 BP 컴포넌트가 돌아온다).
+
+	// Actor(BP 액터)와 그 BP 기본값의 차이를 JSON 문자열로 만든다. BP 액터가 아니면 false.
+	bool MakeInstanceDelta(AActor* Actor, FString& OutDelta);
+	// 이미 BP 기본값이 적용된 Actor에 차이를 얹는다. MakeInstanceDelta가 만든 문자열을 받는다.
+	bool ApplyInstanceDelta(AActor* Actor, const FString& Delta);
 }

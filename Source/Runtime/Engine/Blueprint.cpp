@@ -4,11 +4,13 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <cstring>
 #include <unordered_map>
 
 #include "Core/EngineLog.h"
 #include "Core/Misc/Paths.h"
 #include "GameFramework/Actor.h"
+#include "Engine/World.h"
 #include "UObject/Class.h"
 #include "UObject/UObjectHash.h"
 #include "Json/Dom/JsonObject.h"
@@ -130,6 +132,169 @@ namespace
 			ApplyChain(DefaultObject->GetClass(), DefaultObject, false);
 	}
 
+	// ---------------- 인스턴스 차이 (JSON) ----------------
+
+	// Actor를 AActor::Serialize 형식의 JSON 객체로 만든다 (씬 파일의 액터 하나, BP의 Defaults와 같은 모양).
+	bool ActorToJson(AActor* Actor, FJsonObject& OutJson)
+	{
+		TArray<uint8> Bytes;
+		FMemoryWriter Writer(Bytes);
+		Writer.SetIsPersistent(true);
+		{
+			FJsonArchiveOutputFormatter Formatter(Writer);
+			FStructuredArchive Ar(Formatter);
+			FStructuredArchive::FRecord Root = Ar.Open().EnterRecord();
+			Actor->Serialize(Root);
+			Ar.Close();
+		}
+		if (Writer.IsError())
+			return false;
+		OutJson = FJsonObject::parse(Bytes.begin(), Bytes.end(), nullptr, false);
+		return !OutJson.is_discarded() && OutJson.is_object();
+	}
+
+	// AActor::Serialize 형식의 JSON을 Actor에 읽어 들인다.
+	bool JsonToActor(AActor* Actor, const FJsonObject& Json)
+	{
+		const std::string Text = Json.dump();
+		TArray<uint8> Bytes;
+		Bytes.SetNum(static_cast<int32>(Text.size()));
+		std::memcpy(Bytes.GetData(), Text.data(), Text.size());
+
+		FMemoryReader Reader(Bytes, true);
+		FJsonArchiveInputFormatter Formatter(Reader);
+		if (Reader.IsError())
+			return false;
+		FStructuredArchive Ar(Formatter);
+		FStructuredArchive::FRecord Root = Ar.Open().EnterRecord();
+		Actor->Serialize(Root);
+		Ar.Close();
+		return !Reader.IsError();
+	}
+
+	// BP 파일의 Defaults 객체
+	bool DefaultsToJson(const FBlueprintData& Data, FJsonObject& OutJson)
+	{
+		const FJsonObject Root = FJsonObject::parse(Data.FileBytes.begin(), Data.FileBytes.end(), nullptr, false);
+		if (Root.is_discarded() || !Root.is_object() || !Root.contains("Defaults") || !Root["Defaults"].is_object())
+			return false;
+		OutJson = Root["Defaults"];
+		return true;
+	}
+
+	const FJsonObject* FindComponentByNameJson(const FJsonObject& Components, const FJsonObject& Name)
+	{
+		for (const FJsonObject& Component : Components)
+			if (Component.is_object() && Component.contains("Name") && Component["Name"] == Name)
+				return &Component;
+		return nullptr;
+	}
+
+	FJsonObject DiffJson(const FJsonObject& Base, const FJsonObject& Full);
+
+	// 컴포넌트 배열의 차이. 이름으로 짝짓는다. 바뀐 것이 없는 컴포넌트는 빠진다.
+	FJsonObject DiffComponents(const FJsonObject& Base, const FJsonObject& Full)
+	{
+		FJsonObject Result = FJsonObject::array();
+		for (const FJsonObject& Component : Full)
+		{
+			if (!Component.is_object() || !Component.contains("Name"))
+				continue;
+			const FJsonObject* BaseComponent = Base.is_array() ? FindComponentByNameJson(Base, Component["Name"]) : nullptr;
+			if (!BaseComponent)
+			{
+				Result.push_back(Component);   // BP에 없는 컴포넌트 (인스턴스에서 추가)
+				continue;
+			}
+			FJsonObject Delta = DiffJson(*BaseComponent, Component);
+			// 루트(부모가 없는 컴포넌트)의 Transform은 항상 남긴다. 스폰할 때 루트 위치가 스폰 위치로 바뀌기 때문이다.
+			const bool bRoot = Component.contains("Parent") && Component["Parent"] == "" &&
+				!(Component.contains("ParentActor") && Component["ParentActor"] != "");
+			if (bRoot && Component.contains("Properties") && Component["Properties"].contains("Transform"))
+				Delta["Properties"]["Transform"] = Component["Properties"]["Transform"];
+			if (Delta.empty())
+				continue;
+			Delta["Name"] = Component["Name"];
+			Result.push_back(std::move(Delta));
+		}
+		return Result;
+	}
+
+	// Full에서 Base와 다른 값만 남긴 객체. 같으면 빈 객체.
+	FJsonObject DiffJson(const FJsonObject& Base, const FJsonObject& Full)
+	{
+		FJsonObject Result = FJsonObject::object();
+		if (!Full.is_object())
+			return Result;
+		for (auto It = Full.begin(); It != Full.end(); ++It)
+		{
+			const std::string& Key = It.key();
+			const FJsonObject& Value = It.value();
+			if (!Base.is_object() || !Base.contains(Key))
+			{
+				Result[Key] = Value;
+				continue;
+			}
+			const FJsonObject& BaseValue = Base[Key];
+			if (Key == "Components" && Value.is_array())
+			{
+				FJsonObject Delta = DiffComponents(BaseValue, Value);
+				if (!Delta.empty())
+					Result[Key] = std::move(Delta);
+			}
+			else if (Value.is_object() && BaseValue.is_object())
+			{
+				FJsonObject Delta = DiffJson(BaseValue, Value);
+				if (!Delta.empty())
+					Result[Key] = std::move(Delta);
+			}
+			else if (Value != BaseValue)
+			{
+				Result[Key] = Value;
+			}
+		}
+		return Result;
+	}
+
+	// Delta를 Full 위에 얹는다. 컴포넌트는 이름으로 짝짓고, 없으면 새로 넣는다.
+	void ApplyJsonDelta(FJsonObject& Full, const FJsonObject& Delta)
+	{
+		if (!Delta.is_object())
+			return;
+		for (auto It = Delta.begin(); It != Delta.end(); ++It)
+		{
+			const std::string& Key = It.key();
+			const FJsonObject& Value = It.value();
+			if (Key == "Components" && Value.is_array())
+			{
+				FJsonObject& Components = Full[Key];
+				if (!Components.is_array())
+					Components = FJsonObject::array();
+				for (const FJsonObject& ComponentDelta : Value)
+				{
+					if (!ComponentDelta.is_object() || !ComponentDelta.contains("Name"))
+						continue;
+					FJsonObject* Target = nullptr;
+					for (FJsonObject& Component : Components)
+						if (Component.is_object() && Component.contains("Name") && Component["Name"] == ComponentDelta["Name"])
+							Target = &Component;
+					if (Target)
+						ApplyJsonDelta(*Target, ComponentDelta);
+					else
+						Components.push_back(ComponentDelta);
+				}
+			}
+			else if (Value.is_object() && Full.contains(Key) && Full[Key].is_object())
+			{
+				ApplyJsonDelta(Full[Key], Value);
+			}
+			else
+			{
+				Full[Key] = Value;
+			}
+		}
+	}
+
 	// Name이라는 BP 클래스를 만들거나 찾아 데이터를 채운다. 부모가 아직 없으면 nullptr.
 	UClass* RegisterClassFromData(const FString& ClassName, FBlueprintData&& Data, FString& OutError)
 	{
@@ -174,7 +339,45 @@ namespace
 			RegisterClass(Class);
 		}
 
+		// 기본값이 바뀌는 경우(BP를 저장하거나 다시 읽음), 에디터 레벨에 놓인 이 BP 액터들의 차이를 옛 기본값 기준으로 기억해 둔다.
+		struct FInstanceDelta { AActor* Actor; FJsonObject Delta; };
+		TArray<FInstanceDelta> Instances;
+		FJsonObject OldDefaults;
+		if (const FBlueprintData* OldData = FindData(Class); OldData && DefaultsToJson(*OldData, OldDefaults))
+		{
+			TArray<UObject*> Objects;
+			GetObjectsOfClass(Class, Objects, false);
+			for (UObject* Object : Objects)
+			{
+				AActor* Actor = Cast<AActor>(Object);
+				if (!Actor || Actor->GetClass() != Class || Actor->HasAnyFlags(EObjectFlags::RF_ClassDefaultObject))
+					continue;
+				// 레벨에 놓인 것만. Blueprint 에디터의 미리보기 액터나 PIE 액터는 건드리지 않는다.
+				if (!Actor->GetWorld() || Actor->GetWorld()->GetWorldType() != EWorldType::Editor)
+					continue;
+				FJsonObject Full;
+				if (ActorToJson(Actor, Full))
+					Instances.Add({ Actor, DiffJson(OldDefaults, Full) });
+			}
+		}
+
 		GetRegistry()[Class] = std::move(Data);
+
+		// 놓인 액터를 새 기본값 + 자기 차이로 다시 맞춘다. 인스턴스가 바꾸지 않은 값은 새 기본값을 따라간다.
+		if (!Instances.IsEmpty())
+		{
+			FJsonObject NewDefaults;
+			if (DefaultsToJson(GetRegistry()[Class], NewDefaults))
+			{
+				for (FInstanceDelta& Instance : Instances)
+				{
+					FJsonObject Merged = NewDefaults;
+					ApplyJsonDelta(Merged, Instance.Delta);
+					JsonToActor(Instance.Actor, Merged);
+				}
+				HTR_LOG(Info, "Blueprint: updated {} placed {} actor(s)", Instances.Num(), ClassName);
+			}
+		}
 
 		// 이미 CDO가 있으면 새 기본값을 다시 적용한다 (편집한 BP를 다시 읽은 경우).
 		if (Class->ClassDefaultObject)
@@ -361,4 +564,36 @@ bool FBlueprint::SetDefaultStringProperty(UClass* BlueprintClass, const FString&
 		Stream.write(Text.data(), static_cast<std::streamsize>(Text.size()));
 	}
 	return LoadBlueprint(File, &OutError) != nullptr;
+}
+
+bool FBlueprint::MakeInstanceDelta(AActor* Actor, FString& OutDelta)
+{
+	const FBlueprintData* Data = Actor ? FindData(Actor->GetClass()) : nullptr;
+	FJsonObject Defaults, Full;
+	if (!Data || !DefaultsToJson(*Data, Defaults) || !ActorToJson(Actor, Full))
+		return false;
+	OutDelta = DiffJson(Defaults, Full).dump();
+	return true;
+}
+
+bool FBlueprint::ApplyInstanceDelta(AActor* Actor, const FString& Delta)
+{
+	if (!Actor)
+		return false;
+	const FJsonObject DeltaJson = FJsonObject::parse(Delta, nullptr, false);
+	if (DeltaJson.is_discarded() || !DeltaJson.is_object())
+	{
+		HTR_LOG(Warning, "Blueprint: broken instance data for {}", Actor->GetName());
+		return false;
+	}
+	if (DeltaJson.empty())
+		return true;   // 기본값 그대로
+
+	// 지금 상태(BP 기본값이 적용된 액터)를 JSON으로 만들어 차이를 얹고 다시 읽는다.
+	// 통째로 읽으므로 "필드 없음" 경고가 나지 않는다.
+	FJsonObject Full;
+	if (!ActorToJson(Actor, Full))
+		return false;
+	ApplyJsonDelta(Full, DeltaJson);
+	return JsonToActor(Actor, Full);
 }
