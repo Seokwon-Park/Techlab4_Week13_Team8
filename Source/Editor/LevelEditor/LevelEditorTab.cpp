@@ -65,6 +65,22 @@ void FLevelEditorTab::DrawMenuBar()
 
 
 	////////////////////////////////////////////////////////////
+	// Edit 탭
+	////////////////////////////////////////////////////////////
+
+	if (ImGui::BeginMenu("Edit"))
+	{
+		for (const FEditorCommand* Command : EditCommands)
+		{
+			if (Command) EditorCommandUI::MenuItem(*Command);
+			else         ImGui::Separator();
+		}
+		ImGui::EndMenu();
+	}
+
+
+
+	////////////////////////////////////////////////////////////
 	// Window 탭
 	////////////////////////////////////////////////////////////
 
@@ -174,6 +190,7 @@ void FLevelEditorTab::BuildDefaultLayout(ImGuiID DockSpaceId, const ImVec2& Size
 	ImGui::DockBuilderDockWindow("Viewports", Center);
 	ImGui::DockBuilderDockWindow("Outliner", RightTop);
 	ImGui::DockBuilderDockWindow("Details", RightBottom);
+	ImGui::DockBuilderDockWindow("World Settings", RightBottom);
 	ImGui::DockBuilderDockWindow("Settings", RightBottom);
 	ImGui::DockBuilderDockWindow("Editor Controls", RightBottom);
 	ImGui::DockBuilderDockWindow("Output Log", Bottom);

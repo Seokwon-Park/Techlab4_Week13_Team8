@@ -2,6 +2,7 @@
 
 #include "Editor/EditorModeManager.h"
 #include "Editor/EditorControls/EditorControlsPanel.h"
+#include "Editor/HitoriEd/LevelUndoHistory.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 
@@ -136,7 +137,10 @@ void FEditorControlsPanel::DrawSpawnSection()
 
 	ImGui::SameLine();
 	if (ImGui::Button("Spawn", ImVec2(SpawnButtonWidth, 0)))
+	{
 		World->SpawnActor(ActorEntries[SelectedActorIndex].GetClass());
+		FLevelUndoHistory::MarkDirty();
+	}
 
 	ImGui::SameLine();
 	ImGui::TextDisabled("%s", CountText);
@@ -147,7 +151,10 @@ void FEditorControlsPanel::DrawSpawnSection()
 	{
 		if (Index > 0) ImGui::SameLine();
 		if (ImGui::Button(LightEntries[Index].Label))
+		{
 			World->SpawnActor(LightEntries[Index].GetClass());
+			FLevelUndoHistory::MarkDirty();
+		}
 	}
 }
 

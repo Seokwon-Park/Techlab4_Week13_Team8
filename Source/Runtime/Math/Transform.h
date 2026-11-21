@@ -15,7 +15,7 @@ struct FTransform
 		: Location(InL), Scale(InS), Rotation(InR) {}
 
 	static FTransform Identity;
-
+	
     FMatrix GetLocalMatrix() const;
 
 	FVector GetForward() const;
@@ -30,6 +30,8 @@ struct FTransform
 	FVector Location = FVector(0, 0, 0);
 	FVector Scale = FVector(1, 1, 1);
 	FQuat Rotation = FQuat::Identity();
+
+	static FTransform FromMatrix(const FMatrix& M);
 };
 
 // UE FRotationConversionCache: 쿼터니언은 입력한 오일러 값(270도, Pitch 90도 등)을 기억하지 못한다.

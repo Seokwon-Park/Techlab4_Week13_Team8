@@ -23,6 +23,10 @@ class FLineBatcher;
 class UBillboardComponent;
 class APawn;
 class APlayerController;
+class AGameModeBase;
+class AGameStateBase;
+class APlayerState;
+class AHUD;
 class AParticleEventManager;
 class FPhysicsScene;
 struct FViewContext;
@@ -137,6 +141,39 @@ public:
 	float GetCinematicTimeDilation() const { return CinematicTimeDilation; }
 	void SetCinematicTimeDilation(float InDilation) { CinematicTimeDilation = InDilation; }
 
+	// ---------------- World Settings ----------------
+	// UE의 AWorldSettings 자리다. UE는 레벨에 숨은 액터로 두지만, 이 엔진은 월드 프로퍼티로 두어
+	// 씬 파일, PIE 복제, 실행 취소 기록에 그대로 들어간다. 에디터의 World Settings 패널이 고친다.
+
+	// Game Mode: 이 월드에서 쓸 GameMode 클래스. UE의 AWorldSettings::DefaultGameMode (GameMode Override).
+	// 비면 기본 AGameModeBase를 쓴다. 플레이를 시작할 때 이 GameMode가 Pawn, PlayerController 등을 정한다.
+	const FString& GetGameModeOverride() const { return GameModeOverride; }
+	void SetGameModeOverride(const FString& InClassName) { GameModeOverride = InClassName; }
+	// GameMode Override로 찾은 클래스. 비었거나 찾을 수 없으면 AGameModeBase다.
+	UClass* ResolveGameModeClass() const;
+
+	// 플레이 중에 GameMode가 만든 액터들. 에디터 월드에서는 nullptr이다.
+	AGameModeBase* GetGameMode() const { return GameMode; }
+	AGameStateBase* GetGameState() const { return GameState; }
+	APlayerState* GetPlayerState() const { return PlayerState; }
+	AHUD* GetHUD() const { return HUD; }
+
+	// Physics: 켜면 이동 컴포넌트가 각자의 Gravity 대신 이 값을 쓴다. UE의 bGlobalGravitySet / GlobalGravityZ.
+	// 아래 방향이 음수다 (월드 단위 m/s²).
+	bool IsWorldGravityOverridden() const { return bOverrideWorldGravity; }
+	void SetWorldGravityOverridden(bool bOverride) { bOverrideWorldGravity = bOverride; }
+	float GetWorldGravityZ() const { return WorldGravityZ; }
+	void SetWorldGravityZ(float InGravityZ) { WorldGravityZ = InGravityZ; }
+
+	// Time: 월드 전체의 시간 배율. UE의 AWorldSettings::TimeDilation.
+	float GetGlobalTimeDilation() const { return GlobalTimeDilation; }
+	void SetGlobalTimeDilation(float InDilation) { GlobalTimeDilation = FMath::Clamp(InDilation, MinTimeDilation, MaxTimeDilation); }
+	static float GetMinTimeDilation() { return MinTimeDilation; }
+	static float GetMaxTimeDilation() { return MaxTimeDilation; }
+
+	// 모든 World Settings를 기본값으로 되돌린다. 씬을 비울 때(새 씬, 불러오기) 부른다.
+	void ResetWorldSettings();
+
 private:
 
 	void GameWorldTick(float DeltaTime);
@@ -168,6 +205,10 @@ private:
 	ACameraActor* MainCamera = nullptr;
 	APawn* PlayerPawn = nullptr;
 	APlayerController* PlayerController = nullptr;
+	AGameModeBase* GameMode = nullptr;
+	AGameStateBase* GameState = nullptr;
+	APlayerState* PlayerState = nullptr;
+	AHUD* HUD = nullptr;
 	bool bIsPaused = false;
 	bool bBegunPlay = false;
 
@@ -185,8 +226,17 @@ private:
 
 	FRenderStats RenderStats;
 
-	// Slomo-hitstop
+	// World Settings (씬 파일에 저장)
+	UPROPERTY()
+	FString GameModeOverride;
+	UPROPERTY()
+	bool bOverrideWorldGravity = false;
+	UPROPERTY()
+	float WorldGravityZ = -9.81f;
+	UPROPERTY()
 	float GlobalTimeDilation = 1.0f;
+
+	// Slomo-hitstop
 	float CinematicTimeDilation = 1.0f;
 	float HitStopTimeRemaining = 0.0f;	// 실제 시간 (초)
 	float HitStopDilation = 1.0f;

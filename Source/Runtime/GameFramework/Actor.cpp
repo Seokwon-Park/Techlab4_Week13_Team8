@@ -159,17 +159,26 @@ void AActor::Serialize(FStructuredArchive::FRecord Record)
 			UActorComponent* Component = SavedComponents[i];
 			FString Name = Component->GetName();
 			FString ClassName = Component->GetClass()->Name;
+			// 부모가 다른 액터의 컴포넌트면 그 액터 이름도 남긴다. 같은 액터면 ParentActor는 비어 있다.
+			FString ParentActorName;
 			if (USceneComponent* SceneComponent = Cast<USceneComponent>(Component))
 			{
-				ParentName = SceneComponent->GetAttachParent() ? SceneComponent->GetAttachParent()->GetName() : "";
+				if (USceneComponent* Parent = SceneComponent->GetAttachParent())
+				{
+					ParentName = Parent->GetName();
+					if (Parent->GetOwner() && Parent->GetOwner() != this)
+						ParentActorName = Parent->GetOwner()->GetName();
+				}
 			}
-			ComponentRecord << SA_VALUE("Name", Name) << SA_VALUE("Class", ClassName) << SA_VALUE("Parent", ParentName);
+			ComponentRecord << SA_VALUE("Name", Name) << SA_VALUE("Class", ClassName) << SA_VALUE("Parent", ParentName)
+				<< SA_VALUE("ParentActor", ParentActorName);
 			Component->Serialize(ComponentRecord);
 			continue;
 		}
 
-		FString Name, ClassName;
-		ComponentRecord << SA_VALUE("Name", Name) << SA_VALUE("Class", ClassName) << SA_VALUE("Parent", ParentName);
+		FString Name, ClassName, ParentActorName;
+		ComponentRecord << SA_VALUE("Name", Name) << SA_VALUE("Class", ClassName) << SA_VALUE("Parent", ParentName)
+			<< SA_VALUE("ParentActor", ParentActorName);   // 예전 씬 파일에는 없어서 빈 문자열이 된다
 
 		UActorComponent* Component = FindComponentByName(FName(Name));
 		if (!Component)
@@ -193,8 +202,10 @@ void AActor::Serialize(FStructuredArchive::FRecord Record)
 
 		// AddComponent는 SceneComponent를 기본 Root에 자동 부착한다. 저장 데이터에서
 		// Parent가 비어 있으면 이 자동 부착을 먼저 풀어 Transform을 독립 월드 Transform으로 읽는다.
+		// 다른 액터에 붙어 있던 컴포넌트도 같다. 그 부모는 레벨을 다 읽은 뒤에 붙인다.
+		const bool bParentInOtherActor = !ParentActorName.empty();
 		if (USceneComponent* SceneComponent = Cast<USceneComponent>(Component);
-			SceneComponent && ParentName.empty() && SceneComponent != RootComponent)
+			SceneComponent && (ParentName.empty() || bParentInOtherActor) && SceneComponent != RootComponent)
 		{
 			SceneComponent->DetachFromParent(EAttachmentRule::KeepRelative);
 		}
@@ -202,7 +213,11 @@ void AActor::Serialize(FStructuredArchive::FRecord Record)
 		Component->Serialize(ComponentRecord);
 		if (USceneComponent* SceneComponent = Cast<USceneComponent>(Component))
 		{
-			if (!ParentName.empty())
+			if (bParentInOtherActor)
+			{
+				PendingActorAttachments.Add({ SceneComponent, ParentActorName, ParentName });
+			}
+			else if (!ParentName.empty())
 			{
 				PendingAttachments.Add({ SceneComponent, ParentName });
 			}
@@ -294,6 +309,80 @@ bool AActor::Destroy()
 		return false;
 
 	return World->DestroyActor(this);
+}
+
+bool AActor::AttachToActor(AActor* ParentActor, EAttachmentRule Rule)
+{
+	USceneComponent* Root = RootComponent;
+	USceneComponent* ParentRoot = ParentActor ? ParentActor->GetRootComponent() : nullptr;
+	if (!Root || !ParentRoot || ParentActor == this)
+		return false;
+
+	// SetupAttachment가 순환이면 아무것도 하지 않으므로, 붙었는지는 결과로 확인한다.
+	Root->SetupAttachment(ParentRoot, Rule);
+	return Root->GetAttachParent() == ParentRoot;
+}
+
+void AActor::DetachFromActor(EAttachmentRule Rule)
+{
+	if (GetAttachParentActor())
+		RootComponent->DetachFromParent(Rule);
+}
+
+AActor* AActor::GetAttachParentActor() const
+{
+	const USceneComponent* Parent = RootComponent ? RootComponent->GetAttachParent() : nullptr;
+	AActor* Owner = Parent ? Parent->GetOwner() : nullptr;
+	return Owner != this ? Owner : nullptr;
+}
+
+void AActor::GetAttachedActors(TArray<AActor*>& OutActors) const
+{
+	for (UActorComponent* Component : Components)
+	{
+		const USceneComponent* SceneComponent = Cast<USceneComponent>(Component);
+		if (!SceneComponent) continue;
+		for (USceneComponent* Child : SceneComponent->GetAttachChildren())
+		{
+			AActor* ChildOwner = Child ? Child->GetOwner() : nullptr;
+			if (ChildOwner && ChildOwner != this && ChildOwner->GetRootComponent() == Child &&
+				OutActors.Find(ChildOwner) == INDEX_NONE)
+				OutActors.Add(ChildOwner);
+		}
+	}
+}
+
+void AActor::ResolvePendingActorAttachments()
+{
+	if (PendingActorAttachments.IsEmpty())
+		return;
+
+	for (const FPendingActorAttachment& Pending : PendingActorAttachments)
+	{
+		AActor* ParentActor = nullptr;
+		if (Level)
+		{
+			for (AActor* Candidate : Level->GetActors())
+			{
+				if (Candidate && Candidate != this && Candidate->GetName() == Pending.ParentActorName)
+				{
+					ParentActor = Candidate;
+					break;
+				}
+			}
+		}
+		USceneComponent* Parent = ParentActor
+			? Cast<USceneComponent>(ParentActor->FindComponentByName(FName(Pending.ParentComponentName)))
+			: nullptr;
+		if (!Parent)
+		{
+			HTR_LOG(Warning, "Load: {} could not find attach parent {}.{}", GetName(), Pending.ParentActorName, Pending.ParentComponentName);
+			continue;
+		}
+		// 저장된 Transform은 부모 기준 값이므로 그대로 붙인다.
+		Pending.Child->SetupAttachment(Parent, EAttachmentRule::KeepRelative);
+	}
+	PendingActorAttachments.Empty();
 }
 
 UActorComponent* AActor::AddComponent(UClass* ComponentClass, FName Name)

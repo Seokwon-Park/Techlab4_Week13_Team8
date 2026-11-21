@@ -40,6 +40,9 @@
 #include "Editor/Outliner/OutlinerPanel.h"
 #include "Editor/EditorUI/EditorIcons.h"
 #include "Editor/HitoriEd/EditorFileUtils.h"
+#include "Serialization/JsonArchive.h"
+#include "Editor/HitoriEd/ActorClipboard.h"
+#include "Math/BoxSphereBounds.h"
 #include "Editor/Viewports/EditorViewportClient.h"
 #include "UObject/UObjectIterator.h"
 
@@ -244,6 +247,10 @@ void UEditorEngine::InitPanels()
 		});
 
 
+	// UE5처럼 Details 옆 탭에 World Settings를 둔다.
+	WorldSettingsPanel = LevelEditorTab->AddPanel<FWorldSettingsPanel>();
+	WorldSettingsPanel->SetWorld(GetActiveWorld());
+
 	EditorControlsPanel = LevelEditorTab->AddPanel<FEditorControlsPanel>();
 	ViewportsPanel = LevelEditorTab->AddPanel<FViewportsPanel>();
 	ContentDrawerPanel = LevelEditorTab->AddPanel<FContentDrawerPanel>();
@@ -306,6 +313,7 @@ void UEditorEngine::InitPanels()
 		}
 	);
 
+	OutlinerPanel->SetOpenWorldSettingsCallback([this]() { if (WorldSettingsPanel) WorldSettingsPanel->Focus(); });
 	OutlinerPanel->SetDeleteActorCallback(
 		[this](AActor* Actor)
 		{
@@ -380,6 +388,34 @@ void UEditorEngine::InitCommands()
 	OpenSceneCommand.CanExecute = [this]()->bool {return !PlayWorld; };
 	OpenSceneCommand.Execute = [this]() { OpenScene(); };
 
+	// UE: Undo = Ctrl+Z, Redo = Ctrl+Y
+	UndoCommand = { "Undo", "Undo the last level edit", nullptr, White, { EKeyCode::Z, true } };
+	UndoCommand.CanExecute = [this]() { return CanEditLevelHistory() && LevelUndo.CanUndo(); };
+	UndoCommand.Execute = [this]() { PendingLevelHistoryStep = -1; };
+
+	RedoCommand = { "Redo", "Redo the last undone level edit", nullptr, White, { EKeyCode::Y, true } };
+	RedoCommand.CanExecute = [this]() { return CanEditLevelHistory() && LevelUndo.CanRedo(); };
+	RedoCommand.Execute = [this]() { PendingLevelHistoryStep = 1; };
+
+	// UE: Copy = Ctrl+C, Paste = Ctrl+V, Duplicate = Ctrl+D
+	CopyCommand = { "Copy", "Copy the selected actor", nullptr, White, { EKeyCode::C, true } };
+	CopyCommand.CanExecute = [this]() { return SelectedActors && SelectedActors->GetTop<AActor>() != nullptr; };
+	CopyCommand.Execute = [this]() { CopySelectedActor(); };
+
+	PasteCommand = { "Paste", "Paste the copied actor", nullptr, White, { EKeyCode::V, true } };
+	PasteCommand.CanExecute = [this]() { return CanPasteActor(); };
+	PasteCommand.Execute = [this]() { PasteActor(); };
+
+	DuplicateCommand = { "Duplicate", "Duplicate the selected actor", nullptr, White, { EKeyCode::D, true } };
+	DuplicateCommand.CanExecute = [this]()
+	{
+		AActor* Actor = SelectedActors ? SelectedActors->GetTop<AActor>() : nullptr;
+		return CanEditLevelHistory() && Actor && Actor->GetWorld() == EditorWorld;
+	};
+	DuplicateCommand.Execute = [this]() { DuplicateSelectedActor(); };
+
+	LevelEditorTab->SetEditCommands({ &UndoCommand, &RedoCommand, nullptr, &CopyCommand, &PasteCommand, &DuplicateCommand });
+
 	Play = { "Play",   "Play World",        UAssetManager::GetAssetByPath<UTexture2D>("Engine/Icons/Toolbar/Play.png"),  Green, { EKeyCode::P, false, true } };
 
 	Play.CanExecute = [this]()->bool {return !PlayWorld; };
@@ -430,7 +466,12 @@ void UEditorEngine::InitCommands()
 		Entry.Category = Category;
 		Entry.Label = Label;
 		Entry.CanExecute = [this]() { return !PlayWorld && EditorWorld; };
-		Entry.Execute = [this, Class]() { if (EditorWorld) EditorWorld->SpawnActor(Class); };
+		Entry.Execute = [this, Class]()
+		{
+			if (!EditorWorld) return;
+			EditorWorld->SpawnActor(Class);
+			FLevelUndoHistory::MarkDirty();
+		};
 		return Entry;
 	};
 	// 패널을 켜고 앞으로 가져온다.
@@ -497,6 +538,11 @@ void UEditorEngine::Tick(const float DeltaTime)
 	// 에디터 단축키 (UE와 같은 키: Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Alt+S, Alt+P, Pause).
 	// Stop(Esc)은 PIE 입력 처리에서 따로 받으므로 여기서 빼서 두 번 실행되지 않게 한다.
 	EditorCommandUI::ProcessShortcuts({ &NewScene, &OpenSceneCommand, &Save, &SaveAs, &Play, &Pause, &Resume });
+	// 에셋 에디터 탭도 Ctrl+Z를 쓰므로 레벨 에디터 탭에 포커스가 있을 때만 레벨을 되돌린다.
+	{
+		if (IsLevelEditorFocused())
+			EditorCommandUI::ProcessShortcuts({ &UndoCommand, &RedoCommand, &CopyCommand, &PasteCommand, &DuplicateCommand });
+	}
 
 	if (bRequestEndPlayMapQueued) { bRequestEndPlayMapQueued = false; EndPlayMap(); }
 	StartQueuedPlaySessionRequest();
@@ -511,6 +557,12 @@ void UEditorEngine::Tick(const float DeltaTime)
 
 	if (!ImGui::GetIO().WantTextInput && FInputSystem::IsKeyPressed(EKeyCode::Delete))
 		DeleteActor(GetSelectedActors()->GetTop<AActor>());
+
+	// F: 선택한 액터로 카메라를 옮긴다. 우클릭 비행 중이거나 수식키를 누르고 있으면 다른 조작이므로 넘긴다.
+	if (!ImGui::GetIO().WantTextInput && IsLevelEditorFocused() &&
+		FInputSystem::IsKeyPressed(EKeyCode::F) && !FInputSystem::IsMouseDown(EMouseButton::Right) &&
+		!ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyAlt && !ImGui::GetIO().KeyShift)
+		FocusSelection();
 
 	// 뷰포트 레이아웃과 에디터 카메라를 갱신한다. 패널의 요청(레이아웃 변경, 분할선 드래그)을 적용하고,
 	// 어느 View 위에 마우스가 있는지 찾아 활성 View를 정한 뒤 View마다 카메라 입력을 처리한다.
@@ -768,6 +820,9 @@ void UEditorEngine::Tick(const float DeltaTime)
 
 	RenderCommand::EndRenderPass();
 
+	// 이번 프레임의 편집(패널, 기즈모)이 모두 끝났으면 실행 취소 단계로 확정한다.
+	TickLevelUndo();
+
 	// 메인 Swapchain은 FEngineLoop가 VSync 설정대로 Present하므로 PIE 창은 기다리지 않고 올린다.
 	if (bPIEWindowRendered && PIESwapchain)
 		PIESwapchain->SwapBuffers(0);
@@ -961,6 +1016,7 @@ void UEditorEngine::PreExit()
 	LevelEditorTab = nullptr;
 	OutputLogPanel = nullptr;
 	DetailsPanel = nullptr;
+	WorldSettingsPanel = nullptr;
 	EditorControlsPanel = nullptr;
 	SettingsPanel = nullptr;
 	SequencerPanel = nullptr;
@@ -991,7 +1047,14 @@ void UEditorEngine::DeleteActor(AActor* Actor)
 	SelectNone(true);
 	DetailsPanel->SelectComponent(nullptr);
 
+	// 붙어 있던 자식 액터는 지우지 않고 지금 자리에 남긴다 (UE와 같다).
+	TArray<AActor*> AttachedActors;
+	Actor->GetAttachedActors(AttachedActors);
+	for (AActor* Child : AttachedActors)
+		Child->DetachFromActor(EAttachmentRule::KeepWorld);
+
 	Actor->Destroy();
+	FLevelUndoHistory::MarkDirty();
 }
 
 void UEditorEngine::DeleteComponent(UActorComponent* Component)
@@ -1006,6 +1069,7 @@ void UEditorEngine::DeleteComponent(UActorComponent* Component)
 	Gizmo->SetTarget(nullptr, false);
 	Outline->SetTarget(nullptr);
 	Component->GetOwner()->DestroyComponent(Component);
+	FLevelUndoHistory::MarkDirty();
 	// 남은 선택(액터)에 맞춰 기즈모와 외곽선 대상을 다시 정한다.
 	NoteSelectionChange();
 }
@@ -1032,6 +1096,7 @@ void UEditorEngine::OnActiveWorldChanged()
 
 	if (OutlinerPanel) OutlinerPanel->SetWorld(ActiveWorld);
 	if (DetailsPanel) DetailsPanel->SetWorld(ActiveWorld);
+	if (WorldSettingsPanel) WorldSettingsPanel->SetWorld(ActiveWorld);
 	if (EditorControlsPanel) EditorControlsPanel->SetWorld(ActiveWorld);
 	if (SettingsPanel) SettingsPanel->SetWorld(ActiveWorld);
 	if (SequencerPanel) SequencerPanel->SetWorld(ActiveWorld, ActiveWorld == EditorWorld);
@@ -1138,6 +1203,8 @@ void UEditorEngine::CreateNewScene()
 		return;
 
 	ResetSceneSelection();
+	LevelUndo.Reset(EditorWorld);
+	LevelUndoScenePath = FEditorFileUtils::CurrentScenePath;
 	LevelEditorTab->OnLevelLoaded.Broadcast(FEditorFileUtils::CurrentScenePath);
 }
 
@@ -1153,8 +1220,237 @@ void UEditorEngine::OpenScene()
 		return;
 
 	ResetSceneSelection();
+	LevelUndo.Reset(EditorWorld);
+	LevelUndoScenePath = FEditorFileUtils::CurrentScenePath;
 
 	LevelEditorTab->OnLevelLoaded.Broadcast(FEditorFileUtils::CurrentScenePath);
+}
+
+bool UEditorEngine::IsLevelEditorFocused() const
+{
+	const IEditorTab* FocusedTab = EditorManager ? EditorManager->GetFocusedTab() : nullptr;
+	return !FocusedTab || FocusedTab == LevelEditorTab;
+}
+
+// ---------------- 카메라 포커스 ----------------
+
+void UEditorEngine::FocusSelection()
+{
+	AActor* Actor = SelectedActors ? SelectedActors->GetTop<AActor>() : nullptr;
+	if (!Actor || !ViewportsPanel)
+		return;
+
+	const int32 ViewIndex = ViewportsPanel->GetActiveViewIndex();
+	// PIE 게임 화면의 카메라는 게임이 갖는다.
+	if (IsPlayingView(ViewIndex))
+		return;
+	FEditorViewportClient* Client = ViewportsPanel->GetViewportClient(ViewIndex);
+	if (!Client || !Client->IsActive())
+		return;
+
+	// 컴포넌트를 골랐으면 그 컴포넌트를, 아니면 액터의 모든 메시를 합친 경계를 본다.
+	TArray<USceneComponent*> Targets;
+	if (USceneComponent* Selected = SelectedComponents ? SelectedComponents->GetTop<USceneComponent>() : nullptr)
+	{
+		Targets.Add(Selected);
+	}
+	else
+	{
+		for (UActorComponent* Component : Actor->GetComponents())
+			if (USceneComponent* SceneComponent = Cast<USceneComponent>(Component))
+				Targets.Add(SceneComponent);
+	}
+
+	bool bHasBox = false;
+	FVector Min, Max;
+	for (USceneComponent* Target : Targets)
+	{
+		// 메시가 없는 컴포넌트(라이트 본체, 빈 루트)는 크기가 0인 점이라 건너뛴다.
+		if (!Cast<UPrimitiveComponent>(Target))
+			continue;
+		const FBox Box = Target->CalcBounds();
+		const FVector Size = Box.Max - Box.Min;
+		if (Size.X <= 1e-4f && Size.Y <= 1e-4f && Size.Z <= 1e-4f)
+			continue;
+
+		if (!bHasBox)
+		{
+			Min = Box.Min;
+			Max = Box.Max;
+			bHasBox = true;
+			continue;
+		}
+		Min = FVector(std::min(Min.X, Box.Min.X), std::min(Min.Y, Box.Min.Y), std::min(Min.Z, Box.Min.Z));
+		Max = FVector(std::max(Max.X, Box.Max.X), std::max(Max.Y, Box.Max.Y), std::max(Max.Z, Box.Max.Z));
+	}
+
+	FBoxSphereBounds Bounds;
+	if (bHasBox)
+	{
+		Bounds.Origin = (Min + Max) * 0.5f;
+		Bounds.BoxExtent = (Max - Min) * 0.5f;
+		Bounds.SphereRadius = Bounds.BoxExtent.Size();
+	}
+	else
+	{
+		// 메시가 없으면 위치만 있는 액터다. 작은 구로 보고 그 자리로 간다.
+		USceneComponent* Anchor = Targets.IsEmpty() ? Actor->GetRootComponent() : Targets[0];
+		if (!Anchor)
+			return;
+		Bounds.Origin = Anchor->GetWorldLocation();
+		Bounds.BoxExtent = FVector(0.5f, 0.5f, 0.5f);
+		Bounds.SphereRadius = 1.0f;
+	}
+
+	Client->StartFocusOnBounds(Bounds);
+}
+
+// ---------------- 복사 / 붙여넣기 ----------------
+
+void UEditorEngine::CopySelectedActor()
+{
+	// PIE 중에도 복사는 된다. 게임 중 상태를 에디터에 붙여 넣을 수 있다.
+	AActor* Actor = SelectedActors ? SelectedActors->GetTop<AActor>() : nullptr;
+	if (FActorClipboard::CopyToClipboard(Actor))
+		HTR_LOG(Info, "Copied actor {}", Actor->GetName());
+}
+
+bool UEditorEngine::CanPasteActor() const
+{
+	return CanEditLevelHistory() && FActorClipboard::LooksLikeActorText(ImGui::GetClipboardText());
+}
+
+void UEditorEngine::PasteActor()
+{
+	if (!CanEditLevelHistory())
+		return;
+	OnActorPasted(FActorClipboard::PasteFromClipboard(EditorWorld));
+}
+
+void UEditorEngine::DuplicateSelectedActor()
+{
+	AActor* Actor = SelectedActors ? SelectedActors->GetTop<AActor>() : nullptr;
+	if (!CanEditLevelHistory() || !Actor || Actor->GetWorld() != EditorWorld)
+		return;
+	OnActorPasted(FActorClipboard::Duplicate(Actor, EditorWorld));
+}
+
+void UEditorEngine::OnActorPasted(AActor* NewActor)
+{
+	if (!NewActor)
+		return;
+	// UE처럼 원래 자리에 만들고 새 액터를 선택한다. 기즈모로 바로 옮길 수 있다.
+	SelectNone(false);
+	SelectActor(NewActor, true, true);
+	FLevelUndoHistory::MarkDirty();
+	HTR_LOG(Info, "Pasted actor {}", NewActor->GetName());
+}
+
+// ---------------- 레벨 실행 취소 ----------------
+
+bool UEditorEngine::CanEditLevelHistory() const
+{
+	return !PlayWorld && EditorWorld;
+}
+
+void UEditorEngine::TickLevelUndo()
+{
+	if (!CanEditLevelHistory())
+	{
+		// PIE 중 요청은 버린다. PIE 중 패널 편집은 PIE 월드를 바꾼 것이라 기록하지 않는다.
+		PendingLevelHistoryStep = 0;
+		return;
+	}
+
+	// 열기·새로 만들기 말고 다른 경로로 씬이 바뀌었으면 이전 씬의 기록은 뜻이 없다.
+	if (FEditorFileUtils::CurrentScenePath != LevelUndoScenePath)
+	{
+		LevelUndoScenePath = FEditorFileUtils::CurrentScenePath;
+		LevelUndo.Reset(EditorWorld);
+		PendingLevelHistoryStep = 0;
+		return;
+	}
+
+	// 기즈모를 드래그하는 동안은 매 프레임 바뀌므로 놓을 때까지 기다렸다가 한 단계로 만든다.
+	if (Gizmo && Gizmo->IsUsing())
+	{
+		FLevelUndoHistory::MarkDirty();
+		return;
+	}
+	// 드래그나 글자 입력이 끝나지 않았으면 미룬다.
+	if (ImGui::IsAnyItemActive() || ImGui::IsMouseDown(ImGuiMouseButton_Left))
+		return;
+
+	// 확정되지 않은 편집이 있으면 먼저 한 단계로 만든 뒤 되돌린다.
+	LevelUndo.Commit(EditorWorld);
+
+	const int32 Step = PendingLevelHistoryStep;
+	PendingLevelHistoryStep = 0;
+	if (Step < 0)      UndoLevelEdit();
+	else if (Step > 0) RedoLevelEdit();
+}
+
+void UEditorEngine::UndoLevelEdit()
+{
+	if (!CanEditLevelHistory()) return;
+	if (const TArray<uint8>* Snapshot = LevelUndo.Undo())
+		ApplyLevelSnapshot(*Snapshot);
+}
+
+void UEditorEngine::RedoLevelEdit()
+{
+	if (!CanEditLevelHistory()) return;
+	if (const TArray<uint8>* Snapshot = LevelUndo.Redo())
+		ApplyLevelSnapshot(*Snapshot);
+}
+
+void UEditorEngine::ApplyLevelSnapshot(const TArray<uint8>& Snapshot)
+{
+	// 복원하면 액터와 컴포넌트가 모두 새로 만들어진다. 이름은 스냅샷에 남으므로 이름으로 선택을 되살린다.
+	AActor* OldActor = SelectedActors ? SelectedActors->GetTop<AActor>() : nullptr;
+	UActorComponent* OldComponent = SelectedComponents ? SelectedComponents->GetTop<UActorComponent>() : nullptr;
+	const FString ActorName = OldActor ? OldActor->GetName() : FString();
+	const FString ComponentName = OldComponent ? OldComponent->GetName() : FString();
+
+	// 지워질 오브젝트를 가리키는 참조를 먼저 모두 끊는다.
+	SelectNone(true);
+	if (DetailsPanel) DetailsPanel->SelectComponent(nullptr);
+	if (Gizmo) Gizmo->SetTarget(nullptr, false);
+	if (Outline) Outline->SetTarget(nullptr);
+
+	if (!FJsonArchive::LoadWorldFromBytes(EditorWorld, Snapshot))
+	{
+		HTR_LOG(Error, "Level undo: failed to restore snapshot");
+		return;
+	}
+
+	if (ActorName.empty())
+		return;
+
+	ULevel* Level = EditorWorld->GetPersistentLevel();
+	if (!Level)
+		return;
+
+	for (AActor* Actor : Level->GetActors())
+	{
+		if (!Actor || Actor->GetName() != ActorName)
+			continue;
+
+		SelectActor(Actor, true, true);
+		if (!ComponentName.empty())
+		{
+			for (UActorComponent* Component : Actor->GetComponents())
+			{
+				if (Component && Component->GetName() == ComponentName)
+				{
+					if (DetailsPanel) DetailsPanel->SetTargetComponent(Component);
+					SelectComponent(Component, true, true);
+					break;
+				}
+			}
+		}
+		break;
+	}
 }
 
 // 공통 파일 유틸리티로 현재 씬을 저장한다.
@@ -1165,7 +1461,9 @@ void UEditorEngine::SaveCurrentScene()
 		HTR_LOG(Warning, "Cannot save during PIE. Stop the play session first.");
 		return;
 	}
-	FEditorFileUtils::SaveScene(EditorWorld);
+	// 처음 저장하면 경로가 생기지만 같은 씬이므로 실행 취소 기록은 그대로 둔다.
+	if (FEditorFileUtils::SaveScene(EditorWorld))
+		LevelUndoScenePath = FEditorFileUtils::CurrentScenePath;
 }
 
 // 공통 파일 유틸리티로 새 경로에 씬을 저장한다.
@@ -1176,7 +1474,9 @@ void UEditorEngine::SaveSceneAs()
 		HTR_LOG(Warning, "Cannot save during PIE. Stop the play session first.");
 		return;
 	}
-	FEditorFileUtils::SaveSceneAs(EditorWorld);
+	// 다른 이름으로 저장해도 같은 씬이므로 실행 취소 기록은 그대로 둔다.
+	if (FEditorFileUtils::SaveSceneAs(EditorWorld))
+		LevelUndoScenePath = FEditorFileUtils::CurrentScenePath;
 }
 
 // PIE 디버그 표시 (Settings > Debug Draw (PIE))

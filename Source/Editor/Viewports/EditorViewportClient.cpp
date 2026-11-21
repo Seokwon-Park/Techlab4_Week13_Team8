@@ -37,16 +37,50 @@ void FEditorViewportClient::SetWorld(UWorld* InWorld) {
   }
 }
 
-void FEditorViewportClient::FocusOnBounds(const FBoxSphereBounds& Bounds) {
+void FEditorViewportClient::ComputeFocusTarget(const FBoxSphereBounds& Bounds, FVector& OutLocation, float& OutOrthoWidth) {
   const float Radius = FMath::Max(FMath::Max(Bounds.SphereRadius, Bounds.BoxExtent.Size()), 0.1f);
   const float Aspect = FMath::Max(AspectRatio, 0.01f);
   const float HalfFOV = FMath::DegreesToRadians(FMath::Clamp(ViewFOV, 1.0f, 179.0f)) * 0.5f;
   const float LimitingHalfFOV = atanf(tanf(HalfFOV) * FMath::Min(Aspect, 1.0f));
   const float Distance = FMath::Max(Radius * 1.1f / sinf(LimitingHalfFOV), Radius + NearClip);
 
-  OrthoWidth = Radius * 2.2f * FMath::Max(Aspect, 1.0f);
-  ViewLocation = Bounds.Origin - GetViewForward() * Distance;
+  OutOrthoWidth = Radius * 2.2f * FMath::Max(Aspect, 1.0f);
+  OutLocation = Bounds.Origin - GetViewForward() * Distance;
   FarClip = FMath::Max(FarClip, Distance + Radius * 2.0f);
+}
+
+void FEditorViewportClient::FocusOnBounds(const FBoxSphereBounds& Bounds) {
+  bFocusing = false;
+  ComputeFocusTarget(Bounds, ViewLocation, OrthoWidth);
+}
+
+void FEditorViewportClient::StartFocusOnBounds(const FBoxSphereBounds& Bounds, float Duration) {
+  FocusStartLocation = ViewLocation;
+  FocusStartOrthoWidth = OrthoWidth;
+  ComputeFocusTarget(Bounds, FocusTargetLocation, FocusTargetOrthoWidth);
+
+  if (Duration <= 0.0f) {
+    bFocusing = false;
+    ViewLocation = FocusTargetLocation;
+    OrthoWidth = FocusTargetOrthoWidth;
+    return;
+  }
+  bFocusing = true;
+  FocusElapsed = 0.0f;
+  FocusDuration = Duration;
+}
+
+void FEditorViewportClient::TickFocus(float DeltaTime) {
+  FocusElapsed += DeltaTime;
+  const float T = FMath::Clamp(FocusElapsed / FocusDuration, 0.0f, 1.0f);
+  // ease-out cubic: 처음에 빠르게 움직이고 목표에 가까워질수록 느려진다.
+  const float OneMinusT = 1.0f - T;
+  const float Alpha = 1.0f - OneMinusT * OneMinusT * OneMinusT;
+
+  ViewLocation = FocusStartLocation + (FocusTargetLocation - FocusStartLocation) * Alpha;
+  OrthoWidth = FocusStartOrthoWidth + (FocusTargetOrthoWidth - FocusStartOrthoWidth) * Alpha;
+  if (T >= 1.0f)
+    bFocusing = false;
 }
 
 void FEditorViewportClient::TickInput(float DeltaTime, bool bCaptured,
@@ -65,6 +99,16 @@ void FEditorViewportClient::TickInput(float DeltaTime, bool bCaptured,
   Input.bLeft = FInputSystem::IsKeyDown(EKeyCode::A);
   Input.bUp = FInputSystem::IsKeyDown(EKeyCode::E);
   Input.bDown = FInputSystem::IsKeyDown(EKeyCode::Q);
+
+  if (bFocusing) {
+    // 사용자가 카메라를 잡으면 포커스는 그 자리에서 멈추고 평소 조작으로 넘어간다.
+    const bool bUserControl = bCaptured || (Input.bAllowWheel && Input.Wheel != 0.0f);
+    if (!bUserControl) {
+      TickFocus(DeltaTime);
+      return;
+    }
+    bFocusing = false;
+  }
   const uint32 Width = GetWidth();
   FViewportCameraState Camera{ViewLocation, ViewRotation, OrthoWidth,
       Width > 0 ? static_cast<float>(Width) : 800.0f, bIsPerspective};
