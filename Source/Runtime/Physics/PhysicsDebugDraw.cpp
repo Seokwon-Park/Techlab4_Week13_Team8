@@ -1,8 +1,11 @@
-#pragma once
-
 #include "EnginePCH.h"
 
 #include "Render/LineBatcher.h"
+
+#include "UObject/UObjectIterator.h"
+
+#include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 
 #include "PhysicsDebugDraw.h"
 #include "AggregateGeom.h"
@@ -43,11 +46,100 @@ FMatrix FPhysicsDebugDraw::MakeElemMatrix(const FVector& Center, const FRotator&
 	return FTransform(Rotation, Center).GetLocalMatrix();
 }
 
+bool FPhysicsDebugDraw::ShouldDrawComponent(const UPrimitiveComponent* Component, const UWorld* World)
+{
+	return Component && Component->GetWorld() == World && Component->IsRegistered();
+}
+
+const FVector4& FPhysicsDebugDraw::PickBodyColor(const UPrimitiveComponent* Component, const AActor* Selected)
+{
+	return (Selected && Component->GetOwner() == Selected) ? SelectedBodyColor : BodyColor;
+}
+
+void FPhysicsDebugDraw::DrawPhysicsBodies(UWorld* World, FLineBatcher* LineBatcher, const AActor* Selected)
+{
+	if (!World || !LineBatcher)
+	{
+		return;
+	}
+
+	// StaticMesh: 메시 전체가 바디 하나. 위치는 컴포넌트 월드 트랜스폼
+	for (TObjectIterator<UStaticMeshComponent> It; It; ++It)
+	{
+		UStaticMeshComponent* Component = *It;
+		if (!ShouldDrawComponent(Component, World))
+		{
+			continue;
+		}
+
+		const FKAggregateGeom* Geom = FindStaticMeshGeom(Component);
+		if (!Geom)
+		{
+			continue;
+		}
+
+		const FTransform ComponentWorld = FTransform::FromMatrix(Component->GetWorldMatrix());
+		DrawAggregateGeom(LineBatcher, *Geom, ComponentWorld, PickBodyColor(Component, Selected));
+	}
+
+	// SkeletalMesh: 본마다 바디 하나. 위치는 본 월드 트랜스폼
+	for (TObjectIterator<USkeletalMeshComponent> It; It; ++It)
+	{
+		USkeletalMeshComponent* Component = *It;
+		if (!ShouldDrawComponent(Component, World))
+		{
+			continue;
+		}
+
+		 //TODO(B): USkeletalMesh::PhysicsAsset, UBodySetup이 들어오면 아래 주석을 푼다
+		 //const USkeletalMesh* Mesh = Component->GetSkeletalMesh();
+		 //const UPhysicsAsset* PhysicsAsset = Mesh ? Mesh->PhysicsAsset : nullptr;
+		 //if (!PhysicsAsset)
+		 //{
+		 //	continue;
+		 //}
+		
+		 //const FVector4& Color = PickBodyColor(Component, Selected);
+		 //for (const UBodySetup* BodySetup : PhysicsAsset->BodySetup)
+		 //{
+		 //	FTransform BoneWorld;
+		 //	if (!BodySetup || !GetBoneWorldTransform(Component, BodySetup->BoneName, BoneWorld))
+		 //	{
+		 //		continue;
+		 //	}
+		 //	DrawAggregateGeom(LineBatcher, BodySetup->AggGeom, BoneWorld, Color);
+		 //}
+	}
+}
+
+const FKAggregateGeom* FPhysicsDebugDraw::FindStaticMeshGeom(const UStaticMeshComponent* Component) const
+{
+	// TODO(B): UStaticMesh::BodySetup이 들어오면 아래로 바꾼다
+	// const UStaticMesh* Mesh = Component->GetStaticMesh();
+	// return (Mesh && Mesh->BodySetup) ? &Mesh->BodySetup->AggGeom : nullptr;
+	(void)Component;
+	return nullptr;
+}
+
+bool FPhysicsDebugDraw::GetBoneWorldTransform(const USkeletalMeshComponent* Component, const FString& BoneName, FTransform& OutBoneWorld) const
+{
+	const int32 BoneIndex = Component->FindBoneIndex(BoneName);
+	const TArray<FMatrix>& ComponentSpace = Component->GetComponentSpaceTransform();
+	if (BoneIndex < 0 || BoneIndex >= ComponentSpace.Num())
+	{
+		return false;
+	}
+
+	const FMatrix BoneWorld = ComponentSpace[BoneIndex] * Component->GetWorldMatrix();
+	OutBoneWorld = FTransform::FromMatrix(BoneWorld);
+	return true;
+}
+
 void FPhysicsDebugDraw::DrawSphereElem(FLineBatcher* LineBatcher, const FKSphereElem& SphereElem, const FTransform& BodyWorld, const FVector4& Color) const
 {
 	FMatrix	BodyMatrix = BodyWorld.GetLocalMatrix();
 	FVector	WorldCenter = BodyMatrix.TransformPosition(SphereElem.Center);
-	float MaxScale = std::max({ std::abs(BodyWorld.Scale.X), std::abs(BodyWorld.Scale.Y), std::abs(BodyWorld.Scale.Z) });
+	float	MaxScale = std::max({ std::abs(BodyWorld.Scale.X), std::abs(BodyWorld.Scale.Y), std::abs(BodyWorld.Scale.Z) });
 	float	WorldRadius = SphereElem.Radius * MaxScale;
 
 	LineBatcher->AddSphere(WorldCenter, WorldRadius, Color);
@@ -86,12 +178,6 @@ void FPhysicsDebugDraw::DrawSphylElem(FLineBatcher* LineBatcher, const FKSphylEl
 void FPhysicsDebugDraw::DrawConvexElem(FLineBatcher* LineBatcher, const FKConvexElem& ConvexElem, const FTransform& BodyWorld, const FVector4& Color) const
 {
 	const TArray<FVector>& Vertices = ConvexElem.VertexData;
-
-	if (Vertices.Num() < 3 || Vertices.Num() % 3 != 0)
-	{
-		return;
-	}
-
 	const FMatrix BodyMatrix = BodyWorld.GetLocalMatrix();
 	const FMatrix ElemWorld = ConvexElem.Transform.GetLocalMatrix() * BodyMatrix;
 
