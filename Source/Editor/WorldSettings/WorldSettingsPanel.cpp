@@ -12,6 +12,9 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/MyPlayerController.h"
 #include "GameFramework/GameModeBase.h"
+#include "GameFramework/GameplayInfoActors.h"
+#include "Engine/Blueprint.h"
+#include "Core/EngineLog.h"
 #include "UObject/UObjectHash.h"
 
 namespace
@@ -144,15 +147,32 @@ bool FWorldSettingsPanel::DrawClassPicker(const char* Id, UClass* BaseClass, FSt
 	return bChanged;
 }
 
-void FWorldSettingsPanel::DrawReadOnlyClassRow(const char* Label, const FString& ClassName, const char* Tooltip)
+void FWorldSettingsPanel::DrawGameModeClassRow(UClass* GameModeClass, const char* Label, const char* PropertyName,
+	const FString& ClassName, UClass* BaseClass, const char* Tooltip)
 {
 	RowLabel(Label, Tooltip);
+	if (FBlueprint::IsBlueprintClass(GameModeClass))
+	{
+		FString Value = ClassName;
+		if (DrawClassPicker((FString("##") + PropertyName).c_str(), BaseClass, Value))
+		{
+			FString Error;
+			if (FBlueprint::SetDefaultStringProperty(GameModeClass, PropertyName, Value, Error))
+				HTR_LOG(Info, "{}: {} = {}", GameModeClass->Name, PropertyName, Value.empty() ? FString("None") : Value);
+			else
+				HTR_LOG(Warning, "Failed to change {} of {} ({})", PropertyName, GameModeClass->Name, Error);
+		}
+		ImGui::SetItemTooltip("Saved to %s", FBlueprint::GetAssetPath(GameModeClass).c_str());
+		return;
+	}
+
 	ImGui::BeginDisabled();
 	const FString Preview = ClassName.empty() ? FString("None") : FString(ShortClassName(ClassName));
-	if (ImGui::BeginCombo((FString("##") + Label).c_str(), Preview.c_str()))
+	if (ImGui::BeginCombo((FString("##") + PropertyName).c_str(), Preview.c_str()))
 		ImGui::EndCombo();
 	ImGui::EndDisabled();
-	ImGui::SetItemTooltip("Set in the GameMode class (%s)", ClassName.empty() ? "None" : ClassName.c_str());
+	ImGui::SetItemTooltip("Set in the C++ GameMode class (%s).\nUse a GameMode Blueprint to change it here.",
+		ClassName.empty() ? "None" : ClassName.c_str());
 }
 
 void FWorldSettingsPanel::DrawGameModeSection()
@@ -172,11 +192,22 @@ void FWorldSettingsPanel::DrawGameModeSection()
 		RowLabel("GameMode Override", "GameMode class used when playing this level.\nNone uses the default AGameModeBase.");
 		FString Override = World->GetGameModeOverride();
 		const bool bOverridden = !Override.empty();
-		// UE5처럼 기본값이 아니면 오른쪽에 되돌리기 화살표를 둔다.
-		const float ResetW = ImGui::GetFrameHeight();
-		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - (bOverridden ? ResetW + 4.0f * S : 0.0f));
+		UClass* OverrideClass = bOverridden ? FindClass(Override) : nullptr;
+		const bool bBlueprint = OverrideClass && FBlueprint::IsBlueprintClass(OverrideClass) && OpenAssetCallback;
+		// UE5처럼 기본값이 아니면 오른쪽에 되돌리기 화살표를, Blueprint면 그 앞에 편집 버튼을 둔다.
+		const float ButtonW = ImGui::GetFrameHeight();
+		const float ButtonsW = (bOverridden ? ButtonW + 4.0f * S : 0.0f) + (bBlueprint ? ButtonW + 4.0f * S : 0.0f);
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ButtonsW);
 		if (DrawClassPicker("##GameModeOverride", AGameModeBase::StaticClass(), Override))
 			World->SetGameModeOverride(Override);
+		if (bBlueprint)
+		{
+			ImGui::SameLine(0.0f, 4.0f * S);
+			if (EditorIcons::Button("##EditGameMode", EEditorIcon::Script, IM_COL32(60, 140, 230, 255), nullptr, false, false, ButtonW))
+				OpenAssetCallback("Assets/" + FBlueprint::GetAssetPath(OverrideClass));
+			ImGui::SetItemTooltip("Edit %s", OverrideClass->Name.c_str());
+		}
+		const float ResetW = ButtonW;
 		if (bOverridden)
 		{
 			ImGui::SameLine(0.0f, 4.0f * S);
@@ -200,13 +231,18 @@ void FWorldSettingsPanel::DrawGameModeSection()
 		const AGameModeBase* Defaults = GameModeClass ? Cast<AGameModeBase>(GameModeClass->GetDefaultObject()) : nullptr;
 		if (Defaults)
 		{
-			DrawReadOnlyClassRow("Default Pawn Class", Defaults->DefaultPawnClass,
+			DrawGameModeClassRow(GameModeClass, "Default Pawn Class", "DefaultPawnClass", Defaults->DefaultPawnClass, APawn::StaticClass(),
 				"Pawn spawned and possessed when play starts, unless the level already has a Pawn placed.");
-			DrawReadOnlyClassRow("HUD Class", Defaults->HUDClass, "HUD spawned for the player.");
-			DrawReadOnlyClassRow("Player Controller Class", Defaults->PlayerControllerClass, "Controller spawned for the player.");
-			DrawReadOnlyClassRow("Game State Class", Defaults->GameStateClass, "Game state shared by everyone in the match.");
-			DrawReadOnlyClassRow("Player State Class", Defaults->PlayerStateClass, "Per-player state.");
-			DrawReadOnlyClassRow("Spectator Class", Defaults->SpectatorClass, "Pawn used while spectating.");
+			DrawGameModeClassRow(GameModeClass, "HUD Class", "HUDClass", Defaults->HUDClass, AHUD::StaticClass(),
+				"HUD spawned for the player.");
+			DrawGameModeClassRow(GameModeClass, "Player Controller Class", "PlayerControllerClass", Defaults->PlayerControllerClass,
+				APlayerController::StaticClass(), "Controller spawned for the player.");
+			DrawGameModeClassRow(GameModeClass, "Game State Class", "GameStateClass", Defaults->GameStateClass,
+				AGameStateBase::StaticClass(), "Game state shared by everyone in the match.");
+			DrawGameModeClassRow(GameModeClass, "Player State Class", "PlayerStateClass", Defaults->PlayerStateClass,
+				APlayerState::StaticClass(), "Per-player state.");
+			DrawGameModeClassRow(GameModeClass, "Spectator Class", "SpectatorClass", Defaults->SpectatorClass,
+				ASpectatorPawn::StaticClass(), "Pawn used while spectating.");
 		}
 		ImGui::TreePop();
 	}

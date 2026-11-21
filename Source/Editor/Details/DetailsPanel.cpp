@@ -1078,6 +1078,61 @@ namespace
 		return Rules;
 	}
 
+	// FPropertyEditor::RegisterClassPicker로 등록한 "클래스 이름" 프로퍼티와 고를 수 있는 부모 클래스
+	std::unordered_map<const FProperty*, UClass*>& GetClassPickers()
+	{
+		static std::unordered_map<const FProperty*, UClass*> Pickers;
+		return Pickers;
+	}
+
+	// "ADefaultPawn" -> "DefaultPawn". UE 클래스 고르기처럼 접두사를 뗀다.
+	const char* ShortClassName(const FString& Name)
+	{
+		if (Name.size() > 1 && (Name[0] == 'A' || Name[0] == 'U') && std::isupper(static_cast<unsigned char>(Name[1])))
+			return Name.c_str() + 1;
+		return Name.c_str();
+	}
+
+	// BaseClass와 그 자식 중에서 고르는 콤보. None은 빈 문자열이다. 바뀌면 true.
+	bool DrawClassPickerCombo(const char* Label, UClass* BaseClass, FString& InOutClassName)
+	{
+		TArray<UClass*> Classes;
+		Classes.Add(BaseClass);
+		GetDerivedClasses(BaseClass, Classes);
+		std::sort(Classes.begin(), Classes.end(), [](const UClass* A, const UClass* B) { return A->Name < B->Name; });
+
+		FString Preview = "None";
+		if (!InOutClassName.empty())
+			Preview = FString(ShortClassName(InOutClassName)) + (FindClass(InOutClassName) ? "" : " (Missing)");
+
+		bool bChanged = false;
+		if (ImGui::BeginCombo(Label, Preview.c_str(), ImGuiComboFlags_HeightLarge))
+		{
+			if (ImGui::Selectable("None", InOutClassName.empty()))
+			{
+				InOutClassName.clear();
+				bChanged = true;
+			}
+			ImGui::Separator();
+			for (UClass* Class : Classes)
+			{
+				// 추상 클래스는 만들 수 없으므로 고를 수 없다.
+				if (!Class || !Class->Constructor)
+					continue;
+				ImGui::PushID(Class);
+				if (ImGui::Selectable(ShortClassName(Class->Name), InOutClassName == Class->Name))
+				{
+					InOutClassName = Class->Name;
+					bChanged = true;
+				}
+				ImGui::SetItemTooltip("%s", Class->Name.c_str());
+				ImGui::PopID();
+			}
+			ImGui::EndCombo();
+		}
+		return bChanged;
+	}
+
 	// 프로퍼티 타입에 맞는 위젯 하나를 그린다. 값이 바뀌면 true
 	// UE도 FProperty는 위젯을 모르고, 에디터(PropertyEditor 모듈)가 CastField로 타입을 보고 위젯을 고른다.
 	bool DrawPropertyValue(UObject* Object, const FProperty& Property, void* ValuePtr, const char* Label, ImFont* CustomFont)
@@ -1213,6 +1268,10 @@ namespace
 		if (const FStrProperty* StrProperty = CastField<FStrProperty>(&Property))
 		{
 			FString& Value = StrProperty->GetPropertyValue(ValuePtr);
+
+			// 클래스 이름 칸이면 문자열 입력 대신 클래스 고르기 콤보를 쓴다.
+			if (auto Picker = GetClassPickers().find(&Property); Picker != GetClassPickers().end())
+				return DrawClassPickerCombo(Label, Picker->second, Value);
 
 			char Buffer[256] = {};
 			strncpy_s(Buffer, Value.c_str(), sizeof(Buffer) - 1);
@@ -1702,9 +1761,52 @@ namespace FPropertyEditor
 		DrawProperties(Object, CustomFont);
 	}
 
+	void DrawActorExtras(AActor* Actor)
+	{
+		if (Actor)
+			DrawScriptSection(Actor);
+	}
+
+	void DrawComponentExtras(UActorComponent* Component)
+	{
+		if (auto* Skinned = Cast<USkinnedMeshComponent>(Component))
+		{
+			ImGui::TextUnformatted("Skeletal Mesh");
+			DrawSkeletalMeshSlot(Skinned);
+		}
+		if (auto* Skeletal = Cast<USkeletalMeshComponent>(Component))
+		{
+			ImGui::TextUnformatted("Animation Blueprint");
+			DrawAnimBlueprintSlot(Skeletal);
+			const bool bUseBlueprint = !Skeletal->GetAnimBlueprintPath().empty();
+			ImGui::BeginDisabled(bUseBlueprint);
+			ImGui::TextUnformatted("Single Anim Asset");
+			DrawAnimationSlot(Skeletal);
+			ImGui::EndDisabled();
+		}
+		if (auto* Mesh = Cast<UMeshComponent>(Component))
+			DrawMaterialSlots(Mesh);
+	}
+
+	UActorComponent* DrawAddComponentMenu(AActor* Actor, char* Search, size_t SearchSize)
+	{
+		return Actor ? DrawAddComponentPopup(Actor, Search, SearchSize) : nullptr;
+	}
+
 	void RegisterStructMemberRule(const UStruct* Struct, FStructMemberRule Rule)
 	{
 		if (Struct) GetStructMemberRules()[Struct] = std::move(Rule);
+	}
+
+	void RegisterClassPicker(UClass* OwnerClass, const char* PropertyName, UClass* BaseClass)
+	{
+		const FProperty* Property = OwnerClass ? OwnerClass->FindPropertyByName(PropertyName) : nullptr;
+		if (!Property || !CastField<FStrProperty>(Property) || !BaseClass)
+		{
+			HTR_LOG(Warning, "RegisterClassPicker: {}.{} is not a string property", OwnerClass ? OwnerClass->Name : FString("?"), PropertyName);
+			return;
+		}
+		GetClassPickers()[Property] = BaseClass;
 	}
 }
 

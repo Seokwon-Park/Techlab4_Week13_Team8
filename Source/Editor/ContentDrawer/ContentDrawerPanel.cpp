@@ -12,6 +12,9 @@
 #include "Animation/AnimBlueprintFile.h"
 
 #include "Particles/ParticleSystemFile.h"
+#include "Engine/Blueprint.h"
+#include "GameFramework/Actor.h"
+#include "UObject/UObjectHash.h"
 
 #include <imgui_internal.h>
 #include <algorithm>
@@ -36,6 +39,7 @@ namespace
 		Font,
 		Sound,
 		Script,
+		Blueprint,
 		Other,
 
 		Count
@@ -63,6 +67,7 @@ namespace
 		{ "Font",               EEditorIcon::Font,         IM_COL32(190, 190, 190, 255) },
 		{ "Sound",              EEditorIcon::Sound,        IM_COL32(130, 130, 255, 255) },
 		{ "Script",             EEditorIcon::Script,       IM_COL32(242, 210, 75, 255) },
+		{ "Blueprint Class",    EEditorIcon::Script,       IM_COL32(60, 140, 230, 255) },
 		{ "File",               EEditorIcon::File,         IM_COL32(150, 150, 150, 255) },
 	};
 	static_assert(IM_ARRAYSIZE(CategoryInfos) == static_cast<int>(EAssetCategory::Count));
@@ -88,6 +93,7 @@ namespace
 		if (BlendSpaceFile::IsBlendSpacePath(PathString)) return EAssetCategory::BlendSpace;
 		if (AnimBlueprintFile::IsAnimBlueprintPath(PathString)) return EAssetCategory::AnimBlueprint;
 		if (ParticleSystemFile::IsParticleSystemPath(PathString)) return EAssetCategory::Particle;
+		if (FBlueprint::IsBlueprintPath(PathString)) return EAssetCategory::Blueprint;
 		if (FFbxMeshBake::IsBakedPath(PathString))
 			return PathString.ends_with("_Static.fbx.bin") ? EAssetCategory::StaticMesh : EAssetCategory::SkeletalMesh;
 
@@ -821,6 +827,7 @@ void FContentDrawerPanel::DrawAssetGrid()
 	if (ImGui::BeginPopupContextWindow("##DrawerContext", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
 	{
 		if (ImGui::MenuItem("New Folder")) { strcpy_s(NewAssetName, "NewFolder"); bOpenNewFolder = true; }
+		if (ImGui::MenuItem("Blueprint Class")) { strcpy_s(NewAssetName, "BP_NewBlueprint"); bOpenCreateBlueprint = true; }
 		if (ImGui::MenuItem("Create Widget")) { strcpy_s(NewAssetName, "NewWidget"); bOpenCreateWidget = true; }
 		if (ImGui::MenuItem("Create Particle System")) { strcpy_s(NewAssetName, "NewParticleSystem"); bOpenCreateParticle = true; }
 		ImGui::EndPopup();
@@ -1034,6 +1041,13 @@ void FContentDrawerPanel::DrawAssetGrid()
 			ImGui::TextUnformatted(Entry.Name.c_str());
 			ImGui::EndDragDropSource();
 		}
+		// Blueprint는 레벨 뷰포트로 끌어다 놓아 배치한다. 경로 문자열을 그대로 싣는다.
+		if (Entry.Category == EAssetCategory::Blueprint && ImGui::BeginDragDropSource())
+		{
+			ImGui::SetDragDropPayload(EditorDragDrop::Blueprint, Entry.PathString.c_str(), Entry.PathString.size() + 1);
+			ImGui::Text("Place %s", Entry.Path.stem().string().c_str());
+			ImGui::EndDragDropSource();
+		}
 
 		// 더블 클릭: 폴더는 들어가고, 에셋은 맞는 에디터로 연다.
 		if (bHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
@@ -1049,7 +1063,8 @@ void FContentDrawerPanel::DrawAssetGrid()
 			}
 			else if ((Entry.Path.extension() == ".obj" || FFbxMeshBake::IsBakedPath(Entry.PathString)
 				|| Entry.Category == EAssetCategory::Animation || Entry.Category == EAssetCategory::BlendSpace
-				|| Entry.Category == EAssetCategory::AnimBlueprint || Entry.Category == EAssetCategory::Particle) && OnOpenMesh)
+				|| Entry.Category == EAssetCategory::AnimBlueprint || Entry.Category == EAssetCategory::Particle
+				|| Entry.Category == EAssetCategory::Blueprint) && OnOpenMesh)
 			{
 				OnOpenMesh(Entry.PathString);
 			}
@@ -1067,6 +1082,8 @@ void FContentDrawerPanel::DrawCreatePopups()
 	if (bOpenCreateWidget) { ImGui::OpenPopup("Create Widget"); bOpenCreateWidget = false; }
 	if (bOpenCreateParticle) { ImGui::OpenPopup("Create Particle System"); bOpenCreateParticle = false; }
 	if (bOpenNewFolder) { ImGui::OpenPopup("New Folder"); bOpenNewFolder = false; }
+	if (bOpenCreateBlueprint) { ImGui::OpenPopup("Create Blueprint Class"); bOpenCreateBlueprint = false; BlueprintClassSearch[0] = '\0'; }
+	DrawCreateBlueprintPopup();
 
 	// 이름 입력 + 같은 이름 검사 + Create/Cancel. Create를 누르면 OnCreate(만들 경로)를 부른다.
 	auto NameDialog = [this](const char* Title, const char* Extension, const std::function<void(const fs::path&)>& OnCreate)
@@ -1122,4 +1139,94 @@ void FContentDrawerPanel::DrawCreatePopups()
 		else
 			HTR_LOG(Warning, "Failed to create folder: {}", Target.generic_string());
 	});
+}
+
+// UE5의 "Pick Parent Class" 창. 자주 쓰는 부모를 위에 두고, 아래에서 모든 액터 클래스를 검색해 고른다.
+void FContentDrawerPanel::DrawCreateBlueprintPopup()
+{
+	const float S = EditorIcons::GetScale();
+	ImGui::SetNextWindowSize(ImVec2(420.0f * S, 0.0f), ImGuiCond_Appearing);
+	if (!ImGui::BeginPopupModal("Create Blueprint Class", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		return;
+
+	struct FCommonParent { const char* ClassName; const char* Label; const char* Description; };
+	static const FCommonParent CommonParents[] = {
+		{ "AActor",            "Actor",             "An object that can be placed or spawned in the world." },
+		{ "APawn",             "Pawn",              "An actor that can be possessed and receive input from a controller." },
+		{ "ACharacter",        "Character",         "A pawn with a capsule and movement that can walk and jump." },
+		{ "AStaticMeshActor",  "Static Mesh Actor", "An actor that shows a static mesh." },
+		{ "APlayerController", "Player Controller", "Takes player input and controls a pawn." },
+		{ "AGameModeBase",     "Game Mode Base",    "Defines the rules of play: which pawn, controller, HUD and state to spawn." },
+	};
+
+	ImGui::TextDisabled("COMMON CLASSES");
+	for (const FCommonParent& Parent : CommonParents)
+	{
+		if (!FindClass(Parent.ClassName))
+			continue;
+		ImGui::PushID(Parent.ClassName);
+		if (ImGui::Selectable(Parent.Label, BlueprintParentClass == Parent.ClassName))
+			BlueprintParentClass = Parent.ClassName;
+		ImGui::SetItemTooltip("%s\n%s", Parent.ClassName, Parent.Description);
+		ImGui::PopID();
+	}
+
+	ImGui::Spacing();
+	ImGui::TextDisabled("ALL CLASSES");
+	EditorIcons::SearchBox("##BlueprintParentSearch", BlueprintClassSearch, sizeof(BlueprintClassSearch), "Search classes");
+	{
+		TArray<UClass*> Classes;
+		Classes.Add(AActor::StaticClass());
+		GetDerivedClasses(AActor::StaticClass(), Classes);
+		std::sort(Classes.begin(), Classes.end(), [](const UClass* A, const UClass* B) { return A->Name < B->Name; });
+		ImGui::BeginChild("##ParentClassList", ImVec2(0.0f, 180.0f * S), ImGuiChildFlags_Borders);
+		for (UClass* Class : Classes)
+		{
+			// 추상 클래스는 만들 수 없으므로 부모로 고를 수 없다.
+			if (!Class || !Class->Constructor || !EditorIcons::MatchesFilter(Class->Name.c_str(), BlueprintClassSearch))
+				continue;
+			ImGui::PushID(Class);
+			const FString Label = Class->Name + (FBlueprint::IsBlueprintClass(Class) ? "  (Blueprint)" : "");
+			if (ImGui::Selectable(Label.c_str(), BlueprintParentClass == Class->Name))
+				BlueprintParentClass = Class->Name;
+			ImGui::PopID();
+		}
+		ImGui::EndChild();
+	}
+
+	ImGui::Spacing();
+	ImGui::Text("Parent: %s", BlueprintParentClass.c_str());
+	if (ImGui::IsWindowAppearing())
+		ImGui::SetKeyboardFocusHere();
+	const bool bEnter = ImGui::InputText("Name", NewAssetName, sizeof(NewAssetName), ImGuiInputTextFlags_EnterReturnsTrue);
+	const fs::path Target = CurrentPath / (FString(NewAssetName) + FBlueprint::Extension);
+	std::error_code Error;
+	const bool bExists = fs::exists(Target, Error);
+	// 파일 이름이 곧 클래스 이름이라 C++ 클래스나 다른 BP와 이름이 겹치면 안 된다.
+	const bool bNameTaken = NewAssetName[0] != '\0' && FindClass(NewAssetName) != nullptr;
+	if (bExists) ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "A file with this name already exists.");
+	else if (bNameTaken) ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "A class with this name already exists.");
+
+	UClass* ParentClass = FindClass(BlueprintParentClass);
+	const bool bValid = !bExists && !bNameTaken && NewAssetName[0] != '\0' && ParentClass;
+	ImGui::BeginDisabled(!bValid);
+	if (ImGui::Button("Create") || (bEnter && bValid))
+	{
+		FString CreateError;
+		if (FBlueprint::SaveBlueprint(Target, ParentClass, nullptr, CreateError))
+		{
+			HighlightPath = Target.generic_string();
+			if (OnOpenMesh) OnOpenMesh(Target.generic_string());   // 만들자마자 Blueprint 에디터로 연다
+		}
+		else
+		{
+			HTR_LOG(Warning, "Failed to create blueprint: {}", CreateError);
+		}
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape))
+		ImGui::CloseCurrentPopup();
+	ImGui::EndPopup();
 }
