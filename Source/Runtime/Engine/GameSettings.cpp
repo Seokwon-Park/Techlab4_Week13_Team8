@@ -78,6 +78,8 @@ FGameSettings FGameSettings::Load(const FString& Path)
 	Settings.ShowFlags.Vignette = Config.GetBool("Rendering", "ShowVignette", Settings.ShowFlags.Vignette);
 	Settings.ShowFlags.CameraOverlay = Config.GetBool("Rendering", "ShowCameraOverlay", Settings.ShowFlags.CameraOverlay);
 	Settings.ShowFlags.SkeletalMeshes = Config.GetBool("Rendering", "ShowSkeletalMesh", Settings.ShowFlags.SkeletalMeshes);
+	Settings.ShowFlags.PhysicsBodies = Config.GetBool("Rendering", "ShowPhysicsBodies", Settings.ShowFlags.PhysicsBodies);
+	Settings.ShowFlags.Constraints = Config.GetBool("Rendering", "ShowConstraints", Settings.ShowFlags.Constraints);
 	if (const FString Gamma = Config.GetString("Rendering", "DisplayGamma", ""); !Gamma.empty())
 	{
 		try { Options.DisplayGamma = FMath::Clamp(std::stof(Gamma), 1.0f, 3.0f); } catch (...) {}

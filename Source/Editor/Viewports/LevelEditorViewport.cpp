@@ -2,6 +2,7 @@
 #include "Editor/Viewports/LevelEditorViewport.h"
 #include "Editor/HitoriEd/Editor.h"
 #include "Launch/LaunchEngineLoop.h"
+#include "Physics/PhysicsDebugDraw.h"
 #include "Render/Renderer.h"
 #include "Render/SceneRenderer.h"
 #include "Components/ShapeComponent.h"
@@ -188,6 +189,12 @@ void FLevelEditorViewportClient::Draw(const FSceneView* View, FScenePassCallback
 				// 이 뷰포트가 보고 있는 월드의 것을 그린다. PIE와 SIE 중에는 PIE 월드다.
 				DrawCollisionShapes(GetWorld(), LineBatcher, SelectedActor);
 				DrawSpringArms(GetWorld(), LineBatcher, SelectedActor);
+
+				if (EngineShowFlags.PhysicsBodies)
+				{
+					FPhysicsDebugDraw PhysicsDebugDraw;
+					PhysicsDebugDraw.DrawPhysicsBodies(GetWorld(), LineBatcher, SelectedActor);
+				}
 
 				LineBatcher->OnRender(SceneView.ViewProjectionMatrix);
 			};

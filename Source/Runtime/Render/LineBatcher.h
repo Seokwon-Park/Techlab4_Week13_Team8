@@ -29,6 +29,18 @@ public:
 	void AddPyramid(const FVector& BaseCenter, const FVector& Tip, float HalfWidth, const FVector4& Color);
 	// 서로 직교하는 세 원으로 와이어 구를 그립니다.
 	void AddSphere(const FVector& Center, float Radius, const FVector4& Color, int32 Segments = 16);
+	void AddSwingCone(const FVector& Apex, const FVector& Axis, const FVector& Right,
+		float Swing1Rad, float Swing2Rad, float Length, const FVector4& Color, int32 Segments = 24);
+	void AddConvex(const TArray<FVector>& LocalVertices, const TArray<uint32>& Indices,
+		const FMatrix& WorldMatrix, const FVector4& Color);
+	void AddCapsule(const FVector& Center, const FVector& Up, const FVector& Right,
+		float Radius, float HalfHeight, const FVector4& Color, int32 Segments = 16);
+	void AddWireArc(const FVector& Center, const FVector& AxisA, const FVector& AxisB,
+		float Radius, float StartRad, float EndRad, const FVector4& Color, int32 Segments = 24);
+	void AddTwistArc(const FVector& Center, const FVector& Axis, const FVector& Ref,
+		float LimitRad, float Radius, const FVector4& Color, int32 Segments = 24);
+
+	
 
 	void Flush();
 	void OnRender(const FMatrix& ViewProjection);

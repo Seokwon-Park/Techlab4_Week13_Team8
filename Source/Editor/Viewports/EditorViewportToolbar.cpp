@@ -228,6 +228,17 @@ namespace EditorViewportUI
 				if (EditorIcons::MenuRow(Row.Label, Row.Icon, *Row.Value, true, true))
 					*Row.Value = !*Row.Value;
 			}
+
+			const FFlagRow PhysicsRows[] = {
+				{ "Physics Bodies", EEditorIcon::ViewWireframe, &Flags.PhysicsBodies },
+				{ "Constraints", EEditorIcon::Rotate, &Flags.Constraints },
+			};
+			EditorIcons::MenuSection("Physics");
+			for (const FFlagRow& Row : PhysicsRows)
+			{
+				if (EditorIcons::MenuRow(Row.Label, Row.Icon, *Row.Value, true, true))
+					*Row.Value = !*Row.Value;
+			}
 			ImGui::EndPopup();
 		}
 		ImGui::PopStyleVar();
