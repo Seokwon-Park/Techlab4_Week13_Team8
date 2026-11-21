@@ -119,6 +119,8 @@ UObject* UClass::CreateDefaultObject()
 			assert(ClassDefaultObject);
 
 			Constructor(ClassDefaultObject);
+			if (PostConstructDefaults)
+				PostConstructDefaults(ClassDefaultObject);
 			HashObject(ClassDefaultObject, this);
 		}
 	}

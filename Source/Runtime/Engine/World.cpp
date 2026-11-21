@@ -13,6 +13,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/MyPlayerController.h"
 #include "GameFramework/GameModeBase.h"
+#include "Engine/Blueprint.h"
 #include "GameFramework/GameplayInfoActors.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Input/InputSystem.h"
@@ -147,6 +148,14 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 	// 4. Level->Actors에 등록한 뒤 컴포넌트를 월드에 연결한다.
 	PersistentLevel->AddActor(NewActor);
 	NewActor->RegisterAllComponents();
+
+	// 데이터 Blueprint면 BP 기본값(프로퍼티, 컴포넌트)을 덮어쓴다. 기본값의 루트 Transform은 쓰지 않고 스폰 위치를 지킨다.
+	if (FBlueprint::IsBlueprintClass(Class))
+	{
+		FBlueprint::ApplyActorDefaults(NewActor);
+		if (NewActor->GetRootComponent())
+			NewActor->GetRootComponent()->SetTransform(SpawnTransform);
+	}
 
 	// 월드가 재생 중일 때 생성된 액터만 별도 BeginPlay 대기열에 넣는다.
 	if (bBegunPlay) BeginPlayList.Enqueue(NewActor);

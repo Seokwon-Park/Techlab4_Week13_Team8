@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "Level.h"
 #include "World.h"
+#include "Engine/Blueprint.h"
 
 // delete Actor가 소멸자를 호출하려면 AActor의 완전한 정의가 필요하다.
 // 전방 선언만으로는 C4150(소멸자 미호출)이 되어 액터가 GUObjectArray에 남는다.
@@ -70,6 +71,12 @@ void ULevel::Serialize(FStructuredArchive::FRecord Record)
 			FString ClassName = Actor->GetClass()->Name;
 			FString ActorName = Actor->GetName();
 			ActorRecord << SA_VALUE("Class", ClassName) << SA_VALUE("Name", ActorName);
+			// BP 액터는 C++ 조상도 남긴다. BP 에셋을 지우거나 이름을 바꿔도 그 클래스로라도 열 수 있다.
+			if (FBlueprint::IsBlueprintClass(Actor->GetClass()))
+			{
+				FString NativeClassName = FBlueprint::GetNativeClass(Actor->GetClass())->Name;
+				ActorRecord << SA_VALUE("NativeClass", NativeClassName);
+			}
 			Actor->Serialize(ActorRecord);
 		}
 		return;
@@ -89,6 +96,13 @@ void ULevel::Serialize(FStructuredArchive::FRecord Record)
 		ActorRecord << SA_VALUE("Class", ClassName) << SA_VALUE("Name", ActorName);   // 없으면 빈 문자열
 
 		UClass* Class = FindClass(ClassName);
+		if (!Class)
+		{
+			FString NativeClassName;
+			ActorRecord << SA_VALUE("NativeClass", NativeClassName);   // BP 액터만 있다
+			if (!NativeClassName.empty() && (Class = FindClass(NativeClassName)))
+				HTR_LOG(Warning, "Load: blueprint '{}' not found, using {}", ClassName, NativeClassName);
+		}
 		if (!Class || !Class->IsChildOf(AActor::StaticClass()))
 		{
 			HTR_LOG(Warning, "Load: unknown actor class '{}', skipped", ClassName);
