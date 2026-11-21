@@ -13,6 +13,8 @@ struct FEngineShowFlags
 	bool AntiAliasing = false;
 	// 데칼
 	bool Decals = true;
+	// 피사계 심도
+	bool DepthOfField = true;
 	// 화면 가장자리를 어둡게 하는 비네트
 	bool Vignette = true;
 	// 카메라 페이드와 레터박스. UE에는 없는 이 엔진 고유의 플래그다.

@@ -218,6 +218,7 @@ namespace EditorViewportUI
 				{ "Decals", EEditorIcon::ShowDecal, &Flags.Decals },
 				{ "Fog", EEditorIcon::ShowFog, &Flags.Fog },
 				{ "Anti-aliasing", EEditorIcon::ShowAntiAliasing, &Flags.AntiAliasing },
+				{ "Depth of Field", EEditorIcon::Camera, &Flags.DepthOfField },
 				{ "Vignette", EEditorIcon::ShowVignette, &Flags.Vignette },
 				{ "Camera Overlay", EEditorIcon::ShowCameraOverlay, &Flags.CameraOverlay },
 			};
