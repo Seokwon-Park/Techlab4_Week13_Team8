@@ -1,12 +1,25 @@
 #pragma once
 
 #include "Editor/AssetEditor/AssetEditor.h"
+#include "Editor/EditorModeManager.h"
+#include "Editor/Gizmo/Gizmo.h"
 #include "Camera/ViewportCameraMovement.h"
 #include "Containers/Array.h"
 
 class UClass;
 class AActor;
 class UActorComponent;
+class USceneComponent;
+
+// 뷰포트 패널이 넘기는 마우스 상태. 분리된 창에서도 맞도록 이미지 크기에 대한 비율로 둔다.
+struct FBlueprintViewportPointer
+{
+	FVector2 MouseUV = FVector2(0.0f, 0.0f);
+	bool bHovered = false;
+	bool bMousePressed = false;   // 이번 프레임에 왼쪽 버튼을 눌렀다
+	bool bMouseDown = false;
+	bool bCancel = false;         // Esc: 끌던 기즈모를 원래대로
+};
 
 // 데이터 Blueprint 에디터. UE의 Blueprint 에디터에서 Components / Viewport / Details 부분에 해당한다.
 // 미리보기 월드에 BP 클래스로 액터(템플릿)를 하나 만들고, 그 액터를 고친 뒤 Save하면
@@ -28,8 +41,17 @@ public:
 
 	// 템플릿 액터 전체가 화면에 들어오게 카메라를 옮긴다.
 	void FocusTemplate();
-	// 뷰포트 패널이 매 프레임 크기와 카메라 입력을 넘긴다. 보이지 않으면 0이다.
-	void SetViewportState(uint32 Width, uint32 Height, const FViewportCameraInput& Input);
+	// 뷰포트 패널이 매 프레임 크기와 카메라·마우스 입력을 넘긴다. 보이지 않으면 0이다.
+	void SetViewportState(uint32 Width, uint32 Height, const FViewportCameraInput& Input,
+		const FBlueprintViewportPointer& Pointer = {});
+
+	// ---------------- 뷰포트 기즈모 ----------------
+	// 고른 컴포넌트를 기즈모로 옮긴다. 루트(Self)는 옮기지 않는다: 스폰할 때 루트 Transform은 스폰 위치로 바뀌기 때문이다.
+	// 뷰포트를 클릭하면 그 아래 컴포넌트를 고른다. W/E/R과 Space로 이동/회전/크기를 바꾼다.
+	const FGizmo* GetPreviewGizmo() const override { return Gizmo.GetTarget() ? &Gizmo : nullptr; }
+	UE::Widget::EWidgetMode GetGizmoMode() const { return ModeTools.GetWidgetMode(); }
+	void SetGizmoMode(UE::Widget::EWidgetMode Mode);
+	bool IsGizmoDragging() const { return Gizmo.IsUsing(); }
 
 	UClass* GetBlueprintClass() const { return BlueprintClass; }
 	AActor* GetTemplate() const { return Template; }
@@ -51,8 +73,19 @@ protected:
 private:
 	bool SerializeTemplate(TArray<uint8>& OutBytes) const;
 
+	// 기즈모 대상을 지금 고른 컴포넌트에 맞춘다.
+	void SyncGizmoTarget();
+	// 기즈모를 끌거나, 기즈모 밖을 클릭하면 그 아래 컴포넌트를 고른다.
+	void UpdateGizmoAndPicking();
+
 	UClass* BlueprintClass = nullptr;
 	AActor* Template = nullptr;
+
+	// 이 에디터의 편집 모드와 좌표계. 레벨 에디터와 따로 갖는다. Gizmo보다 먼저 선언해야 한다.
+	FEditorModeTools ModeTools;
+	FGizmo Gizmo{ &ModeTools };
+	FBlueprintViewportPointer Pointer;
+	FTransform DragStartTransform;
 	UActorComponent* SelectedComponent = nullptr;
 
 	// 마지막으로 저장한(또는 연) 상태. 지금 상태와 비교해 * 표시를 정한다.
