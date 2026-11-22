@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Math/Transform.h"
+#include "Physics/PhysicsSettingsEnums.h"
 #include "PxPhysicsAPI.h"   // premake: Source/ThirdParty/PhysX/include
 
 // UE 4.27 PhysicsCore/Public/PhysXPublicCore.h와 같은 이름. 축 변환 없이 값을 그대로 옮긴다 (UE도 동일)
@@ -27,4 +28,21 @@ inline const physx::PxQuat U2PSphylBasis(physx::PxPi, physx::PxVec3(0.70710678f,
 inline physx::PxTransform U2PSphylLocalPose(const FVector& Center, const FRotator& Rotation)
 {
 	return physx::PxTransform(U2PVector(Center), U2PQuat(Rotation.Quaternion()) * U2PSphylBasis);
+}
+
+// 엔진 결합 모드와 PhysX 결합 모드의 값 일치 확인
+static_assert(
+    static_cast<physx::PxCombineMode::Enum>(EPhysicalMaterialCombineMode::Average) == physx::PxCombineMode::eAVERAGE &&
+    static_cast<physx::PxCombineMode::Enum>(EPhysicalMaterialCombineMode::Min) == physx::PxCombineMode::eMIN &&
+    static_cast<physx::PxCombineMode::Enum>(EPhysicalMaterialCombineMode::Multiply) == physx::PxCombineMode::eMULTIPLY &&
+    static_cast<physx::PxCombineMode::Enum>(EPhysicalMaterialCombineMode::Max) == physx::PxCombineMode::eMAX);
+
+// 공통 번호를 사용하는 PhysX 결합 모드 변환
+inline constexpr physx::PxCombineMode::Enum U2PCombineMode(EPhysicalMaterialCombineMode Mode)
+{
+    if (static_cast<uint8>(Mode) > static_cast<uint8>(EPhysicalMaterialCombineMode::Max))
+    {
+        return physx::PxCombineMode::eAVERAGE;
+    }
+    return static_cast<physx::PxCombineMode::Enum>(Mode);
 }

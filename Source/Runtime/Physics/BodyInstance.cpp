@@ -42,12 +42,15 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
         return false;
     }
 
-    // 지원 형상과 재질 계수 확인
+    // 재질 계수 선택과 지원 형상 확인
     const FKAggregateGeom& Geom = InBodySetup.AggGeom;
-    const float Friction = InBodySetup.Friction;
-    const float Restitution = InBodySetup.Restitution;
+    const UPhysicalMaterial* PhysMaterial = InBodySetup.PhysMaterial;
+    const float StaticFriction = PhysMaterial ? PhysMaterial->StaticFriction : InBodySetup.Friction;
+    const float DynamicFriction = PhysMaterial ? PhysMaterial->Friction : InBodySetup.Friction;
+    const float Restitution = PhysMaterial ? PhysMaterial->Restitution : InBodySetup.Restitution;
     if (Geom.GetelementCount() == 0 || Geom.ConvexElems.Num() > 0 ||
-        !std::isfinite(Friction) || Friction < 0.0f ||
+        !std::isfinite(StaticFriction) || StaticFriction < 0.0f ||
+        !std::isfinite(DynamicFriction) || DynamicFriction < 0.0f ||
         !(Restitution >= 0.0f && Restitution <= 1.0f))
     {
         return false;
@@ -57,11 +60,23 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
     const auto Release = [](auto* Object) { Object->release(); };
 
     std::unique_ptr<physx::PxMaterial, decltype(Release)> Material(
-        Physics->createMaterial(Friction, Friction, Restitution), Release);
+        Physics->createMaterial(StaticFriction, DynamicFriction, Restitution), Release);
     if (!Material)
     {
         return false;
     }
+
+    // 항목별 프로젝트 기본값과 재질 오버라이드 적용
+    const FPhysicsSettings& Settings = FPhysicsSettings::Get();
+    const EPhysicalMaterialCombineMode FrictionMode =
+        PhysMaterial && PhysMaterial->bOverrideFrictionCombineMode
+        ? PhysMaterial->FrictionCombineMode : Settings.DefaultFrictionCombineMode;
+    const EPhysicalMaterialCombineMode RestitutionMode =
+        PhysMaterial && PhysMaterial->bOverrideRestitutionCombineMode
+        ? PhysMaterial->RestitutionCombineMode : Settings.DefaultRestitutionCombineMode;
+
+    Material->setFrictionCombineMode(U2PCombineMode(FrictionMode));
+    Material->setRestitutionCombineMode(U2PCombineMode(RestitutionMode));
 
     const bool bStatic = InBodyType == EPhysicsBodyType::Static;
     std::unique_ptr<physx::PxRigidActor, decltype(Release)> NewActor(

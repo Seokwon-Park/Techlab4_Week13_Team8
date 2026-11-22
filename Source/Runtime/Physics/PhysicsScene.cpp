@@ -1,6 +1,6 @@
 #include "EnginePCH.h"
 #include "Physics/PhysicsScene.h"
-
+#include "Physics/PhysicsSettings.h"
 #include "Core/EngineLog.h"
 #include "Physics/PhysXSDK.h"
 
@@ -19,7 +19,6 @@ FPhysicsScene::FPhysicsScene()
 		return;
 	}
 
-	// SDK의 허용 오차와 Hitori의 Z축 중력을 사용한 월드 씬 생성
 	physx::PxSceneDesc Desc(Physics->getTolerancesScale());
 	Desc.gravity = physx::PxVec3(0.0f, 0.0f, -9.81f);
 	Desc.cpuDispatcher = Dispatcher;
@@ -43,10 +42,11 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 		return;
 	}
 
-	// 60Hz 고정 스텝과 월드 틱당 최대 여섯 번의 계산
-	constexpr double FixedStepSeconds = 1.0 / 60.0;
-	constexpr int MaxStepsPerTick = 6;
-	constexpr float StepDelta = static_cast<float>(FixedStepSeconds);
+	// 프로젝트 고정 스텝 크기와 최대 횟수 조회
+	const FPhysicsSettings& Settings = FPhysicsSettings::Get();
+	const double FixedStepSeconds = Settings.FixedStepSeconds;
+	const int32 MaxStepsPerTick = Settings.MaxStepsPerTick;
+	const float StepDelta = static_cast<float>(FixedStepSeconds);
 	AccumulatedSeconds = std::min(
 		AccumulatedSeconds + static_cast<double>(DeltaSeconds),
 		FixedStepSeconds * MaxStepsPerTick);
