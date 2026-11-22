@@ -46,3 +46,44 @@ inline constexpr physx::PxCombineMode::Enum U2PCombineMode(EPhysicalMaterialComb
     }
     return static_cast<physx::PxCombineMode::Enum>(Mode);
 }
+
+// UE 4.27 PhysXPublicCore.cpp:26 참고 — 행 순서의 float 버퍼로 PhysX 열 생성
+inline physx::PxMat44 U2PMatrix(const FMatrix& Matrix)
+{
+    float Values[16];
+    std::memcpy(&Values, &Matrix.M, sizeof(Values));
+    return physx::PxMat44(Values);
+}
+
+// UE 4.27 PhysXPublicCore.cpp:63 — PhysX 열 순서 그대로 행 배열에 복사
+inline FMatrix P2UMatrix(const physx::PxMat44& Matrix)
+{
+    FMatrix Result;
+    std::memcpy(&Result.M, &Matrix, sizeof(Result.M));
+    return Result;
+}
+
+// 엔진 내부 행렬의 4×4 float 배열 확인
+static_assert(std::is_same_v<decltype(FMatrix::M), float[4][4]>);
+
+// PhysX 열 벡터의 float 성분과 연속 배치 확인
+static_assert(std::is_standard_layout_v<physx::PxVec4>);
+static_assert(
+    std::is_same_v<decltype(physx::PxVec4::x), float>&&
+    std::is_same_v<decltype(physx::PxVec4::y), float>&&
+    std::is_same_v<decltype(physx::PxVec4::z), float>&&
+    std::is_same_v<decltype(physx::PxVec4::w), float> &&
+    sizeof(physx::PxVec4) == 4 * sizeof(float) &&
+    offsetof(physx::PxVec4, x) == 0 &&
+    offsetof(physx::PxVec4, y) == sizeof(float) &&
+    offsetof(physx::PxVec4, z) == 2 * sizeof(float) &&
+    offsetof(physx::PxVec4, w) == 3 * sizeof(float));
+
+// PhysX 4×4 행렬의 열 순서와 연속 배치 확인
+static_assert(std::is_standard_layout_v<physx::PxMat44>);
+static_assert(
+    sizeof(physx::PxMat44) == 16 * sizeof(float) &&
+    offsetof(physx::PxMat44, column0) == 0 &&
+    offsetof(physx::PxMat44, column1) == sizeof(physx::PxVec4) &&
+    offsetof(physx::PxMat44, column2) == 2 * sizeof(physx::PxVec4) &&
+    offsetof(physx::PxMat44, column3) == 3 * sizeof(physx::PxVec4));
