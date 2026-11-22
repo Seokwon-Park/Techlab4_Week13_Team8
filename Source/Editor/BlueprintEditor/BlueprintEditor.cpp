@@ -14,6 +14,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "Math/BoxSphereBounds.h"
+#include "Collision/HitResult.h"
 #include "UObject/UObjectHash.h"
 
 #include "Serialization/MemoryWriter.h"
@@ -76,6 +77,8 @@ TUniquePtr<IEditorTab> FBlueprintEditor::CreateTab()
 
 void FBlueprintEditor::ShutdownResources()
 {
+	Gizmo.EndDrag();
+	Gizmo.SetTarget(nullptr);
 	Template = nullptr;
 	SelectedComponent = nullptr;
 	FAssetEditor::ShutdownResources();
@@ -140,6 +143,11 @@ void FBlueprintEditor::DeleteComponent(UActorComponent* Component)
 {
 	if (!Template || !Component || Component == Template->GetRootComponent())
 		return;
+	if (Gizmo.GetTarget() == Component)
+	{
+		Gizmo.EndDrag();
+		Gizmo.SetTarget(nullptr);
+	}
 	if (SelectedComponent == Component)
 		SelectedComponent = nullptr;
 	Template->DestroyComponent(Component);
@@ -190,12 +198,92 @@ void FBlueprintEditor::FocusTemplate()
 	ViewportClient->FocusOnBounds(Bounds);
 }
 
-void FBlueprintEditor::SetViewportState(uint32 Width, uint32 Height, const FViewportCameraInput& Input)
+void FBlueprintEditor::SetViewportState(uint32 Width, uint32 Height, const FViewportCameraInput& Input,
+	const FBlueprintViewportPointer& InPointer)
 {
 	ViewportWidth = Width;
 	ViewportHeight = Height;
 	bViewportVisible = Width > 0 && Height > 0;
 	CameraInput = Input;
+	Pointer = InPointer;
+}
+
+void FBlueprintEditor::SetGizmoMode(UE::Widget::EWidgetMode Mode)
+{
+	Gizmo.EndDrag();
+	ModeTools.SetWidgetMode(Mode);
+}
+
+void FBlueprintEditor::SyncGizmoTarget()
+{
+	if (Gizmo.IsUsing())
+		return;
+	USceneComponent* Target = Cast<USceneComponent>(SelectedComponent);
+	// 루트는 옮겨도 인스턴스에 남지 않으므로(스폰 위치로 바뀐다) 기즈모를 띄우지 않는다.
+	if (Target && Template && Target == Template->GetRootComponent())
+		Target = nullptr;
+	if (Target && Template && Template->GetComponents().Find(Target) == INDEX_NONE)
+		Target = nullptr;
+	Gizmo.SetTarget(Target, false);
+}
+
+void FBlueprintEditor::UpdateGizmoAndPicking()
+{
+	SyncGizmoTarget();
+	if (!ViewportClient || !Template || ViewportWidth == 0 || ViewportHeight == 0)
+	{
+		Gizmo.EndDrag();
+		return;
+	}
+
+	// Esc: 끌던 것을 원래대로 돌린다.
+	if (Pointer.bCancel && Gizmo.IsUsing())
+	{
+		if (USceneComponent* Target = Gizmo.GetTarget())
+			Target->SetTransform(DragStartTransform);
+		Gizmo.EndDrag();
+		return;
+	}
+
+	const bool bWasUsing = Gizmo.IsUsing();
+	// 카메라를 잡고 있거나 마우스가 뷰포트 밖이면(끄는 중이 아니라면) 아무것도 하지 않는다.
+	if (CameraInput.bCaptured || (!Pointer.bHovered && !bWasUsing))
+	{
+		if (!Pointer.bMouseDown)
+			Gizmo.EndDrag();
+		return;
+	}
+
+	const int32 Width = static_cast<int32>(ViewportWidth);
+	const int32 Height = static_cast<int32>(ViewportHeight);
+	const FVector2 MousePosition(Pointer.MouseUV.X * Width, Pointer.MouseUV.Y * Height);
+	const FRay MouseRay = ViewportClient->DeprojectScreenToWorld(MousePosition);
+
+	if (Gizmo.GetTarget())
+	{
+		// 누른 프레임에만 끌기를 시작하고, 놓는 프레임의 마지막 위치도 반영한다.
+		const bool bUpdateDrag = bWasUsing || (Pointer.bMousePressed && Pointer.bMouseDown);
+		Gizmo.Update(MouseRay, MousePosition, ViewportClient->GetViewProjectionMatrix(), Width, Height,
+			bUpdateDrag, ViewportClient->GetViewLocation(), !ViewportClient->IsPerspective());
+
+		if (!bWasUsing && Gizmo.IsUsing())
+			DragStartTransform = Gizmo.GetTarget()->GetTransform();
+		if (bWasUsing && !Gizmo.IsUsing())
+			NoteEdited();   // 끌기를 마쳤으면 저장 표시를 다시 계산한다
+		if (bWasUsing || Gizmo.IsUsing() || Gizmo.GetHoveredAxis() >= 0)
+			return;         // 기즈모를 다루는 중이면 클릭으로 고르지 않는다
+	}
+
+	// 기즈모 밖을 클릭하면 그 아래 컴포넌트를 고른다. 빈 곳이면 액터 자신(Self)을 고른다.
+	if (!Pointer.bMousePressed)
+		return;
+	UWorld* World = ViewportClient->GetWorld();
+	FHitResult Hit;
+	if (World && World->LineTraceSingle(MouseRay, Hit) && Hit.HitComponent && Hit.HitComponent->GetOwner() == Template)
+		SelectComponent(Hit.HitComponent);
+	else
+		SelectComponent(nullptr);
+	SyncGizmoTarget();
 }
 
 void FBlueprintEditor::Tick(float DeltaTime)
@@ -213,7 +301,9 @@ void FBlueprintEditor::Tick(float DeltaTime)
 		ViewportClient->SetViewLocation(Camera.Location);
 		ViewportClient->SetViewRotation(Camera.Rotation);
 	}
+	UpdateGizmoAndPicking();
 	CameraInput = {};
+	Pointer = {};
 
 	// 편집이 끝났으면 저장된 상태와 비교해 * 표시를 정한다. 액터 하나라 가볍다.
 	if (bCheckDirty && !ImGui::IsAnyItemActive())

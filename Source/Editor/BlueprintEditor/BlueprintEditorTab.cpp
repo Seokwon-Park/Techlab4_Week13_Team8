@@ -244,7 +244,9 @@ void FBlueprintViewportPanel::DrawContent()
 	if (FTexture2D* Target = Client->Viewport ? Client->Viewport->GetRenderTargetTexture() : nullptr; Target && Target->GetSRV())
 		ImGui::GetWindowDrawList()->AddImage(Target->GetSRV(), Origin, ViewMax);
 
-	const bool bToolbarBusy = EditorViewportUI::DrawAssetViewportToolbar(Client, Origin, ViewMax);
+	// 툴바의 기즈모 버튼(이동/회전/크기)도 함께 그린다.
+	const bool bToolbarBusy = EditorViewportUI::DrawAssetViewportToolbar(Client, Origin, ViewMax, Editor.GetGizmoMode(),
+		[this](UE::Widget::EWidgetMode Mode) { Editor.SetGizmoMode(Mode); });
 
 	ImGui::SetCursorScreenPos(Origin);
 	ImGui::InvisibleButton("##BlueprintViewport", Size, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
@@ -259,10 +261,31 @@ void FBlueprintViewportPanel::DrawContent()
 		Editor.FocusTemplate();
 
 	const ImGuiIO& IO = ImGui::GetIO();
+	const bool bMouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+	const bool bCameraDragging = ImGui::IsMouseDown(ImGuiMouseButton_Right);
+	const FBlueprintViewportPointer Pointer
+	{
+		.MouseUV = FVector2((IO.MousePos.x - Origin.x) / Size.x, (IO.MousePos.y - Origin.y) / Size.y),
+		.bHovered = bHovered,
+		.bMousePressed = bHovered && !bCameraDragging && ImGui::IsMouseClicked(ImGuiMouseButton_Left),
+		.bMouseDown = bMouseDown,
+		.bCancel = ImGui::IsKeyPressed(ImGuiKey_Escape, false),
+	};
+
+	// W/E/R: 이동/회전/크기, Space: 순환. 우클릭으로 카메라를 날리는 중에는 WASD가 이동이므로 바꾸지 않는다.
+	if (bFocused && bHovered && !bCameraDragging && !IO.WantTextInput && !Editor.IsGizmoDragging())
+	{
+		if (ImGui::IsKeyPressed(ImGuiKey_W, false)) Editor.SetGizmoMode(UE::Widget::WM_Translate);
+		if (ImGui::IsKeyPressed(ImGuiKey_E, false)) Editor.SetGizmoMode(UE::Widget::WM_Rotate);
+		if (ImGui::IsKeyPressed(ImGuiKey_R, false)) Editor.SetGizmoMode(UE::Widget::WM_Scale);
+		if (ImGui::IsKeyPressed(ImGuiKey_Space, false))
+			Editor.SetGizmoMode(static_cast<UE::Widget::EWidgetMode>((static_cast<int32>(Editor.GetGizmoMode()) + 1) % 3));
+	}
+
 	FViewportCameraInput Input
 	{
-		.bCaptured   = bFocused && ImGui::IsItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Right),
-		.bAllowWheel = bHovered,
+		.bCaptured   = bFocused && ImGui::IsItemActive() && bCameraDragging && !bMouseDown && !Editor.IsGizmoDragging(),
+		.bAllowWheel = bHovered && !Editor.IsGizmoDragging(),
 		.bForward    = ImGui::IsKeyDown(ImGuiKey_W),
 		.bBackward   = ImGui::IsKeyDown(ImGuiKey_S),
 		.bRight      = ImGui::IsKeyDown(ImGuiKey_D),
@@ -273,7 +296,7 @@ void FBlueprintViewportPanel::DrawContent()
 		.MouseY      = IO.MouseDelta.y,
 		.Wheel       = IO.MouseWheel * 120.0f,
 	};
-	Editor.SetViewportState(static_cast<uint32>(Size.x), static_cast<uint32>(Size.y), Input);
+	Editor.SetViewportState(static_cast<uint32>(Size.x), static_cast<uint32>(Size.y), Input, Pointer);
 }
 
 // ---------------- Details ----------------
