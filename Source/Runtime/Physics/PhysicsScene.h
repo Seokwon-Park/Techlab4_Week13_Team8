@@ -19,6 +19,9 @@ public:
 	FPhysicsScene(const FPhysicsScene&) = delete;
 	FPhysicsScene& operator=(const FPhysicsScene&) = delete;
 
+	// 월드에서 결정한 Z축 중력 적용
+	void SetGravityZ(float GravityZ);
+
 	// 월드 시간 누적과 고정 스텝 실행
 	void Tick(float DeltaSeconds);
 	void ResetStepTime() { AccumulatedSeconds = 0.0; }

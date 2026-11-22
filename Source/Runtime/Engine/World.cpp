@@ -50,6 +50,7 @@
 #include "Physics/PhysicsScene.h"
 #include "Components/ShapeComponent.h"
 #include "Particles/ParticleEventManager.h"
+#include "Physics/PhysicsSettings.h"
 
 namespace
 {
@@ -224,6 +225,10 @@ void UWorld::GameWorldTick(float DeltaTime)
 		// 프레임의 물리 결과 확정
 		if (PhysicsScene)
 		{
+			// 레벨 오버라이드 또는 프로젝트 기본 중력 선택
+			const float GravityZ = IsWorldGravityOverridden()
+				? GetWorldGravityZ() : FPhysicsSettings::Get().DefaultGravityZ;
+			PhysicsScene->SetGravityZ(GravityZ);
 			PhysicsScene->Tick(DeltaTime);
 		}
 		TickTaskManager.RunTickGroup(ETickingGroup::DuringPhysics, DeltaTime);

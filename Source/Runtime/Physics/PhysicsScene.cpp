@@ -45,6 +45,16 @@ FPhysicsScene::~FPhysicsScene()
 	}
 }
 
+void FPhysicsScene::SetGravityZ(float GravityZ)
+{
+	// 유효 중력이 바뀐 경우의 네이티브 씬 갱신
+	const physx::PxVec3 Gravity(0.0f, 0.0f, GravityZ);
+	if (Scene && Scene->getGravity() != Gravity)
+	{
+		Scene->setGravity(Gravity);
+	}
+}
+
 void FPhysicsScene::Tick(float DeltaSeconds)
 {
 	if (!Scene || DeltaSeconds <= 0.0f)
