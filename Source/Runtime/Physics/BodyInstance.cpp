@@ -2,6 +2,8 @@
 #include "Physics/BodyInstance.h"
 
 #include "Physics/BodySetup.h"
+#include "Physics/PhysicalMaterial.h"
+#include "Physics/PhysicsSettings.h"
 #include "Physics/PhysicsScene.h"
 #include "Physics/PhysXConversion.h"
 #include "Physics/PhysXSDK.h"
@@ -185,4 +187,100 @@ void FBodyInstance::TermBody()
 
     Scene = nullptr;
     OwnerComponent = nullptr;
+}
+
+FTransform FBodyInstance::GetWorldTransform() const
+{
+    // 월드 Transfrom 반환
+    return Actor ? P2UTransform(Actor->getGlobalPose()) : FTransform::Identity;
+}
+
+// 호출 즉시 이동
+void FBodyInstance::SetBodyTransform(const FTransform& InWorldTransform)
+{
+    const physx::PxTransform WorldPose = U2PTransform(InWorldTransform);
+    if (!Actor || !WorldPose.isValid())
+    {
+        return;
+    }
+
+    // 키네마틱 순간 이동 시 이전 목표 덮어쓰기
+    physx::PxRigidDynamic* DynamicActor = GetRigidDynamic();
+    if (DynamicActor &&
+        DynamicActor->getRigidBodyFlags().isSet(physx::PxRigidBodyFlag::eKINEMATIC) &&
+        !DynamicActor->getActorFlags().isSet(physx::PxActorFlag::eDISABLE_SIMULATION))
+    {
+        DynamicActor->setKinematicTarget(WorldPose);
+    }
+
+    // 현재 강체 자세의 즉시 변경
+    Actor->setGlobalPose(WorldPose);
+}
+
+// 동적 시뮬레이션 API
+void FBodyInstance::SetInstanceSimulatePhysics(bool bSimulate)
+{
+    physx::PxRigidDynamic* DynamicActor = GetRigidDynamic();
+    if (!DynamicActor || DynamicActor->getActorFlags().isSet(physx::PxActorFlag::eDISABLE_SIMULATION))
+    {
+        return;
+    }
+
+    // 요청 모드가 현재 모드와 같은 경우의 생략
+    const bool bKinematic = !bSimulate;
+    if (DynamicActor->getRigidBodyFlags().isSet(physx::PxRigidBodyFlag::eKINEMATIC) == bKinematic)
+    {
+        return;
+    }
+
+    DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, bKinematic);
+    if (bSimulate)
+    {
+        // 동적 전환 직후의 시뮬레이션 재개
+        DynamicActor->wakeUp();
+    }
+}
+
+void FBodyInstance::SetKinematicTarget(const FTransform& InWorldTransform)
+{
+    physx::PxRigidDynamic* DynamicActor = GetRigidDynamic();
+    if (!DynamicActor ||
+        !DynamicActor->getRigidBodyFlags().isSet(physx::PxRigidBodyFlag::eKINEMATIC) ||
+        DynamicActor->getActorFlags().isSet(physx::PxActorFlag::eDISABLE_SIMULATION))
+    {
+        return;
+    }
+
+    // 다음 물리 스텝에서 도달할 월드 자세 등록
+    const physx::PxTransform WorldPose = U2PTransform(InWorldTransform);
+    if (WorldPose.isValid())
+    {
+        DynamicActor->setKinematicTarget(WorldPose);
+    }
+}
+
+physx::PxRigidDynamic* FBodyInstance::GetRigidDynamic()
+{
+    // 액터가 Dynamic일시 반환
+    return Actor ? Actor->is<physx::PxRigidDynamic>() : nullptr;
+}
+
+// false는 대입, true는 가산
+void FBodyInstance::SetLinearVelocity(const FVector& NewVel, bool bAddToCurrent)
+{
+    physx::PxRigidDynamic* DynamicActor = GetRigidDynamic();
+    if (!DynamicActor ||
+        DynamicActor->getRigidBodyFlags().isSet(physx::PxRigidBodyFlag::eKINEMATIC) ||
+        DynamicActor->getActorFlags().isSet(physx::PxActorFlag::eDISABLE_SIMULATION))
+    {
+        return;
+    }
+
+    // 기존 속도 가산 또는 새 속도로 교체
+    const physx::PxVec3 Velocity = U2PVector(NewVel);
+    const physx::PxVec3 FinalVelocity = bAddToCurrent ? DynamicActor->getLinearVelocity() + Velocity : Velocity;
+    if (FinalVelocity.isFinite())
+    {
+        DynamicActor->setLinearVelocity(FinalVelocity);
+    }
 }
