@@ -19,10 +19,20 @@ FPhysicsScene::FPhysicsScene()
 		return;
 	}
 
+	// 프로젝트 기본 중력과 PCM 설정의 씬 적용
+	const FPhysicsSettings& Settings = FPhysicsSettings::Get();
 	physx::PxSceneDesc Desc(Physics->getTolerancesScale());
-	Desc.gravity = physx::PxVec3(0.0f, 0.0f, -9.81f);
+	Desc.gravity = physx::PxVec3(0.0f, 0.0f, Settings.DefaultGravityZ);
 	Desc.cpuDispatcher = Dispatcher;
 	Desc.filterShader = physx::PxDefaultSimulationFilterShader;
+	if (Settings.bEnablePCM)
+	{
+		Desc.flags |= physx::PxSceneFlag::eENABLE_PCM;
+	}
+	else
+	{
+		Desc.flags.clear(physx::PxSceneFlag::eENABLE_PCM);
+	}
 	Scene = Physics->createScene(Desc);
 }
 

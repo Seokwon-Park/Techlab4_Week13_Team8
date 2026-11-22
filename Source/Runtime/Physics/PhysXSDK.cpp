@@ -1,6 +1,6 @@
 #include "EnginePCH.h"
 #include "Physics/PhysXSDK.h"
-
+#include "Physics/PhysicsSettings.h"
 #include "Core/EngineLog.h"
 
 #include <PxFoundation.h>
@@ -57,8 +57,8 @@ namespace PhysXSDK
 			return false;
 		}
 
-		// 메인 스레드 실행을 위한 워커 0개 설정
-		GCpuDispatcher = physx::PxDefaultCpuDispatcherCreate(0);
+		// 프로젝트 워커 수에 따른 CPU 디스패처 생성. 기본 0개
+		GCpuDispatcher = physx::PxDefaultCpuDispatcherCreate(FPhysicsSettings::Get().CpuDispatcherWorkerCount);
 		if (!GCpuDispatcher)
 		{
 			HTR_LOG(Error, "PxDefaultCpuDispatcherCreate failed");
