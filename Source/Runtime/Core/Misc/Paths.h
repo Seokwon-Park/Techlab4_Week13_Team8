@@ -4,6 +4,7 @@
 
 #include "Core/EngineString.h"
 #include "Core/Types.h"
+#include "Containers/Array.h"
 
 // UE의 FPaths처럼 엔진 폴더와 프로젝트 폴더를 나눠서 다룬다.
 // 엔진 폴더: Resources(셰이더, 스플래시)와 Intermediate(셰이더 캐시)가 있는 곳.
@@ -15,8 +16,15 @@ class FPaths
 public:
 	static constexpr const wchar_t* ProjectExtension = L".hproject";
 
-	// exe 위치에서 위로 올라가며 Resources/Shader가 있는 폴더를 찾아 엔진 폴더로 정한다.
-	static bool InitEngineDir();
+	// 엔진 폴더를 찾는다. 차례로 본다:
+	//   1. exe 위치에서 위로 올라가며 Resources/Shader가 있는 폴더 (엔진 폴더 안의 exe, 패키지된 게임)
+	//   2. 빌드할 때 정해진 엔진 폴더 (HITORI_ENGINE_DIR. 프로젝트 폴더에서 빌드한 <Name>Editor.exe 등)
+	//   3. ProjectFileHint(또는 빌드 때 정해진 프로젝트 파일)의 EngineDir
+	//   4. 작업 디렉터리
+	static bool InitEngineDir(const std::filesystem::path& ProjectFileHint = {});
+
+	// 빌드할 때 정해진 프로젝트 파일 (프로젝트 솔루션에서 빌드한 exe만). 없으면 빈 경로.
+	static std::filesystem::path BuiltProjectFile();
 
 	static const std::filesystem::path& EngineDir();
 	static const std::filesystem::path& ProjectDir();
@@ -54,13 +62,24 @@ public:
 };
 
 // .hproject 파일 내용. JSON 형식이다.
+// v1: Name, Description
+// v2: + Modules (C++ 모듈 이름 목록, 각 모듈은 Source/<모듈>), EngineDir (이 프로젝트를 만든 엔진 폴더)
 struct FProjectDescriptor
 {
-	static constexpr int32 CurrentFileVersion = 1;
+	static constexpr int32 CurrentFileVersion = 2;
 
 	int32 FileVersion = CurrentFileVersion;
 	FString Name;
 	FString Description;
+	// 비어 있으면 코드 없는 프로젝트다. 엔진 폴더의 HitoriEditor.exe로 연다.
+	// 있으면 프로젝트 솔루션에서 빌드한 <Name>Editor.exe로 연다.
+	TArray<FString> Modules;
+	// 엔진 폴더. 절대 경로이거나 .hproject 폴더 기준 상대 경로. 비어 있으면 모른다는 뜻.
+	FString EngineDir;
+
+	bool HasCode() const { return !Modules.IsEmpty(); }
+	// EngineDir를 절대 경로로 푼다. 비어 있으면 빈 경로.
+	std::filesystem::path ResolveEngineDir(const std::filesystem::path& ProjectFile) const;
 
 	bool Load(const std::filesystem::path& File, FString* OutError = nullptr);
 	bool Save(const std::filesystem::path& File) const;

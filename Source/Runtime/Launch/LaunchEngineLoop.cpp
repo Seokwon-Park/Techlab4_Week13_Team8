@@ -64,13 +64,15 @@ namespace
 	// 엔진 폴더와 프로젝트를 정하고 작업 디렉터리를 프로젝트 폴더로 옮긴다.
 	bool InitProjectPaths(HINSTANCE hInstance)
 	{
-		if (!FPaths::InitEngineDir())
+		// 엔진 폴더 밖에서 빌드된 exe(프로젝트의 <Name>Editor.exe 등)는 커맨드라인 프로젝트의 EngineDir로도 엔진을 찾는다.
+		const std::filesystem::path CommandLineProject = FindProjectInCommandLine();
+		if (!FPaths::InitEngineDir(CommandLineProject))
 		{
 			MessageBoxW(nullptr, L"Cannot find the engine folder (Resources/Shader).", L"Hitori", MB_OK | MB_ICONERROR);
 			return false;
 		}
 
-		const std::filesystem::path ProjectFile = ResolveProjectFile(hInstance, FindProjectInCommandLine());
+		const std::filesystem::path ProjectFile = ResolveProjectFile(hInstance, CommandLineProject);
 		if (ProjectFile.empty()) return false;
 
 		FString Error;
