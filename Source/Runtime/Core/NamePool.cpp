@@ -42,6 +42,11 @@ namespace UE::Core::Private
 				return;
 		}
 
+		// UE ParseNumberFromName과 같이 0으로 시작하는 두 자리 이상("spine_01")은 번호로 보지 않는다.
+		// 번호로 쪼개면 ToString이 "spine_1"이 되어 원래 이름을 잃는다
+		if (NumberString.size() > 1 && NumberString[0] == '0')
+			return;
+
 		// 4. 숫자로 변환한 뒤 1 크게 저장.
 		int32 ExternalNumber = std::stoi(NumberString);
 

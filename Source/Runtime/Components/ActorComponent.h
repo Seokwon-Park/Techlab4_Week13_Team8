@@ -69,6 +69,8 @@ public:
 
 	void CreatePhysicsState();
 	void DestroyPhysicsState();
+	// UE UActorComponent::RecreatePhysicsState. 등록 후 프로퍼티(Transform, bSimulatePhysics 등)가 바뀌었을 때 바디를 다시 만든다
+	void RecreatePhysicsState();
 
 	UWorld* GetWorld() const { return WorldPrivate; }
 protected:

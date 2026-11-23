@@ -72,4 +72,7 @@ private:
 
 	// 액터 사용자 데이터의 소유 컴포넌트 조회
 	UPrimitiveComponent* FindHitComponent(const physx::PxRigidActor* Actor) const;
+
+	// UE FPhysScene_PhysX::SyncComponentsToBodies. 이번 스텝에 움직인 액터의 컴포넌트를 바디 위치로 옮긴다
+	void SyncComponentsToBodies();
 };

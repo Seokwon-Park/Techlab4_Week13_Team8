@@ -153,6 +153,13 @@ void UActorComponent::DestroyPhysicsState()
 	}
 }
 
+void UActorComponent::RecreatePhysicsState()
+{
+	DestroyPhysicsState();
+	if (IsRegistered())
+		CreatePhysicsState();
+}
+
 void UActorComponent::OnRegister()
 {
 	bRegistered = true;

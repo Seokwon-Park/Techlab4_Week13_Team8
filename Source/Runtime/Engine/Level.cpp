@@ -141,6 +141,11 @@ void ULevel::Serialize(FStructuredArchive::FRecord Record)
 				HTR_LOG(Warning, "Load: {} was a blueprint instance; its overrides could not be applied", ActorName);
 			else
 				Actor->Serialize(ActorRecord);
+
+			// SpawnActor가 기본값(원점, bSimulatePhysics=false)으로 등록할 때 만든 바디를 저장된 값으로 다시 만든다.
+			// UE는 로드가 끝난 뒤에 컴포넌트를 등록하므로 이 문제가 없다
+			for (UActorComponent* Component : Actor->GetComponents())
+				if (Component) Component->RecreatePhysicsState();
 		}
 	}
 

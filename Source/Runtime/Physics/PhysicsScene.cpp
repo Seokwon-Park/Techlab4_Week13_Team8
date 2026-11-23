@@ -8,6 +8,7 @@
 #include "Physics/CollisionQueryFilterCallback.h"
 #include "Physics/BodyInstance.h"
 #include "Physics/PhysXConversion.h"
+#include "Components/PrimitiveComponent.h"
 
 #include <cmath>
 #include <limits>
@@ -33,6 +34,7 @@ FPhysicsScene::FPhysicsScene()
 	Desc.gravity = physx::PxVec3(0.0f, 0.0f, Settings.DefaultGravityZ);
 	Desc.cpuDispatcher = Dispatcher;
 	Desc.filterShader = physx::PxDefaultSimulationFilterShader;
+	Desc.flags |= physx::PxSceneFlag::eENABLE_ACTIVE_ACTORS;   // SyncComponentsToBodies가 움직인 액터만 받는다
 	if (Settings.bEnablePCM)
 	{
 		Desc.flags |= physx::PxSceneFlag::eENABLE_PCM;
@@ -90,6 +92,7 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 			ResetStepTime();
 			return;
 		}
+		SyncComponentsToBodies();
 
 		// 완료된 스텝의 시간 차감과 결과 전달
 		AccumulatedSeconds -= FixedStepSeconds;
@@ -230,4 +233,17 @@ bool FPhysicsScene::QuerySingle(const FRay& WorldRay, float MaxDistance,
 	}
 	OutHit.HitComponent = FindHitComponent(Hit.actor);
 	return true;
+}
+
+void FPhysicsScene::SyncComponentsToBodies()
+{
+	// fetchResults 직후에만 유효한 목록. 다음 simulate 전에 다 읽는다
+	physx::PxU32 NumActors = 0;
+	physx::PxActor** Actors = Scene->getActiveActors(NumActors);
+	for (physx::PxU32 i = 0; i < NumActors; ++i)
+	{
+		const auto* Body = static_cast<const FBodyInstance*>(Actors[i]->userData);
+		if (Body && Body->OwnerComponent)
+			Body->OwnerComponent->SyncComponentToRBPhysics();   // 시뮬레이션 중이 아니면 안에서 바로 return
+	}
 }
