@@ -201,7 +201,7 @@ void FLineBatcher::AddCapsule(const FVector& Center, const FVector& Up, const FV
 }
 
 void FLineBatcher::AddSwingCone(const FVector& Apex, const FVector& Axis, const FVector& Right,
-	float Swing1Rad, float Swing2Rad, float Length, const FVector4& Color, int32 Segments)
+	float Swing1Radian, float Swing2Radian, float Length, const FVector4& Color, int32 Segments)
 {
 	if (Length <= 0.0f || Segments < 3)
 	{
@@ -211,7 +211,7 @@ void FLineBatcher::AddSwingCone(const FVector& Apex, const FVector& Axis, const 
 	const FVector Up2 = Axis.Cross(Right).GetSafeNormal();
 
 	// 두 각이 모두 0이면 축 방향 선 하나만 그린다.
-	if (Swing1Rad <= 0.0f && Swing2Rad <= 0.0f)
+	if (Swing1Radian <= 0.0f && Swing2Radian <= 0.0f)
 	{
 		AddLine(Apex, Apex + Axis * Length, Color);
 		return;
@@ -220,7 +220,7 @@ void FLineBatcher::AddSwingCone(const FVector& Apex, const FVector& Axis, const 
 	// 고리 위의 점: Axis를 W 방향으로 |W|만큼 기울인 끝점
 	auto PointAt = [&](float T)
 	{
-		const FVector W = Right * (Swing1Rad * std::cos(T)) + Up2 * (Swing2Rad * std::sin(T));
+		const FVector W = Right * (Swing1Radian * std::cos(T)) + Up2 * (Swing2Radian * std::sin(T));
 		const float Theta = W.Length();
 		if (Theta < 1e-6f)
 		{
@@ -289,7 +289,7 @@ void FLineBatcher::AddConvex(const TArray<FVector>& LocalVertices, const TArray<
 }
 
 void FLineBatcher::AddTwistArc(const FVector& Center, const FVector& Axis, const FVector& Ref,
-	float LimitRad, float Radius, const FVector4& Color, int32 Segments)
+	float LimitRadian, float Radius, const FVector4& Color, int32 Segments)
 {
 	if (Radius <= 0.0f)
 	{
@@ -300,34 +300,34 @@ void FLineBatcher::AddTwistArc(const FVector& Center, const FVector& Axis, const
 
 	AddLine(Center, Center + Ref * Radius, Color);
 
-	if (LimitRad <= 0.0f)
+	if (LimitRadian <= 0.0f)
 	{
 		return;
 	}
 
-	if (LimitRad >= PI)
+	if (LimitRadian >= PI)
 	{
 		AddWireArc(Center, Ref, Up2, Radius, -PI, PI, Color, Segments);
 		return;
 	}
 
 	// 부채꼴: 호 + 양 끝 반지름 선
-	AddWireArc(Center, Ref, Up2, Radius, -LimitRad, LimitRad, Color, Segments);
-	const FVector EndPlus = Center + (Ref * std::cos(LimitRad) + Up2 * std::sin(LimitRad)) * Radius;
-	const FVector EndMinus = Center + (Ref * std::cos(LimitRad) - Up2 * std::sin(LimitRad)) * Radius;
+	AddWireArc(Center, Ref, Up2, Radius, -LimitRadian, LimitRadian, Color, Segments);
+	const FVector EndPlus = Center + (Ref * std::cos(LimitRadian) + Up2 * std::sin(LimitRadian)) * Radius;
+	const FVector EndMinus = Center + (Ref * std::cos(LimitRadian) - Up2 * std::sin(LimitRadian)) * Radius;
 	AddLine(Center, EndPlus, Color);
 	AddLine(Center, EndMinus, Color);
 }
 
 
 void FLineBatcher::AddWireArc(const FVector& Center, const FVector& AxisA, const FVector& AxisB,
-	float Radius, float StartRad, float EndRad, const FVector4& Color, int32 Segments)
+	float Radius, float StartRadian, float EndRadian, const FVector4& Color, int32 Segments)
 {
 	auto PointAt = [&](float T) { return Center + AxisA * (std::cos(T) * Radius) + AxisB * (std::sin(T) * Radius); };
-	FVector Prev = PointAt(StartRad);
+	FVector Prev = PointAt(StartRadian);
 	for (int32 i = 1; i <= Segments; ++i)
 	{
-		const FVector P = PointAt(StartRad + (EndRad - StartRad) * i / Segments);
+		const FVector P = PointAt(StartRadian + (EndRadian - StartRadian) * i / Segments);
 		AddLine(Prev, P, Color);
 		Prev = P;
 	}

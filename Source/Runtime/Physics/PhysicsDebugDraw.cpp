@@ -9,6 +9,24 @@
 
 #include "PhysicsDebugDraw.h"
 #include "AggregateGeom.h"
+#include "ConstraintInstance.h"
+
+namespace
+{
+	float GetLimitRadian(float LimitDegrees, EAngularConstraintMotion Motion)
+	{
+		switch (Motion)
+		{
+		case ACM_Locked:
+			return 0.0f;
+		case ACM_Free:
+			return PI;
+		case ACM_Limited:
+		default:
+			return FMath::DegreesToRadians(std::clamp(LimitDegrees, 0.0f, 180.0f));
+		}
+	}
+}
 
 
 void FPhysicsDebugDraw::DrawAggregateGeom(FLineBatcher* LineBatcher, const FKAggregateGeom& Geom,
@@ -91,24 +109,7 @@ void FPhysicsDebugDraw::DrawPhysicsBodies(UWorld* World, FLineBatcher* LineBatch
 			continue;
 		}
 
-		 //TODO(B): USkeletalMesh::PhysicsAsset, UBodySetup이 들어오면 아래 주석을 푼다
-		 //const USkeletalMesh* Mesh = Component->GetSkeletalMesh();
-		 //const UPhysicsAsset* PhysicsAsset = Mesh ? Mesh->PhysicsAsset : nullptr;
-		 //if (!PhysicsAsset)
-		 //{
-		 //	continue;
-		 //}
-		
-		 //const FVector4& Color = PickBodyColor(Component, Selected);
-		 //for (const UBodySetup* BodySetup : PhysicsAsset->BodySetup)
-		 //{
-		 //	FTransform BoneWorld;
-		 //	if (!BodySetup || !GetBoneWorldTransform(Component, BodySetup->BoneName, BoneWorld))
-		 //	{
-		 //		continue;
-		 //	}
-		 //	DrawAggregateGeom(LineBatcher, BodySetup->AggGeom, BoneWorld, Color);
-		 //}
+		 //TODO(B): USkeletalMesh::PhysicsAsset, UBodySetup이 들어오면 구현
 	}
 }
 
@@ -189,4 +190,66 @@ void FPhysicsDebugDraw::DrawConvexElem(FLineBatcher* LineBatcher, const FKConvex
 	}
 
 	LineBatcher->AddConvex(Vertices, Indices, ElemWorld, Color);
+}
+
+void FPhysicsDebugDraw::DrawConstraintLimit(FLineBatcher* LineBatcher, const FConstraintInstance& Constraint,
+	const FMatrix& JointWorld, bool bSelected) const
+{
+	if (!LineBatcher)
+	{
+		return;
+	}
+
+	const FVector Origin(JointWorld.M[3][0], JointWorld.M[3][1], JointWorld.M[3][2]);
+	const FVector AxisX = FVector(JointWorld.M[0][0], JointWorld.M[0][1], JointWorld.M[0][2]).GetSafeNormal();
+	const FVector AxisY = FVector(JointWorld.M[1][0], JointWorld.M[1][1], JointWorld.M[1][2]).GetSafeNormal();
+
+	const FConeConstraint& Cone = Constraint.ProfileInstance.ConeLimit;
+	const FTwistConstraint& Twist = Constraint.ProfileInstance.TwistLimit;
+	const float Swing1Radian = GetLimitRadian(Cone.Swing1LimitDegrees, Cone.Swing1Motion);
+	const float Swing2Radian = GetLimitRadian(Cone.Swing2LimitDegrees, Cone.Swing2Motion);
+	const float TwistRadian = GetLimitRadian(Twist.TwistLimitDegrees, Twist.TwistMotion);
+
+	const FVector4& ConeColor = bSelected ? SelectedConstraintColor : SwingColor;
+	const FVector4& ArcColor = bSelected ? SelectedConstraintColor : TwistColor;
+
+	// Swing: 둘 다 Locked면 안 그림, 둘 다 Free면 구, 그 외 원뿔
+	const bool bLockAllSwing = Cone.Swing1Motion == ACM_Locked && Cone.Swing2Motion == ACM_Locked;
+	const bool bFreeAllSwing = Cone.Swing1Motion == ACM_Free && Cone.Swing2Motion == ACM_Free;
+	if (!bLockAllSwing)
+	{
+		if (bFreeAllSwing)
+		{
+			LineBatcher->AddSphere(Origin, ConstraintDrawSize * 0.9f, ConeColor);
+		}
+		else
+		{
+			LineBatcher->AddSwingCone(Origin, AxisX, AxisY, Swing1Radian, Swing2Radian, ConstraintDrawSize, ConeColor);
+		}
+	}
+
+	// Twist: Locked면 안 그림, Free면 원 전체(PI), Limited면 ±각도 부채꼴
+	if (Twist.TwistMotion != ACM_Locked)
+	{
+		LineBatcher->AddTwistArc(Origin, AxisX, AxisY, TwistRadian, ConstraintDrawSize, ArcColor);
+	}
+}
+
+void FPhysicsDebugDraw::DrawConstraintLimits(UWorld* World, FLineBatcher* LineBatcher, const AActor* Selected)
+{
+	if (!World || !LineBatcher)
+	{
+		return;
+	}
+
+	for (TObjectIterator<USkeletalMeshComponent> It; It; ++It)
+	{
+		USkeletalMeshComponent* Component = *It;
+		if (!ShouldDrawComponent(Component, World))
+		{
+			continue;
+		}
+
+		// TODO(B): USkeletalMesh::PhysicsAsset이 들어오면 구현
+	}
 }
