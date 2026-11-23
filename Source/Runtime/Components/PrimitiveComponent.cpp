@@ -4,9 +4,11 @@
 #include "Asset/AssetManager.h"
 #include "Render/RenderCommand.h"
 
-
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Engine/Scene.h"
+#include "Physics/BodySetup.h"
+
+#include "Physics/PhysicsScene.h"
 #include "Engine/World.h"
 
 namespace
@@ -49,6 +51,20 @@ void UPrimitiveComponent::BeginPlay()
 	Super::BeginPlay();
 }
 
+void UPrimitiveComponent::SetSimulatePhysics(bool bSimulate)
+{
+	bSimulatePhysics = bSimulate;
+	BodyInstance.SetInstanceSimulatePhysics(bSimulate);
+}
+
+void UPrimitiveComponent::SyncComponentToRBPhysics()
+{
+	if (!bSimulatePhysics || !BodyInstance.IsValidBodyInstance()) return;
+	FTransform T = BodyInstance.GetWorldTransform();
+	T.Scale = FTransform::FromMatrix(GetWorldMatrix()).Scale;
+	SetWorldTransform(T.GetLocalMatrix(), false);
+}
+
 void UPrimitiveComponent::OnUnregister()
 {
 	Super::OnUnregister();
@@ -60,7 +76,6 @@ void UPrimitiveComponent::OnUnregister()
 		if (Other) Other->EndComponentOverlap(this);
 	}
 }
-
 
 void UPrimitiveComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext)
 {
@@ -109,6 +124,9 @@ void UPrimitiveComponent::PostEditChangeProperty(const FProperty& Property)
 	{
 		MarkRenderStateDirty();
 	}
+
+	if (Property.Name == "bSimulatePhysics")
+		SetSimulatePhysics(bSimulatePhysics);
 }
 
 void UPrimitiveComponent::SetCastShadow(bool NewValue)
@@ -137,6 +155,32 @@ void UPrimitiveComponent::DestroyRenderState()
 {
 	GetWorld()->GetScene().RemovePrimitive(this);
 	Super::DestroyRenderState();
+}
+
+bool UPrimitiveComponent::ShouldCreatePhysicsState() const
+{
+	return GetWorld() && GetWorld()->GetPhysicsScene();
+}
+
+void UPrimitiveComponent::OnCreatePhysicsState()
+{
+	Super::OnCreatePhysicsState();
+	UBodySetup* Setup = GetBodySetup();
+	if (!Setup || Setup->AggGeom.GetElementCount() == 0) return;
+	const EPhysicsBodyType Type = bSimulatePhysics ? EPhysicsBodyType::Dynamic : EPhysicsBodyType::Kinematic;
+
+	FPhysicsScene* Scene = GetWorld()->GetPhysicsScene();
+	if (!BodyInstance.InitBody(*Setup, FTransform::FromMatrix(GetWorldMatrix()), this, *GetWorld()->GetPhysicsScene(), Type))
+	{
+		HTR_LOG(Warning, "InitBody failed: {} (non-uniform scale or invalid shape?)", GetClass()->Name);
+		return;
+	}
+}
+
+void UPrimitiveComponent::OnDestroyPhysicsState()
+{
+	BodyInstance.TermBody();
+	Super::OnDestroyPhysicsState();
 }
 
 bool UPrimitiveComponent::TraceMesh(const FRay& WorldRay, const FStaticMeshData& Mesh, const FMatrix& WorldMatrix, FHitResult& OutResult)

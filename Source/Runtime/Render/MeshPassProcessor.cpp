@@ -24,6 +24,24 @@ namespace
 		}
 	}
 
+	bool NeedsSRGBDecode(UTexture2D* Texture)
+	{
+		if (!Texture || !Texture->GetResource()) return false;
+		switch (Texture->GetResource()->GetFormat())
+		{
+		case DXGI_FORMAT_R8G8B8A8_UNORM:
+		case DXGI_FORMAT_B8G8R8A8_UNORM:
+		case DXGI_FORMAT_B8G8R8X8_UNORM:
+		case DXGI_FORMAT_BC1_UNORM:
+		case DXGI_FORMAT_BC2_UNORM:
+		case DXGI_FORMAT_BC3_UNORM:
+		case DXGI_FORMAT_BC7_UNORM:
+			return true;
+		default:
+			return false;
+		}
+	}
+
 	const FMatrix& PacketWorld(const FRenderPacket& Packet)
 	{
 		if (Packet.Proxy) return Packet.Proxy->GetLocalToWorld();
@@ -97,8 +115,16 @@ namespace
 				FStaticMeshMaterialParams Params{};
 				Params.BaseColor = Material->BaseColor;
 				Params.UVOffset = Material->UVScrollSpeed * EngineTimer::GetTotalTime();
-				Params.TextureFlags.X = GetNormalEncoding(Material->Textures.Num() > 1 ? Material->Textures[1] : nullptr);
-				Params.TextureFlags.Y = Material->bFlipNormalY ? 1.0f : 0.0f;
+				if (Material->PSOType == EPSOType::StaticMesh_Translucent)
+				{
+					UTexture2D* Color = Material->Textures.IsEmpty() ? nullptr : Material->Textures[0];
+					Params.TextureFlags.X = Pass == EMeshPassType::TranslucentBeforeDOF && NeedsSRGBDecode(Color) ? 1.0f : 0.0f;
+				}
+				else
+				{
+					Params.TextureFlags.X = GetNormalEncoding(Material->Textures.Num() > 1 ? Material->Textures[1] : nullptr);
+					Params.TextureFlags.Y = Material->bFlipNormalY ? 1.0f : 0.0f;
+				}
 				std::memcpy(Batch.MaterialData.data(), &Params, sizeof(Params));
 				Batch.MaterialDataSize = sizeof(Params);
 			}
@@ -225,7 +251,10 @@ bool FMeshPassProcessor::Build(const FSceneView& View, const FRenderQueue& Queue
 	TArray<FMeshDrawBatch>& Out, ELightingModel LightingModel) const
 {
 	Out.Reset();
-	if (Pass != EMeshPassType::Translucent && SceneData)
+	const bool bBeforeDOF = Pass == EMeshPassType::TranslucentBeforeDOF;
+	const bool bAfterDOF = Pass == EMeshPassType::TranslucentAfterDOF;
+	const bool bTranslucentPass = Pass == EMeshPassType::Translucent || bBeforeDOF || bAfterDOF;
+	if (!bTranslucentPass && SceneData)
 	{
 		TArray<const FStaticDrawGroup*> Groups;
 		for (const FSceneRenderData::FGatherChunk& Chunk : SceneData->GatherChunks)
@@ -250,12 +279,17 @@ bool FMeshPassProcessor::Build(const FSceneView& View, const FRenderQueue& Queue
 			Out.Add(std::move(Batch));
 		}
 	}
-	const uint32 Begin = Pass == EMeshPassType::Translucent ? Queue.GetFirstTranslucentIndex() : 0;
-	const uint32 End = Pass == EMeshPassType::Translucent ? Queue.Num() : Queue.GetFirstTranslucentIndex();
+	const uint32 Begin = bTranslucentPass ? Queue.GetFirstTranslucentIndex() : 0;
+	const uint32 End = bTranslucentPass ? Queue.Num() : Queue.GetFirstTranslucentIndex();
 	Out.Reserve(Out.Num() + End - Begin);
 	for (uint32 Index = Begin; Index < End; ++Index)
 	{
 		const FRenderPacket& Packet = Queue[Index];
+		if (bBeforeDOF || bAfterDOF)
+		{
+			const bool bMaterialBeforeDOF = Packet.Material && Packet.Material->ShouldRenderBeforeDOF();
+			if (bMaterialBeforeDOF != bBeforeDOF) continue;
+		}
 		if (Pass == EMeshPassType::WorldNormal &&
 			(!Packet.Material || Packet.Material->PSOType != EPSOType::StaticMesh_Opaque)) continue;
 		FMeshDrawBatch Batch;

@@ -50,7 +50,7 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
     const float StaticFriction = PhysMaterial ? PhysMaterial->StaticFriction : InBodySetup.Friction;
     const float DynamicFriction = PhysMaterial ? PhysMaterial->Friction : InBodySetup.Friction;
     const float Restitution = PhysMaterial ? PhysMaterial->Restitution : InBodySetup.Restitution;
-    if (Geom.GetelementCount() == 0 || Geom.ConvexElems.Num() > 0 ||
+    if (Geom.GetElementCount() == 0 || Geom.ConvexElems.Num() > 0 ||
         !std::isfinite(StaticFriction) || StaticFriction < 0.0f ||
         !std::isfinite(DynamicFriction) || DynamicFriction < 0.0f ||
         !(Restitution >= 0.0f && Restitution <= 1.0f))

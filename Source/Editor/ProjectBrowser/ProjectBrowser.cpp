@@ -16,6 +16,7 @@
 #include "Core/Misc/Paths.h"
 #include "Core/Window.h"
 #include "Editor/EditorUI/EditorTitleBar.h"
+#include "Editor/ProjectBrowser/ProjectCode.h"
 #include "Render/ImageLoader.h"
 
 #pragma comment(lib, "d3d11.lib")
@@ -113,7 +114,7 @@ void RecentProjects::Remove(const fs::path& ProjectFile)
 
 namespace
 {
-	FString MakeDefaultGameIni(const FString& Name)
+	FString MakeDefaultGameIni(const FString& Name, const FString& DefaultGameMode)
 	{
 		return
 			"; HitoriGame 실행 설정. 프로젝트 폴더의 Config에서 읽는다.\n"
@@ -122,6 +123,8 @@ namespace
 			"[Game]\n"
 			"; 시작할 씬. 프로젝트 폴더 기준 상대 경로. 에디터에서 이 경로로 씬을 저장한다.\n"
 			"GameDefaultMap=Scenes/Main.scene\n"
+			"; 씬의 GameMode Override가 비어 있을 때 쓸 GameMode 클래스. 비워 두면 AGameModeBase\n"
+			"GlobalDefaultGameMode=" + DefaultGameMode + "\n"
 			"; 비워 두면 하늘을 그리지 않는다\n"
 			"SkyPanorama=\n"
 			"\n"
@@ -134,8 +137,12 @@ namespace
 	}
 }
 
-FString ProjectCreator::ValidateName(const FString& Name)
+FString ProjectCreator::ValidateName(const FString& Name, EProjectTemplate Template)
 {
+	if (Template == EProjectTemplate::Cpp && !Name.empty() && Name.size() <= 32)
+	{
+		if (FString CppError = ProjectCode::ValidateModuleName(Name); !CppError.empty()) return CppError;
+	}
 	if (Name.empty()) return "Enter a project name.";
 	if (Name.size() > 32) return "Project name must be 32 characters or fewer.";
 	if (!std::isalpha(static_cast<unsigned char>(Name[0]))) return "Project name must start with a letter.";
@@ -148,9 +155,10 @@ FString ProjectCreator::ValidateName(const FString& Name)
 	return {};
 }
 
-bool ProjectCreator::Create(const FString& Name, const fs::path& ParentDir, fs::path& OutProjectFile, FString& OutError)
+bool ProjectCreator::Create(const FString& Name, const fs::path& ParentDir, fs::path& OutProjectFile, FString& OutError,
+	EProjectTemplate Template)
 {
-	OutError = ValidateName(Name);
+	OutError = ValidateName(Name, Template);
 	if (!OutError.empty()) return false;
 
 	std::error_code Ec;
@@ -179,18 +187,39 @@ bool ProjectCreator::Create(const FString& Name, const fs::path& ParentDir, fs::
 
 	// 아이콘, 폰트, Lua 템플릿 같은 엔진용 파일은 엔진 콘텐츠(Engine/...)에서 바로 읽으므로 복사하지 않는다.
 
+	const bool bCpp = Template == EProjectTemplate::Cpp;
+	if (bCpp && !ProjectCode::WriteModuleTemplate(ProjectDir, Name, OutError)) return false;
+
 	{
 		std::ofstream Ini(ProjectDir / L"Config" / L"DefaultGame.ini");
-		Ini << MakeDefaultGameIni(Name);
+		Ini << MakeDefaultGameIni(Name, bCpp ? ProjectCode::SampleGameModeClass(Name) : FString());
 	}
 
 	FProjectDescriptor Descriptor;
 	Descriptor.Name = Name;
+	if (bCpp)
+	{
+		// 모듈 이름은 프로젝트 이름과 같다 (UE의 기본 게임 모듈).
+		Descriptor.Modules.Add(Name);
+		// 프로젝트 솔루션이 이 엔진을 쓴다. 엔진 폴더 밖에서 빌드한 exe가 엔진을 찾는 데도 쓴다.
+		Descriptor.EngineDir = FPaths::ToUtf8(FPaths::EngineDir());
+	}
 	OutProjectFile = ProjectDir / (FPaths::FromUtf8(Name).native() + FPaths::ProjectExtension);
 	if (!Descriptor.Save(OutProjectFile))
 	{
 		OutError = "Cannot write project file: " + FPaths::ToUtf8(OutProjectFile);
 		return false;
+	}
+
+	if (bCpp)
+	{
+		FString Log;
+		if (!ProjectCode::GenerateProjectFiles(OutProjectFile, Log, OutError))
+		{
+			HTR_LOG(Error, "GenerateProjectFiles output:\n{}", Log);
+			OutError += " The project was created; run Setup/GenerateProjectFiles.bat on it after fixing the problem.";
+			return false;
+		}
 	}
 	return true;
 }
@@ -345,6 +374,7 @@ namespace
 		TArray<fs::path> Recent;
 		int32 SelectedRecent = -1;
 		char NameBuffer[64] = {};
+		EProjectTemplate Template = EProjectTemplate::Blank;
 		char LocationBuffer[1024] = {};
 		FString Error;
 		fs::path Chosen;
@@ -426,6 +456,13 @@ namespace
 			ImGui::BeginChild("Create", ImVec2(0, Height), ImGuiChildFlags_Borders);
 			ImGui::SeparatorText("New Project");
 
+			// UE의 Blueprint / C++ 선택
+			ImGui::TextUnformatted("Template");
+			if (ImGui::RadioButton("Blank", Template == EProjectTemplate::Blank)) Template = EProjectTemplate::Blank;
+			ImGui::SameLine();
+			if (ImGui::RadioButton("C++", Template == EProjectTemplate::Cpp)) Template = EProjectTemplate::Cpp;
+
+			ImGui::Spacing();
 			ImGui::TextUnformatted("Name");
 			ImGui::SetNextItemWidth(-FLT_MIN);
 			ImGui::InputText("##Name", NameBuffer, sizeof(NameBuffer));
@@ -444,7 +481,7 @@ namespace
 
 			const FString Name = NameBuffer;
 			const fs::path Location = FPaths::FromUtf8(LocationBuffer);
-			const FString NameError = ProjectCreator::ValidateName(Name);
+			const FString NameError = ProjectCreator::ValidateName(Name, Template);
 
 			ImGui::Spacing();
 			ImGui::TextDisabled("Project file");
@@ -459,7 +496,10 @@ namespace
 			}
 
 			ImGui::Spacing();
-			ImGui::TextDisabled("Creates Assets, Scenes, Scripts and Config folders.\nEngine icons and fonts are shared from the engine folder.");
+			if (Template == EProjectTemplate::Cpp)
+				ImGui::TextDisabled("Also creates Source/<Name> with a sample GameMode and\n<Name>.slnx. Build <Name>Editor in Visual Studio to open it.");
+			else
+				ImGui::TextDisabled("Creates Assets, Scenes, Scripts and Config folders.\nEngine icons and fonts are shared from the engine folder.");
 
 			ImGui::SetCursorPosY(ImGui::GetWindowHeight() - ImGui::GetFrameHeightWithSpacing() - ImGui::GetStyle().WindowPadding.y);
 			ImGui::BeginDisabled(!NameError.empty() || Location.empty());
@@ -469,7 +509,7 @@ namespace
 				fs::create_directories(Location, Ec);
 				fs::path ProjectFile;
 				FString CreateError;
-				if (ProjectCreator::Create(Name, Location, ProjectFile, CreateError))
+				if (ProjectCreator::Create(Name, Location, ProjectFile, CreateError, Template))
 					Chosen = ProjectFile;
 				else
 					Error = CreateError;

@@ -32,8 +32,11 @@ std::filesystem::path ResolveProjectFile(HINSTANCE hInstance, const std::filesys
 	(void)hInstance;
 	return FromCommandLine.empty() ? FPaths::FindProjectFileIn(FPaths::EngineDir()) : FromCommandLine;
 #else
-	// 커맨드라인으로 받지 않았으면 UE처럼 프로젝트 브라우저에서 고르거나 새로 만든다.
-	const std::filesystem::path ProjectFile = FromCommandLine.empty() ? ProjectBrowser::Run(hInstance) : FromCommandLine;
+	// 프로젝트 솔루션에서 빌드한 <Name>Editor.exe는 자기 프로젝트를 연다.
+	// 그 밖에는 커맨드라인으로 받지 않았으면 UE처럼 프로젝트 브라우저에서 고르거나 새로 만든다.
+	std::filesystem::path ProjectFile = FromCommandLine;
+	if (ProjectFile.empty()) ProjectFile = FPaths::BuiltProjectFile();
+	if (ProjectFile.empty()) ProjectFile = ProjectBrowser::Run(hInstance);
 	if (!ProjectFile.empty()) RecentProjects::Add(ProjectFile);
 	return ProjectFile;
 #endif

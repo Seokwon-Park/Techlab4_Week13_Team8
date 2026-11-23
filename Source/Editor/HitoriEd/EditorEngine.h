@@ -82,6 +82,9 @@ public:
 	// 붙여넣을 액터가 클립보드에 있고 에디터 월드를 고칠 수 있는가 (Outliner 메뉴가 항목을 켤지 정한다).
 	bool CanPasteActor() const;
 
+	// Content Drawer에서 끌어온 Blueprint를 그 뷰의 마우스 위치(바닥에 닿는 곳)에 놓고 선택한다.
+	void PlaceBlueprint(int32 ViewIndex, const FVector2& ViewLocalPos, const FString& AssetPath);
+
 	//Play 버튼을 눌렀을때 Play Session 실행을 요청한다.
 	inline void RequestPlaySession() { bPlaySessionRequested = true; }
 	inline void RequestEndPlayMap() { bRequestEndPlayMapQueued = true; bIsPaused = false; }

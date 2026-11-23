@@ -10,6 +10,7 @@
 #include "Physics/PhysXConversion.h"
 #include "Core/StatOverlay.h"
 #include "Core/Windows/WindowsPlatformTime.h"
+#include "Components/PrimitiveComponent.h"
 #include <cmath>
 #include <limits>
 #include <geometry/PxGeometryQuery.h>
@@ -39,6 +40,7 @@ FPhysicsScene::FPhysicsScene()
 	SimulationEvents = std::make_unique<FPhysXSimEventCallback>(*this);
 	Desc.filterShader = &FPhysXSimEventCallback::FilterShader;
 	Desc.simulationEventCallback = SimulationEvents.get();
+	Desc.flags |= physx::PxSceneFlag::eENABLE_ACTIVE_ACTORS;   // SyncComponentsToBodies가 움직인 액터만 받는다
 
 	if (Settings.bEnablePCM)
 	{
@@ -129,6 +131,7 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 			ResetStepTime();
 			return;
 		}
+		SyncComponentsToBodies();
 		// 완료된 스텝의 시간 차감과 결과 전달
 		++LastTickStepCount;
 		AccumulatedSeconds -= FixedStepSeconds;
@@ -274,4 +277,30 @@ bool FPhysicsScene::QuerySingle(const FRay& WorldRay, float MaxDistance,
 	}
 	OutHit.HitComponent = FindHitComponent(Hit.actor);
 	return true;
+}
+
+void FPhysicsScene::SyncComponentsToBodies()
+{
+	TArray<UPrimitiveComponent*> Components;
+
+	{
+		const physx::PxSceneReadLock ReadLock(*Scene);
+		// fetchResults 직후에만 유효한 목록. 다음 simulate 전에 다 읽는다
+		physx::PxU32 NumActors = 0;
+		physx::PxActor** Actors = Scene->getActiveActors(NumActors);
+		for (physx::PxU32 i = 0; i < NumActors; ++i)
+		{
+			const auto* Body = static_cast<const FBodyInstance*>(Actors[i]->userData);
+			UPrimitiveComponent* Component = Body ? Body->OwnerComponent : nullptr;
+			if (Component && Body == &Component->BodyInstance)
+			{
+				Components.Add(Component);
+			}
+		}
+	}
+	// 씬 잠금 해제 후 엔진 트랜스폼 갱신
+	for (UPrimitiveComponent* Component : Components)
+	{
+		Component->SyncComponentToRBPhysics(); // 시뮬레이션 중이 아니면 안에서 바로 return
+	}
 }

@@ -13,6 +13,10 @@ public:
 	void SetActiveViewIndex(const int32 InIndex) { ActiveViewIndex = InIndex; }
 	int32 GetActiveViewIndex() const { return ActiveViewIndex; }
 
+	// Content Drawer에서 Blueprint를 뷰포트에 놓으면 부른다. (뷰 번호, 뷰 기준 마우스 위치, 에셋 경로)
+	using FDropBlueprintCallback = std::function<void(int32, const FVector2&, const FString&)>;
+	void SetDropBlueprintCallback(FDropBlueprintCallback InCallback) { OnDropBlueprint = std::move(InCallback); }
+
 	// 네 View의 렌더 타깃과 UI 제어 상태를 초기화한다.
 	bool Init() override;
 	// 프레임 입력에서 Splitter Drag와 View별 UI 요청을 수집한다.
@@ -116,4 +120,6 @@ private:
 	FViewportLayoutState RequestedLayout;
 	bool bImmersive = false;
 
+
+	FDropBlueprintCallback OnDropBlueprint;
 };

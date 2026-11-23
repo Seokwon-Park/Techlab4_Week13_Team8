@@ -103,6 +103,11 @@ public:
 	TArray<FFunction> Functions;
 	UObject* ClassDefaultObject = nullptr;
 
+	// 생성자 다음에 기본값을 덮어쓰는 함수. 데이터 Blueprint 클래스가 쓴다 (부모 생성자를 쓰고 BP 기본값을 얹는다).
+	// C++ 클래스는 nullptr이다.
+	using FPostConstructDefaults = void(*)(UObject*);
+	FPostConstructDefaults PostConstructDefaults = nullptr;
+
 	UStruct* GetSuperStruct() const override { return Super; }
 
 	bool IsChildOf(const UClass* BaseClass) const;

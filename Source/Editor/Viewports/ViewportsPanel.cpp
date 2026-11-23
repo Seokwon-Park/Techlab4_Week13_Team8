@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "Editor/Viewports/ViewportsPanel.h"
+#include "Editor/HitoriEd/EditorDragDrop.h"
 #include "Editor/Viewports/LevelEditorViewport.h"
 #include "Engine/GameViewportClient.h"
 
@@ -204,6 +205,30 @@ void FViewportsPanel::OnRender() {
 	// Image 항목 네 개를 따로 배치하면 ImGui 레이아웃과 클리핑 상태가 삽입 순서에
 	// 영향을 받아, Core가 올바른 사각형을 줘도 아래쪽 행이 잘릴 수 있다.
 	ImGui::Dummy(ContentSize);
+
+	// Content Drawer에서 끌어온 Blueprint를 마우스 아래 뷰에 놓는다.
+	if (ImGui::BeginDragDropTarget())
+	{
+		if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload(EditorDragDrop::Blueprint))
+		{
+			const ImVec2 Mouse = ImGui::GetMousePos();
+			for (int32 ViewIndex = 0; ViewIndex < 4; ++ViewIndex)
+			{
+				FEditorViewportClient* Client = ViewportClients[ViewIndex].get();
+				if (!Client || !Client->IsActive())
+					continue;
+				const FRect& Rect = Client->GetRect();
+				const FVector2 Local(Mouse.x - ContentOrigin.x - Rect.X, Mouse.y - ContentOrigin.y - Rect.Y);
+				if (Local.X < 0.0f || Local.Y < 0.0f || Local.X >= Rect.Width || Local.Y >= Rect.Height)
+					continue;
+				if (OnDropBlueprint)
+					OnDropBlueprint(ViewIndex, Local, FString(static_cast<const char*>(Payload->Data)));
+				break;
+			}
+		}
+		ImGui::EndDragDropTarget();
+	}
+
 	ImDrawList* DrawList = ImGui::GetWindowDrawList();
 	DrawList->PushClipRect(ContentOrigin,
 		{ContentOrigin.x + ContentSize.x, ContentOrigin.y + ContentSize.y}, true);
