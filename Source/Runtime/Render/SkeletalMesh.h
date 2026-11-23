@@ -11,6 +11,8 @@
 #include <vector>
 #include "SkeletalMesh.generated.h"
 
+class UPhysicsAsset;
+
 struct FSkeletalMeshLODRenderData
 {
 	TArray<FVertex> BindVertices;
@@ -46,6 +48,10 @@ public:
 	UMaterial* GetMaterial(uint32 SlotIndex) const;
 
 	TSharedPtr<const FMeshRenderState> GetRenderState(const TArray<UMaterial*>& Materials);
+
+	// UE는 TSoftObjectPtr<UPhysicsAsset>. 저장은 경로로, 로드 때 UAssetManager로 찾아 연결
+	UPhysicsAsset* PhysicsAsset = nullptr;
+	FString PhysicsAssetPath;
 
 private:
 	struct FMaterialSlotsHash
