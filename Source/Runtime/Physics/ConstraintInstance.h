@@ -7,7 +7,7 @@ struct FBodyInstance;
 
 namespace physx
 {
-	class Px06Joint;
+	class PxD6Joint;
 }
 
 enum EAngularConstraintMotion : uint8
@@ -55,11 +55,11 @@ struct FConstraintInstance
 
 	FVector Pos1 = FVector::ZeroVector;
 	FVector PriAxis1 = FVector(1, 0, 0);
-	FVector SecAxis1 = FVector(1, 0, 0);
+	FVector SecAxis1 = FVector(0, 1, 0);
 
 	FVector Pos2 = FVector::ZeroVector;
 	FVector PriAxis2 = FVector(1, 0, 0);
-	FVector SecAxis2 = FVector(1, 0, 0);
+	FVector SecAxis2 = FVector(0, 1, 0);
 
 	FConstraintProfileProperties ProfileInstance;
 
@@ -70,5 +70,6 @@ struct FConstraintInstance
 	bool IsValidConstraintInstance() const { return ConstraintHandle != nullptr; }
 
 private:
-	physx::Px06Joint* ConstraintHandle = nullptr;
+	physx::PxD6Joint* ConstraintHandle = nullptr;
+	void ApplyAngularLimits(physx::PxD6Joint& Joint) const;
 };
