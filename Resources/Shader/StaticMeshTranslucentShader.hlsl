@@ -1,5 +1,6 @@
 #pragma pack_matrix(row_major)
 #include "GpuSkinCommon.hlsli"
+#include "ColorSpace.hlsli"
 
 cbuffer Viewconstants : register(b0)
 {
@@ -15,7 +16,8 @@ cbuffer MaterialParams : register(b1)
 {
     float4 BaseColor;
     float2 UVOffset;
-    float2 Padding;
+    float DecodeSRGB;
+    float Padding;
 };
 
 cbuffer TranslucentFogConstants : register(b3)
@@ -100,6 +102,10 @@ PS_INPUT mainVS(VS_INPUT input)
 float4 mainPS(PS_INPUT input) : SV_TARGET
 {
     float4 texColor = g_txColor.Sample(g_Sample, input.uv + UVOffset);
+    if (DecodeSRGB > 0.5f)
+    {
+        texColor.rgb = SRGBToLinear(texColor.rgb);
+    }
     texColor.a *= FogTransmittance(input.worldPosition);
     return texColor;
 }

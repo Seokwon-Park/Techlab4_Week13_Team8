@@ -521,6 +521,15 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 		if (ViewFamily.EngineShowFlags.Decals && !RenderDecals(Graph, Renderer, Options, SceneTextures)) return false;
 	}
 
+	if (ViewFamily.ViewMode == VMI_Lit && ViewFamily.EngineShowFlags.Rendering)
+	{
+		const FRenderQueue& Queue = RenderData.RenderQueue;
+		const bool bHasBeforeDOF = std::any_of(Queue.begin() + Queue.GetFirstTranslucentIndex(), Queue.end(),
+			[](const FRenderPacket& Packet) { return Packet.Material && Packet.Material->ShouldRenderBeforeDOF(); });
+		if (bHasBeforeDOF && !RenderTranslucency(Graph, Renderer, LightingHDR, Depth, EMeshPassType::TranslucentBeforeDOF))
+			return false;
+	}
+
 	FRenderGraphTextureRef ToneMapInput = LightingHDR;
 	const FDepthOfFieldSettings& DOF = View.DepthOfField;
 	const float SensorWidth = DOF.SensorWidthMm * 0.001f; // mm -> m
@@ -1064,9 +1073,11 @@ bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Re
 	if (ViewFamily.ViewMode != VMI_WorldNormal && ViewFamily.EngineShowFlags.Rendering && ViewFamily.EngineShowFlags.Fog &&
 		!RenderFog(Graph, Renderer, Targets, SceneColor, Depth)) return false;
 
-	// 반투명 물체는 불투명 물체와 안개가 끝난 뒤에 그린다.
+	// Before DOF 머티리얼은 Lit의 HDR 패스에서 이미 그렸다.
+	const EMeshPassType TranslucencyPass = ViewFamily.ViewMode == VMI_Lit
+		? EMeshPassType::TranslucentAfterDOF : EMeshPassType::Translucent;
 	if (ViewFamily.ViewMode != VMI_WorldNormal && ViewFamily.EngineShowFlags.Rendering &&
-		!RenderTranslucency(Graph, Renderer, SceneColor, Depth)) return false;
+		!RenderTranslucency(Graph, Renderer, SceneColor, Depth, TranslucencyPass)) return false;
 
 	// 월드에 놓인 글자(UTextRenderComponent)를 그린다.
 	if (ViewFamily.ViewMode != VMI_WorldNormal &&
@@ -1115,16 +1126,17 @@ bool FSceneRenderer::RenderFog(FRenderGraphBuilder& Graph, FRenderer* Renderer, 
 // 반투명 물체를 그린다. UE의 FDeferredShadingSceneRenderer::RenderTranslucency와 같은 자리다.
 // 실제 드로우는 RenderTranslucent가 하고, 여기서는 그 일을 렌더 그래프의 패스로 등록한다.
 bool FSceneRenderer::RenderTranslucency(FRenderGraphBuilder& Graph, FRenderer* Renderer, FRenderGraphTextureRef SceneColor,
-	FRenderGraphTextureRef Depth)
+	FRenderGraphTextureRef Depth, EMeshPassType Pass)
 {
-	if (!Graph.AddRasterPass(MakeViewportPass("Translucent", SceneColor, Depth),
-		[this, Renderer]
+	const bool bBeforeDOF = Pass == EMeshPassType::TranslucentBeforeDOF;
+	return Graph.AddRasterPass(MakeViewportPass(bBeforeDOF ? "Translucent.BeforeDOF" : "Translucent", SceneColor, Depth),
+		[this, Renderer, Pass, bBeforeDOF]
 		{
-			// 반투명 셰이더가 안개를 계산할 때 쓸 상수. 이번 뷰에 안개가 없으면(bHasFog가 false) 안개를 끄는 값이 들어 있다.
+			if (bBeforeDOF && !bCorePassSucceeded) return;
+			// 씬 전체에 안개를 입히기 전인 HDR 패스에서는 별도 안개 계산을 끈다.
 			FHeightFogRenderer* Fog = Renderer->GetHeightFog();
-			RenderTranslucent(Renderer, Fog ? Fog->GetTranslucentFogConstants(bHasFog) : nullptr);
-		})) return false;
-	return true;
+			RenderTranslucent(Renderer, Fog ? Fog->GetTranslucentFogConstants(!bBeforeDOF && bHasFog) : nullptr, Pass);
+		});
 }
 
 // 씬을 다 그린 뒤 화면 전체에 적용하는 처리를 순서대로 등록한다. UE의 AddPostProcessingPasses와 같은 자리다.
@@ -1240,7 +1252,7 @@ bool FSceneRenderer::Render(FRenderer* Renderer, const std::function<void(FScene
 }
 
 // 반투명 렌더링
-void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* FogConstants)
+void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* FogConstants, EMeshPassType Pass)
 {
 	if (!Renderer)
 	{
@@ -1251,8 +1263,7 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 	PrepareDrawData(Renderer, RenderData);
 	TArray<FMeshDrawBatch> Batches;
 	FMeshPassProcessor Processor;
-	if (Processor.Build(View, RenderData.RenderQueue, &RenderData,
-		EMeshPassType::Translucent, Batches))
+	if (Processor.Build(View, RenderData.RenderQueue, &RenderData, Pass, Batches))
 	{
 		Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
 		Renderer->DrawMeshes(Batches);

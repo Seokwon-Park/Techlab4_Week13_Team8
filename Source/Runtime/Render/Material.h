@@ -19,7 +19,7 @@ struct FStaticMeshMaterialParams
 {
 	FVector4 BaseColor;
 	FVector2 UVOffset;
-	FVector2 TextureFlags; // 텍스처 플래그 및 노멀 반전
+	FVector2 TextureFlags; // 패스에 따라 노멀맵 정보 또는 색 공간 변환 플래그
 };
 static_assert(sizeof(FStaticMeshMaterialParams) == 32);
 
@@ -38,6 +38,8 @@ public:
 	TUniquePtr<FConstantBuffer> ParamBuffer;
 	EPSOType PSOType = EPSOType::StaticMesh_Opaque;
 	EBlendState BlendState = EBlendState::Opaque;
+	UPROPERTY(EditAnywhere)
+	bool bRenderBeforeDOF = false;
 	EDepthStencilState DepthStencilState = EDepthStencilState::Default;
 	ESamplerState SamplerState = ESamplerState::LinearClamp;
 
@@ -57,6 +59,7 @@ public:
 
 	// 경로가 있는(=에셋으로 등록된) 가장 가까운 원본. 자신이 에셋이면 자신
 	const UMaterial* GetBaseAsset() const;
+	bool ShouldRenderBeforeDOF() const { return PSOType == EPSOType::StaticMesh_Translucent && bRenderBeforeDOF; }
 
 	const uint16 SortID;
 

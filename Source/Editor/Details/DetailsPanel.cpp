@@ -1045,11 +1045,39 @@ namespace
 								if (Override)
 								{
 									Override->BlendState = static_cast<EBlendState>(i);
+									if (Override->PSOType == EPSOType::StaticMesh_Opaque || Override->PSOType == EPSOType::StaticMesh_Translucent)
+									{
+										const EPSOType MeshPSO = Override->BlendState == EBlendState::AlphaBlend
+											? EPSOType::StaticMesh_Translucent : EPSOType::StaticMesh_Opaque;
+										if (Override->PSOType != MeshPSO)
+										{
+											Override->PSOType = MeshPSO;
+											MeshComponent->SetMaterial(Slot, Override);
+										}
+									}
 									Effective = Override;
 								}
 							}
 						}
 						ImGui::EndCombo();
+					}
+
+					if (Effective && Effective->PSOType == EPSOType::StaticMesh_Translucent)
+					{
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0);
+						ImGui::TextUnformatted("Before DOF");
+						ImGui::TableSetColumnIndex(1);
+						bool bBeforeDOF = Effective->bRenderBeforeDOF;
+						if (ImGui::Checkbox("##BeforeDOF", &bBeforeDOF))
+						{
+							Override = EnsureMaterialOverride(MeshComponent, Slot, Effective, Override);
+							if (Override)
+							{
+								Override->bRenderBeforeDOF = bBeforeDOF;
+								Effective = Override;
+							}
+						}
 					}
 
 					ImGui::EndTable();
