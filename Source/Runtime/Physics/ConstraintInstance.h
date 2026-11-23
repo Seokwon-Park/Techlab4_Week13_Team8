@@ -8,6 +8,7 @@ struct FBodyInstance;
 namespace physx
 {
 	class PxD6Joint;
+	class PxScene;
 }
 
 enum EAngularConstraintMotion : uint8
@@ -72,4 +73,5 @@ struct FConstraintInstance
 private:
 	physx::PxD6Joint* ConstraintHandle = nullptr;
 	void ApplyAngularLimits(physx::PxD6Joint& Joint) const;
+	physx::PxScene* ConstraintScene = nullptr;
 };

@@ -16,6 +16,7 @@
 #include <PxPhysics.h>
 #include <PxScene.h>
 #include <PxSceneDesc.h>
+#include <PxSceneLock.h>
 #include "Physics/PhysXSimEventCallback.h"
 
 FPhysicsScene::FPhysicsScene()
@@ -46,6 +47,10 @@ FPhysicsScene::FPhysicsScene()
 	{
 		Desc.flags.clear(physx::PxSceneFlag::eENABLE_PCM);
 	}
+
+	// 씬 접근 잠금 검사의 활성화
+	Desc.flags |= physx::PxSceneFlag::eREQUIRE_RW_LOCK;
+
 	Scene = Physics->createScene(Desc);
 }
 
@@ -60,9 +65,13 @@ FPhysicsScene::~FPhysicsScene()
 
 void FPhysicsScene::SetGravityZ(float GravityZ)
 {
-	// 유효 중력이 바뀐 경우의 네이티브 씬 갱신
+	if (!Scene) return;
+
+	// 중력 조회와 갱신의 쓰기 잠금
 	const physx::PxVec3 Gravity(0.0f, 0.0f, GravityZ);
-	if (Scene && Scene->getGravity() != Gravity)
+	const physx::PxSceneWriteLock WriteLock(*Scene);
+	//유효 중력이 바뀐 경우의 네이티브 씬 갱신
+	if (Scene->getGravity() != Gravity)
 	{
 		Scene->setGravity(Gravity);
 	}
@@ -88,14 +97,20 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 	{
 		// 스텝 입력 적용과 PhysX 결과 수집
 		OnPreStep.Broadcast(StepDelta);
-		Scene->simulate(StepDelta);
-		if (!Scene->fetchResults(true))
+		bool bFetchedResults = false;
+		{
+			// 고정 스텝의 네이티브 씬 쓰기 잠금
+			const physx::PxSceneWriteLock WriteLock(*Scene);
+			Scene->simulate(StepDelta);
+			bFetchedResults = Scene->fetchResults(true);
+		}
+
+		if (!bFetchedResults)
 		{
 			HTR_LOG(Error, "PxScene::fetchResults failed");
 			ResetStepTime();
 			return;
 		}
-
 		// 완료된 스텝의 시간 차감과 결과 전달
 		AccumulatedSeconds -= FixedStepSeconds;
 		OnPostStep.Broadcast(StepDelta);
@@ -188,6 +203,9 @@ bool FPhysicsScene::QuerySingle(const FRay& WorldRay, float MaxDistance,
 	FCollisionQueryFilterCallback Filter(*this, IgnoreActor);
 	const physx::PxQueryFilterData FilterData(physx::PxQueryFlag::eSTATIC |
 		physx::PxQueryFlag::eDYNAMIC | physx::PxQueryFlag::ePREFILTER);
+
+	// 쿼리 실행과 히트 대상 역참조의 읽기 잠금
+	const physx::PxSceneReadLock ReadLock(*Scene);
 
 	// 최근접 블로킹 히트 하나의 수집과 복수 Touch 결과의 확장 지점
 	physx::PxLocationHit Hit;
