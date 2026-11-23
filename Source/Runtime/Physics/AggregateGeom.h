@@ -71,7 +71,7 @@ struct FKAggregateGeom
 	TArray<FKSphylElem> SphylElems;
 	TArray<FKConvexElem> ConvexElems;
 
-	int32 GetelementCount() const
+	int32 GetElementCount() const
 	{
 		return SphereElems.Num() + BoxElems.Num() + SphylElems.Num() + ConvexElems.Num();
 	}

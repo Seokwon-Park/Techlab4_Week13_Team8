@@ -19,6 +19,20 @@
 #include "Animation/BlendSpaceFile.h"
 #include "Asset/AssetManager.h"
 
+#include "Physics/BodyInstance.h"
+#include "Physics/ConstraintInstance.h"
+#include "Physics/PhysicsAsset.h"
+#include "Physics/PhysicsScene.h"
+#include "Engine/World.h"
+#include <extensions/PxDefaultSimulationFilterShader.h>   // PxSetGroup, PxSetGroupCollisionFlag
+#include <PxRigidDynamic.h>
+
+namespace
+{
+	// 래그돌 바디끼리는 충돌하지 않게 한 그룹으로 묶는다.
+	// 씬이 PxDefaultSimulationFilterShader를 쓰므로 CollisionDisableTable 대신 그룹 충돌 표를 쓴다 (A와 합의 필요)
+	constexpr physx::PxU16 RagdollCollisionGroup = 1;
+}
 void USkeletalMeshComponent::SetAnimInstance(UAnimInstance* InInstance)
 {
 	if (AnimInstance == InInstance)
@@ -29,15 +43,15 @@ void USkeletalMeshComponent::SetAnimInstance(UAnimInstance* InInstance)
 	{
 		AnimInstance->UninitializeAnimation();
 	}
-    AnimInstance = InInstance;
+	AnimInstance = InInstance;
 
-    if (ManagedAnimGraph && ManagedAnimGraph.get() != InInstance)
-    {
-        ManagedAnimGraph.reset();
-    }
+	if (ManagedAnimGraph && ManagedAnimGraph.get() != InInstance)
+	{
+		ManagedAnimGraph.reset();
+	}
 
-    AnimBlueprintPath.clear();
-    bBlueprintReloadRequested = false;
+	AnimBlueprintPath.clear();
+	bBlueprintReloadRequested = false;
 
 	if (AnimInstance)
 	{
@@ -49,10 +63,10 @@ void USkeletalMeshComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-    if (!AnimBlueprintPath.empty() && (bBlueprintReloadRequested || !ManagedAnimGraph))
-    {
-        ReloadAnimBlueprint();
-    }
+	if (!AnimBlueprintPath.empty() && (bBlueprintReloadRequested || !ManagedAnimGraph))
+	{
+		ReloadAnimBlueprint();
+	}
 
 	if (AnimInstance)
 	{
@@ -70,15 +84,16 @@ void USkeletalMeshComponent::BeginPlay()
 
 void USkeletalMeshComponent::TickComponent(float DeltaTime)
 {
-    if (bBlueprintReloadRequested)
-    {
-        bBlueprintReloadRequested = false;
-        ReloadAnimBlueprint();
-    }
-
-	if (AnimInstance && GetSkeletalMesh())
+	if (bBlueprintReloadRequested)
 	{
-        bUpdatingAnimation = true;
+		bBlueprintReloadRequested = false;
+		ReloadAnimBlueprint();
+	}
+
+	// 래그돌 중(bBlendPhysics)에는 애니 평가를 건너뛴다. 본은 BlendPhysicsBones가 채운다
+	if (AnimInstance && GetSkeletalMesh() && !bBlendPhysics)
+	{
+		bUpdatingAnimation = true;
 		if (auto* Instance = Cast<UAnimSingleNodeInstance>(AnimInstance))
 		{
 			Instance->SetBlendSpaceInput(BlendSpaceInput);
@@ -99,9 +114,12 @@ void USkeletalMeshComponent::TickComponent(float DeltaTime)
 			PendingRootMotion.Rotation = bHasPendingRootMotion ? (WorldDelta.Rotation * PendingRootMotion.Rotation).Normalized() : WorldDelta.Rotation;
 			bHasPendingRootMotion = true;
 		}
-        bUpdatingAnimation = false;
+		bUpdatingAnimation = false;
 	}
 	Super::TickComponent(DeltaTime);
+
+	// 갱신된 본 위치를 kinematic 바디의 목표로. 이번 프레임 물리 스텝(PrePhysics 다음)이 따라간다
+	UpdateKinematicBonesToAnim();
 }
 
 const TArray<FBoneInfo>& USkeletalMeshComponent::GetBones() const
@@ -187,20 +205,20 @@ void USkeletalMeshComponent::RefreshBoneTransforms()
 
 void USkeletalMeshComponent::Serialize(FStructuredArchive::FRecord Record)
 {
-    FArchive& Ar = Record.GetUnderlyingArchive();
-    UAnimInstance* SavedInstance = AnimInstance;
+	FArchive& Ar = Record.GetUnderlyingArchive();
+	UAnimInstance* SavedInstance = AnimInstance;
 
-    if (Ar.IsSaving() && (!AnimBlueprintPath.empty() || ManagedAnimGraph))
-    {
-        AnimInstance = nullptr;
-    }
+	if (Ar.IsSaving() && (!AnimBlueprintPath.empty() || ManagedAnimGraph))
+	{
+		AnimInstance = nullptr;
+	}
 
-    Super::Serialize(Record);
+	Super::Serialize(Record);
 
-    if (Ar.IsSaving())
-    {
-        AnimInstance = SavedInstance;
-    }
+	if (Ar.IsSaving())
+	{
+		AnimInstance = SavedInstance;
+	}
 
 	int32 Num = Ar.IsSaving() ? BoneSpaceTransforms.Num() : 0;
 	FStructuredArchive::FArray PoseArray = Record.EnterArray("BonePose", Num);
@@ -223,15 +241,95 @@ void USkeletalMeshComponent::Serialize(FStructuredArchive::FRecord Record)
 
 	SerializeSingleAnimation(Record);
 
-    if (Ar.IsLoading())
-    {
-        if (!AnimBlueprintPath.empty())
-        {
-            ReloadAnimBlueprint();
-        }
+	if (Ar.IsLoading())
+	{
+		if (!AnimBlueprintPath.empty())
+		{
+			ReloadAnimBlueprint();
+		}
 
-        RefreshBoneTransformsNow();
-    }
+		RefreshBoneTransformsNow();
+	}
+}
+
+void USkeletalMeshComponent::InitArticulated(FPhysicsScene* PhysScene)
+{
+	UPhysicsAsset* PhysAsset = GetPhysicsAsset();
+	if (!PhysAsset || !PhysScene || Bodies.Num() > 0) return;
+
+	RefreshBoneTransformsNow();
+	InstantiatePhysicsAssetBodies_Internal(*PhysAsset, *PhysScene);
+
+	for (UPhysicsConstraintTemplate* Template : PhysAsset->ConstraintSetup)
+	{
+		const FConstraintInstance& Src = Template->DefaultInstance;
+		FBodyInstance* Body1 = GetBodyInstance(Src.ConstraintBone1);
+		FBodyInstance* Body2 = GetBodyInstance(Src.ConstraintBone2);
+		if (!Body1 || !Body2) continue;
+
+		FConstraintInstance* CI = new FConstraintInstance(Src);
+		// 조인트 위치(Pos1/Pos2)는 본 로컬 공간 값이라 바디와 같은 스케일(본 월드 스케일)을 곱해야 한다.
+		// UE는 본 스케일이 1이라 컴포넌트 스케일을 쓰지만, UAL은 Armature 본에 ×100이 있어 둘이 다르다
+		const float Scale = FTransform::FromMatrix(GetBoneWorldMatrix(Body1->InstanceBoneIndex)).Scale.X;
+		if (!CI->InitConstraint(Body1, Body2, Scale)) { delete CI; continue; }
+		Constraints.Add(CI);
+	}
+
+	RegisterEndPhysicsTick(true);
+
+	if (bSimulatePhysics) SetSimulatePhysics(true);
+}
+
+void USkeletalMeshComponent::TermArticulated()
+{
+	RegisterEndPhysicsTick(false);
+	for (FConstraintInstance* CI : Constraints) { CI->TermConstraint(); delete CI; }
+	Constraints.Empty();
+	for (FBodyInstance* BI : Bodies)
+	{
+		if (BI)
+		{
+			BI->TermBody();
+			delete BI;
+		}
+	}
+	Bodies.Empty();
+	bBlendPhysics = false;
+}
+
+void USkeletalMeshComponent::SetSimulatePhysics(bool bEnabled)
+{
+	bSimulatePhysics = bEnabled;
+	bBlendPhysics = bEnabled;
+
+	if (UPhysicsAsset* PhysAsset = GetPhysicsAsset())
+	{
+		for (int32 i = 0; i < Bodies.Num(); ++i)
+		{
+			if (Bodies[i] && PhysAsset->SkeletalBodySetups.IsValidIndex(i) && PhysAsset->SkeletalBodySetups[i]->PhysicsType == PhysType_Default)
+				Bodies[i]->SetInstanceSimulatePhysics(bEnabled);
+		}
+	}
+}
+
+void USkeletalMeshComponent::SetAllBodiesSimulatePhysics(bool bNewSimulate)
+{
+	for (FBodyInstance* BI : Bodies)
+	{
+		if (BI) BI->SetInstanceSimulatePhysics(bNewSimulate);
+	}
+}
+
+FBodyInstance* USkeletalMeshComponent::GetBodyInstance(FName BoneName) const
+{
+	const UPhysicsAsset* PhysAsset = GetPhysicsAsset();
+	const int32 Index = PhysAsset ? PhysAsset->FindBodyIndex(BoneName) : INDEX_NONE;
+	return Bodies.IsValidIndex(Index) ? Bodies[Index] : nullptr;
+}
+
+UPhysicsAsset* USkeletalMeshComponent::GetPhysicsAsset() const
+{
+	return GetSkeletalMesh() ? GetSkeletalMesh()->GetPhysicsAsset() : nullptr;
 }
 
 void USkeletalMeshComponent::SerializeSingleAnimation(FStructuredArchive::FRecord& Record)
@@ -277,11 +375,121 @@ void USkeletalMeshComponent::SerializeSingleAnimation(FStructuredArchive::FRecor
 
 void USkeletalMeshComponent::OnSkeletalMeshChanged()
 {
-    bBlueprintReloadRequested = !AnimBlueprintPath.empty();
+	bBlueprintReloadRequested = !AnimBlueprintPath.empty();
 	BoneSpaceTransforms.Reset();
 	for (const FBoneInfo& Bone : GetBones())
 		BoneSpaceTransforms.Add(Bone.LocalBindPose);
 }
+void USkeletalMeshComponent::OnCreatePhysicsState()
+{
+	Super::OnCreatePhysicsState();
+	InitArticulated(GetWorld()->GetPhysicsScene());
+}
+void USkeletalMeshComponent::OnDestroyPhysicsState()
+{
+	TermArticulated();
+	Super::OnDestroyPhysicsState();
+}
+void USkeletalMeshComponent::InstantiatePhysicsAssetBodies_Internal(const UPhysicsAsset& PhysAsset, FPhysicsScene& PhysScene)
+{
+	physx::PxSetGroupCollisionFlag(RagdollCollisionGroup, RagdollCollisionGroup, false);
+
+	Bodies.Init(nullptr, PhysAsset.SkeletalBodySetups.Num());
+	for (int32 i = 0; i < PhysAsset.SkeletalBodySetups.Num(); ++i)
+	{
+		const USkeletalBodySetup* Setup = PhysAsset.SkeletalBodySetups[i];
+		const int32 Bone = FindBoneIndex(Setup->BoneName.ToString());
+		if (Bone == INDEX_NONE) continue;
+
+		const EPhysicsBodyType Type = Setup->PhysicsType == PhysType_Simulated ? EPhysicsBodyType::Dynamic : EPhysicsBodyType::Kinematic;
+
+		FBodyInstance* BI = new FBodyInstance();
+		BI->InstanceBodyIndex = i;
+		BI->InstanceBoneIndex = Bone;
+		if (!BI->InitBody(*Setup, FTransform::FromMatrix(GetBoneWorldMatrix(Bone)), this, PhysScene, Type))
+		{
+			HTR_LOG(Warning, "Ragdoll body failed: {}", Setup->BoneName.ToString());
+			delete BI;
+			continue;
+		}
+		if (physx::PxRigidDynamic* Dyn = BI->GetRigidDynamic())
+			physx::PxSetGroup(*Dyn, RagdollCollisionGroup);
+		Bodies[i] = BI;
+	}
+}
+void USkeletalMeshComponent::UpdateKinematicBonesToAnim()
+{
+	if (bBlendPhysics) return;
+	for (FBodyInstance* BI : Bodies)
+	{
+		if (BI && BI->IsValidBodyInstance())
+		{
+			BI->SetKinematicTarget(FTransform::FromMatrix(GetBoneWorldMatrix(BI->InstanceBoneIndex)));
+		}
+	}
+}
+void USkeletalMeshComponent::BlendPhysicsBones()
+{
+	const TArray<FBoneInfo>& Bones = GetBones();
+	if (BoneSpaceTransforms.Num() != Bones.Num()) return;
+
+	const FMatrix CompWorld = GetWorldMatrix();
+	const FMatrix InvComp = CompWorld.Inverse();
+	const FVector CompScale = FTransform::FromMatrix(CompWorld).Scale;
+
+	TArray<FMatrix> Comp;
+	Comp.SetNum(Bones.Num());
+	TArray<uint8> bFromPhys;
+	bFromPhys.Init(0, Bones.Num());
+
+	for (FBodyInstance* BI : Bodies)
+	{
+		if (!BI || !BI->IsValidBodyInstance()) continue;
+		FTransform BodyWorld = BI->GetWorldTransform();
+		// PhysX 포즈에는 스케일이 없다. 바인드 포즈의 컴포넌트 공간 스케일(UAL Armature ×100)에 컴포넌트 스케일을 곱해 붙인다.
+		// 현재 본 스케일을 다시 읽으면 매 프레임 분해 오차가 쌓여 메시가 계속 늘어난다
+		const FVector RefScale = FTransform::FromMatrix(Bones[BI->InstanceBoneIndex].InverseBindPose.Inverse()).Scale;
+		BodyWorld.Scale = FVector(RefScale.X * CompScale.X, RefScale.Y * CompScale.Y, RefScale.Z * CompScale.Z);
+		Comp[BI->InstanceBoneIndex] = BodyWorld.GetLocalMatrix() * InvComp;
+		bFromPhys[BI->InstanceBoneIndex] = 1;
+	}
+
+	for (int32 i = 0; i < Bones.Num(); ++i)
+	{
+		const int32 P = Bones[i].ParentIndex;
+		if (!bFromPhys[i])
+		{
+			Comp[i] = P < 0 ? BoneSpaceTransforms[i].GetLocalMatrix() : BoneSpaceTransforms[i].GetLocalMatrix() * Comp[P];
+		}
+		else if (P >= 0)
+		{
+			BoneSpaceTransforms[i] = FTransform::FromMatrix(Comp[i] * Comp[P].Inverse());
+		}
+		else
+		{
+			BoneSpaceTransforms[i] = FTransform::FromMatrix(Comp[i]);
+		}
+	}
+	MarkBoneTransformsDirty();
+}
+void USkeletalMeshComponent::RegisterEndPhysicsTick(bool bRegister)
+{
+	if (!bRegister)
+	{
+		EndPhysicsTickFunction.UnRegisterTickFunction();
+		return;
+	}
+	if (UWorld* World = GetWorld(); World && !EndPhysicsTickFunction.IsTickFunctionRegistered())
+		EndPhysicsTickFunction.RegisterTickFunction(World->GetTickTaskManager());
+}
+
+void USkeletalMeshComponent::EndPhysicsTickComponent(float DeltaTime)
+{
+	if (!bBlendPhysics) return;
+	BlendPhysicsBones();
+	RefreshBoneTransformsNow();  // 같은 프레임에 스키닝까지 (UE도 여기서 본 변환을 확정한다)
+}
+
 UAnimSingleNodeInstance* USkeletalMeshComponent::GetSingleNodeInstance() const
 {
 	return Cast<UAnimSingleNodeInstance>(AnimInstance);
@@ -294,9 +502,9 @@ void USkeletalMeshComponent::SetAnimation(UAnimationAsset* NewAnimToPlay)
 		HTR_LOG(Warning, "SetAnimation: unsupported animation asset type");
 		return;
 	}
-    AnimBlueprintPath.clear();
-    AnimBlueprintError.clear();
-    bBlueprintReloadRequested = false;
+	AnimBlueprintPath.clear();
+	AnimBlueprintError.clear();
+	bBlueprintReloadRequested = false;
 	auto* SingleNodeInstance = Cast<UAnimSingleNodeInstance>(AnimInstance);
 
 	if (!SingleNodeInstance)
@@ -347,12 +555,12 @@ void USkeletalMeshComponent::PlayAnimation(UAnimationAsset* NewAnimToPlay, bool 
 
 void USkeletalMeshComponent::RefreshAnimationPose()
 {
-    if (!AnimInstance)
-    {
-        ResetPose();
-        RefreshBoneTransformsNow();
-        return;
-    }
+	if (!AnimInstance)
+	{
+		ResetPose();
+		RefreshBoneTransformsNow();
+		return;
+	}
 
 	if (auto* Instance = GetSingleNodeInstance())
 	{
@@ -449,133 +657,141 @@ void DrawSkeletalRootDebug(UWorld* World, FLineBatcher* LineBatcher)
 
 USkeletalMeshComponent::USkeletalMeshComponent()
 {
+	EndPhysicsTickFunction.Target = this;
+	EndPhysicsTickFunction.bCanEverTick = true;
+	EndPhysicsTickFunction.TickGroup = ETickingGroup::PostPhysics;
 }
 
 USkeletalMeshComponent::~USkeletalMeshComponent()
 {
-    if (ManagedAnimGraph)
-    {
-        if (AnimInstance == ManagedAnimGraph.get())
-        {
-            SetAnimInstance(nullptr);
-        }
-        else
-        {
-            ManagedAnimGraph->UninitializeAnimation();
-        }
-    }
+	if (ManagedAnimGraph)
+	{
+		if (AnimInstance == ManagedAnimGraph.get())
+		{
+			SetAnimInstance(nullptr);
+		}
+		else
+		{
+			ManagedAnimGraph->UninitializeAnimation();
+		}
+	}
 }
 
 const FString& USkeletalMeshComponent::GetAnimBlueprintPath() const
 {
-    return AnimBlueprintPath;
+	return AnimBlueprintPath;
 }
 
 const FString& USkeletalMeshComponent::GetAnimBlueprintError() const
 {
-    return AnimBlueprintError;
+	return AnimBlueprintError;
 }
 
 bool USkeletalMeshComponent::SetAnimBlueprint(const FString& Path)
 {
-    if (bUpdatingAnimation)
-    {
-        AnimBlueprintError = "Load or reload Animation Blueprints from actor Tick, outside animation callbacks.";
-        return false;
-    }
+	if (bUpdatingAnimation)
+	{
+		AnimBlueprintError = "Load or reload Animation Blueprints from actor Tick, outside animation callbacks.";
+		return false;
+	}
 
-    if (Path.empty())
-    {
-        const bool bHadBlueprint = !AnimBlueprintPath.empty();
-        AnimBlueprintPath.clear();
-        AnimBlueprintError.clear();
-        bBlueprintReloadRequested = false;
+	if (Path.empty())
+	{
+		const bool bHadBlueprint = !AnimBlueprintPath.empty();
+		AnimBlueprintPath.clear();
+		AnimBlueprintError.clear();
+		bBlueprintReloadRequested = false;
 
-        if (ManagedAnimGraph && bHadBlueprint)
-        {
-            SetAnimInstance(nullptr);
-            ResetPose();
-            RefreshBoneTransformsNow();
-        }
+		if (ManagedAnimGraph && bHadBlueprint)
+		{
+			SetAnimInstance(nullptr);
+			ResetPose();
+			RefreshBoneTransformsNow();
+		}
 
-        return true;
-    }
+		return true;
+	}
 
-    AnimBlueprintError.clear();
-    const FString Key = FAssetUtils::GetAssetKey(Path);
-    const FString FilePath = FAssetUtils::ResolveAssetFilePath(Key);
-    FAnimBlueprintData Data;
+	AnimBlueprintError.clear();
+	const FString Key = FAssetUtils::GetAssetKey(Path);
+	const FString FilePath = FAssetUtils::ResolveAssetFilePath(Key);
+	FAnimBlueprintData Data;
 
-    if (!AnimBlueprintFile::IsAnimBlueprintPath(Key) || !AnimBlueprintFile::Read(FPaths::FromUtf8(FilePath.empty() ? Key : FilePath), Data, AnimBlueprintError))
-    {
-        if (AnimBlueprintError.empty())
-        {
-            AnimBlueprintError = "Use an .animblueprint asset.";
-        }
+	if (!AnimBlueprintFile::IsAnimBlueprintPath(Key) || !AnimBlueprintFile::Read(FPaths::FromUtf8(FilePath.empty() ? Key : FilePath), Data, AnimBlueprintError))
+	{
+		if (AnimBlueprintError.empty())
+		{
+			AnimBlueprintError = "Use an .animblueprint asset.";
+		}
 
-        return false;
-    }
+		return false;
+	}
 
-    TUniquePtr<UAnimGraphInstance> Instance;
-    AnimBlueprintCompiler::FNodeMap NodeIndices;
+	TUniquePtr<UAnimGraphInstance> Instance;
+	AnimBlueprintCompiler::FNodeMap NodeIndices;
 
-    if (!AnimBlueprintCompiler::Build(Data, *this, Instance, NodeIndices, AnimBlueprintError))
-    {
-        return false;
-    }
+	if (!AnimBlueprintCompiler::Build(Data, *this, Instance, NodeIndices, AnimBlueprintError))
+	{
+		return false;
+	}
 
-    SetAnimInstance(Instance.get());
-    ManagedAnimGraph = std::move(Instance);
-    AnimBlueprintPath = Key;
-    bBlueprintReloadRequested = false;
-    AnimBlueprintError.clear();
-    RefreshAnimationPose();
-    return true;
+	SetAnimInstance(Instance.get());
+	ManagedAnimGraph = std::move(Instance);
+	AnimBlueprintPath = Key;
+	bBlueprintReloadRequested = false;
+	AnimBlueprintError.clear();
+	RefreshAnimationPose();
+	return true;
 }
 
 bool USkeletalMeshComponent::ReloadAnimBlueprint()
 {
-    const FString Path = AnimBlueprintPath;
-    bBlueprintReloadRequested = false;
+	const FString Path = AnimBlueprintPath;
+	bBlueprintReloadRequested = false;
 
-    if (Path.empty())
-    {
-        return false;
-    }
+	if (Path.empty())
+	{
+		return false;
+	}
 
-    if (!SetAnimBlueprint(Path))
-    {
-        HTR_LOG(Warning, "AnimBlueprint load failed: {} ({})", Path, AnimBlueprintError);
-        return false;
-    }
+	if (!SetAnimBlueprint(Path))
+	{
+		HTR_LOG(Warning, "AnimBlueprint load failed: {} ({})", Path, AnimBlueprintError);
+		return false;
+	}
 
-    return true;
+	return true;
 }
 
 UAnimGraphInstance* USkeletalMeshComponent::CreateAnimGraph()
 {
-    if (bUpdatingAnimation)
-    {
-        AnimBlueprintError = "Create animation graphs outside animation callbacks.";
-        return nullptr;
-    }
+	if (bUpdatingAnimation)
+	{
+		AnimBlueprintError = "Create animation graphs outside animation callbacks.";
+		return nullptr;
+	}
 
-    if (!AnimBlueprintPath.empty())
-    {
-        AnimBlueprintError = "An Animation Blueprint is assigned. Use GetAnimGraph to update its variables.";
-        return nullptr;
-    }
+	if (!AnimBlueprintPath.empty())
+	{
+		AnimBlueprintError = "An Animation Blueprint is assigned. Use GetAnimGraph to update its variables.";
+		return nullptr;
+	}
 
-    AnimBlueprintError.clear();
+	AnimBlueprintError.clear();
 
-    if (UAnimGraphInstance* Existing = Cast<UAnimGraphInstance>(AnimInstance))
-    {
-        Existing->ResetGraph();
-        return Existing;
-    }
+	if (UAnimGraphInstance* Existing = Cast<UAnimGraphInstance>(AnimInstance))
+	{
+		Existing->ResetGraph();
+		return Existing;
+	}
 
-    TUniquePtr<UAnimGraphInstance> Instance(NewObject<UAnimGraphInstance>(this));
-    SetAnimInstance(Instance.get());
-    ManagedAnimGraph = std::move(Instance);
-    return ManagedAnimGraph.get();
+	TUniquePtr<UAnimGraphInstance> Instance(NewObject<UAnimGraphInstance>(this));
+	SetAnimInstance(Instance.get());
+	ManagedAnimGraph = std::move(Instance);
+	return ManagedAnimGraph.get();
+}
+
+void FSkeletalMeshComponentEndPhysicsTickFunction::ExecuteTick(float DeltaTime)
+{
+	if (Target) Target->EndPhysicsTickComponent(DeltaTime);
 }

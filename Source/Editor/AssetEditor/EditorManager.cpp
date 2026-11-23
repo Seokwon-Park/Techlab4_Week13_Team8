@@ -1,4 +1,6 @@
 #include "EnginePCH.h"
+#include "Editor/BlueprintEditor/BlueprintEditor.h"
+#include "Engine/Blueprint.h"
 #include "Editor/AssetEditor/EditorManager.h"
 #include "Editor/StaticMeshEditor/StaticMeshEditor.h"
 #include "Editor/SkeletalMeshEditor/SkeletalMeshEditor.h"
@@ -147,6 +149,20 @@ void FEditorManager::CreateEditor(const FString& AssetPath)
 		{
 			Editor->Shutdown();
 			HTR_LOG(Warning, "Particle editor initialization failed: {}", AssetPath);
+			return;
+		}
+		Editors.Add(std::move(Editor));
+		return;
+	}
+
+	// 데이터 Blueprint
+	if (FBlueprint::IsBlueprintPath(AssetPath))
+	{
+		TUniquePtr<FAssetEditor> Editor = MakeUnique<FBlueprintEditor>(EditorEngine, *this, AssetPath);
+		if (!Editor->Initialize())
+		{
+			Editor->Shutdown();
+			HTR_LOG(Warning, "Blueprint editor initialization failed: {}", AssetPath);
 			return;
 		}
 		Editors.Add(std::move(Editor));

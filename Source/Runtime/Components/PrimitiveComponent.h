@@ -7,11 +7,13 @@
 #include "Render/GeometryGenerator.h"
 #include "Collision/HitResult.h"
 #include "Core/Delegate/Delegate.h"
+#include "Physics/BodyInstance.h"   // FBodyInstance를 값으로 들고 있으므로 전방 선언으로는 부족
 #include "PrimitiveComponent.generated.h"
 
 class FPrimitiveSceneProxy;
 class AActor;
 class UPrimitiveComponent;
+class UBodySetup;
 
 // (Self, Other, OtherComp). 담당: C
 DECLARE_DELEGATE(FComponentOverlapSignature, UPrimitiveComponent*, AActor*, UPrimitiveComponent*);
@@ -115,6 +117,14 @@ public:
 	void EndComponentOverlap(UPrimitiveComponent* OtherComp);
 	void DispatchHit(UPrimitiveComponent* OtherComp);
 
+	FBodyInstance BodyInstance;
+	UPROPERTY(EditAnywhere)
+	bool bSimulatePhysics = false;   // UE는 BodyInstance.bSimulatePhysics. A의 FBodyInstance에 없어서 컴포넌트에 둔다
+
+	virtual UBodySetup* GetBodySetup() { return nullptr; }   // UStaticMeshComponent가 override
+	virtual void SetSimulatePhysics(bool bSimulate);
+	void SyncComponentToRBPhysics();
+
 protected:
 	virtual void OnUnregister() override;
 	TArray<FOverlapInfo> OverlapInfos;
@@ -127,10 +137,12 @@ protected:
 	virtual void CreateRenderState() override;
 	virtual void DestroyRenderState() override;
 
+	bool ShouldCreatePhysicsState() const override;
+	void OnCreatePhysicsState() override;
+	void OnDestroyPhysicsState() override;
 
 	bool TraceMesh(const FRay& WorldRay, const FStaticMeshData& Mesh, const FMatrix& WorldMatrix, FHitResult& OutResult);
 	bool TraceMeshLocal(const FRay& LocalRay, const FStaticMeshData& Mesh, float& OutT);
-
 private:
 	friend class FScene;
 	FPrimitiveSceneProxy* SceneProxy = nullptr;

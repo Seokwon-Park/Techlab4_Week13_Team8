@@ -18,6 +18,18 @@ class UAnimationAsset;
 class UAnimSingleNodeInstance;
 class UAnimGraphInstance;
 
+struct FBodyInstance;
+struct FConstraintInstance;
+class FPhysicsScene;
+class UPhysicsAsset;
+class USkeletalMeshComponent;
+
+struct FSkeletalMeshComponentEndPhysicsTickFunction : public FTickFunction
+{
+	USkeletalMeshComponent* Target = nullptr;
+	void ExecuteTick(float DeltaTime) override;
+};
+
 UCLASS()
 class USkeletalMeshComponent : public USkinnedMeshComponent
 {
@@ -75,6 +87,17 @@ public:
 	// 디버그: root 본 구체 + 액터 위치(root 높이)에서 root까지의 선
 	void DrawRootDebug(FLineBatcher* LineBatcher) const;
 
+	TArray<FBodyInstance*> Bodies;
+	TArray<FConstraintInstance*>Constraints;
+	bool bBlendPhysics = false;
+
+	void InitArticulated(FPhysicsScene* PhysScene);
+	void TermArticulated();
+	void SetSimulatePhysics(bool bEnabled) override;
+	void SetAllBodiesSimulatePhysics(bool bNewSimulate);
+	FBodyInstance* GetBodyInstance(FName BoneName) const;
+	UPhysicsAsset* GetPhysicsAsset() const;
+
 protected:
 	// 단일 애니메이션 에셋 경로/루프/재생 속도를 씬에 저장·복원한다 (Serialize에서 부른다)
 	void SerializeSingleAnimation(FStructuredArchive::FRecord& Record);
@@ -82,6 +105,17 @@ protected:
 	void RefreshBoneTransforms() override;
 	void OnSkeletalMeshChanged() override;
 
+	void OnCreatePhysicsState() override;
+	void OnDestroyPhysicsState() override;
+	void InstantiatePhysicsAssetBodies_Internal(const UPhysicsAsset& PhysAsset, FPhysicsScene& PhysScene);
+	void UpdateKinematicBonesToAnim(); // 애니메이션 상태: 바디가 본을 따라감
+	void BlendPhysicsBones(); // 래그돌 상태: 바디->본
+
+	//래그돌 바디가 있을 때만 등록한다
+	friend struct FSkeletalMeshComponentEndPhysicsTickFunction;
+	FSkeletalMeshComponentEndPhysicsTickFunction EndPhysicsTickFunction;
+	void RegisterEndPhysicsTick(bool bRegister);
+	void EndPhysicsTickComponent(float DeltaTime);
 private:
     UPROPERTY()
     FString AnimBlueprintPath;

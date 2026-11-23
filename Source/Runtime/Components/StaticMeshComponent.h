@@ -32,6 +32,8 @@ public:
 	bool IsEditorIcon() const { return bEditorIcon; }
 	void SetEditorIcon(bool IsEditorIcon) { bEditorIcon = IsEditorIcon; }
 
+	UBodySetup* GetBodySetup() override { return StaticMesh ? StaticMesh->GetBodySetup() : nullptr; }
+
 private:
 	UPROPERTY(EditAnywhere)
 	UStaticMesh* StaticMesh = nullptr;

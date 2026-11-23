@@ -8,7 +8,7 @@ UClass* GetEngineClass()
 {
 	return UGameEngine::StaticClass();
 }
-// 패키지된 게임은 exe 옆의 .hproject를 쓴다. 개발 중에는 엔진 폴더의 기본 프로젝트를 쓴다.
+// 패키지된 게임은 exe 옆의 .hproject를 쓴다. 개발 중에는 빌드한 프로젝트나 엔진 폴더의 기본 프로젝트를 쓴다.
 std::filesystem::path ResolveProjectFile(HINSTANCE hInstance, const std::filesystem::path& FromCommandLine)
 {
 	(void)hInstance;
@@ -20,6 +20,9 @@ std::filesystem::path ResolveProjectFile(HINSTANCE hInstance, const std::filesys
 		const std::filesystem::path Found = FPaths::FindProjectFileIn(std::filesystem::path(ExePath).parent_path());
 		if (!Found.empty()) return Found;
 	}
+
+	// 프로젝트 솔루션에서 빌드한 <Name>.exe는 개발 중에 자기 프로젝트를 연다.
+	if (const std::filesystem::path Built = FPaths::BuiltProjectFile(); !Built.empty()) return Built;
 
 	const std::filesystem::path Found = FPaths::FindProjectFileIn(FPaths::EngineDir());
 	if (Found.empty())

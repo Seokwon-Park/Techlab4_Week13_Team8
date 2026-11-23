@@ -11,16 +11,16 @@ namespace
 		return B.Min.X <= B.Max.X && B.Min.Y <= B.Max.Y && B.Min.Z <= B.Max.Z;
 	}
 
-	// 컴포넌트 공간 바인드 AABB -> 본 로컬 AABB (8개 꼭짓점을 InverseBindPose로 옮겨 다시 감싼다)
-	FBox ToBoneLocal(const FBox& CompBox, const FMatrix& InverseBindPose)
+	// AABB를 행렬로 옮긴 뒤 다시 축 정렬로 감싼다 (8개 꼭짓점을 변환)
+	FBox TransformBox(const FBox& Box, const FMatrix& M)
 	{
 		FBox Out{ FVector(FLT_MAX,FLT_MAX,FLT_MAX), FVector(-FLT_MAX,-FLT_MAX,-FLT_MAX) };
 		for (int32 c = 0; c < 8; ++c)
 		{
-			const FVector Corner((c & 1) ? CompBox.Max.X : CompBox.Min.X,
-				(c & 2) ? CompBox.Max.Y : CompBox.Min.Y,
-				(c & 4) ? CompBox.Max.Z : CompBox.Min.Z);
-			const FVector P = InverseBindPose.TransformPosition(Corner);
+			const FVector Corner((c & 1) ? Box.Max.X : Box.Min.X,
+				(c & 2) ? Box.Max.Y : Box.Min.Y,
+				(c & 4) ? Box.Max.Z : Box.Min.Z);
+			const FVector P = M.TransformPosition(Corner);
 			for (int32 a = 0; a < 3; ++a)
 			{
 				Out.Min[a] = std::min(Out.Min[a], P[a]);
@@ -28,6 +28,18 @@ namespace
 			}
 		}
 		return Out;
+	}
+
+	// 컴포넌트 공간 바인드 AABB -> 본 로컬 AABB
+	FBox ToBoneLocal(const FBox& CompBox, const FMatrix& InverseBindPose)
+	{
+		return TransformBox(CompBox, InverseBindPose);
+	}
+
+	// 본 로컬 AABB -> 컴포넌트 공간 바인드 AABB (ToBoneLocal의 반대)
+	FBox ToComponent(const FBox& LocalBox, const FMatrix& InverseBindPose)
+	{
+		return TransformBox(LocalBox, InverseBindPose.Inverse());
 	}
 
 	// 정점이 없는 본: 첫 자식까지의 선분을 감싸는 상자로 대체. 자식이 없으면 무효
@@ -103,6 +115,7 @@ bool FPhysicsAssetUtils::CreateFromSkeletalMesh(UPhysicsAsset* PhysicsAsset, USk
 	const FSkeletalMeshLODRenderData& LOD = SkelMesh->GetRenderData().LODRenderData[0];
 	TArray<int32> BodyOfBone;
 	BodyOfBone.Init(INDEX_NONE, Bones.Num());
+	TArray<FBox> BodyCompBox;   // 바디 번호 순서. 3단계 겹침 검사용 (컴포넌트 공간)
 
 	// 1) 본마다 캡슐 하나
 	for (int32 b = 0; b < Bones.Num(); ++b)
@@ -127,6 +140,10 @@ bool FPhysicsAssetUtils::CreateFromSkeletalMesh(UPhysicsAsset* PhysicsAsset, USk
 		E.Length = std::max(0.f, Ext[Axis] * 2.f - E.Radius * 2.f);
 		PhysicsAsset->SkeletalBodySetups[BodyIndex]->AggGeom.SphylElems.Add(E);
 		BodyOfBone[b] = BodyIndex;
+
+		// 캡슐을 만든 박스 그대로 보관. 정점 경로든 SegmentToFirstChild 경로든 항상 유효하다
+		if (BodyIndex >= BodyCompBox.Num()) BodyCompBox.SetNum(BodyIndex + 1);
+		BodyCompBox[BodyIndex] = ToComponent(Local, Bones[b].InverseBindPose);
 	}
 
 	// 2) 바디가 있는 가장 가까운 조상과 조인트
@@ -144,15 +161,12 @@ bool FPhysicsAssetUtils::CreateFromSkeletalMesh(UPhysicsAsset* PhysicsAsset, USk
 	}
 
 	// 3) 바인드 포즈에서 겹치는 바디 쌍은 충돌 끄기 (조인트로 안 이어진 쌍 포함)
+	//	LOD.BoneBounds가 아니라 1단계에서 캡슐을 만든 박스로 비교한다.
+	//	정점이 없는 본(SegmentToFirstChild 경로)은 BoneBounds가 무효라 결과를 믿을 수 없기 때문
 	//	UE PhysicsAssetUtils의 기본 정책은 확인 못 함. 처음엔 전부 꺼도 시연엔 충분
-	TArray<int32> BoneOfBody;
-	BoneOfBody.Init(INDEX_NONE, PhysicsAsset->SkeletalBodySetups.Num());
-	for (int32 b = 0; b < Bones.Num(); ++b)
-		if (BodyOfBone[b] != INDEX_NONE) BoneOfBody[BodyOfBone[b]] = b;
-
-	for (int32 i = 0; i < BoneOfBody.Num(); ++i)
-		for (int32 j = i + 1; j < BoneOfBody.Num(); ++j)
-			if (BoxesOverlap(LOD.BoneBounds[BoneOfBody[i]], LOD.BoneBounds[BoneOfBody[j]]))
+	for (int32 i = 0; i < BodyCompBox.Num(); ++i)
+		for (int32 j = i + 1; j < BodyCompBox.Num(); ++j)
+			if (BoxesOverlap(BodyCompBox[i], BodyCompBox[j]))
 				PhysicsAsset->DisableCollision(i, j);
 
 	PhysicsAsset->UpdateBodySetupIndexMap();

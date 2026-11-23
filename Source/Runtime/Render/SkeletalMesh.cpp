@@ -2,6 +2,32 @@
 #include "SkeletalMesh.h"
 #include "Render/RenderCommand.h"
 #include "Asset/AssetManager.h"
+#include "Physics/PhysicsAsset.h"
+#include "Physics/PhysicsAssetFile.h"
+#include "UObject/UObjectGlobals.h"
+#include <filesystem>
+
+UPhysicsAsset* USkeletalMesh::GetPhysicsAsset()
+{
+	if (PhysicsAsset || bPhysicsAssetLoadTried) return PhysicsAsset;
+	bPhysicsAssetLoadTried = true;
+
+	// 스켈레탈 메시 에디터의 Generate Bodies가 저장하는 위치와 같은 규칙
+	if (PhysicsAssetPath.empty())
+		PhysicsAssetPath = (std::filesystem::path("Assets/Physics") /
+			(std::filesystem::path(GetPath()).stem().string() + ".physicsasset")).generic_string();
+	if (!std::filesystem::exists(PhysicsAssetPath)) return nullptr;
+
+	UPhysicsAsset* Loaded = NewObject<UPhysicsAsset>(this);
+	FString Error;
+	if (!PhysicsAssetFile::Read(PhysicsAssetPath, *Loaded, Error))
+	{
+		HTR_LOG(Warning, "PhysicsAsset load failed: {} ({})", PhysicsAssetPath, Error);
+		return nullptr;
+	}
+	PhysicsAsset = Loaded;
+	return PhysicsAsset;
+}
 
 namespace
 {
