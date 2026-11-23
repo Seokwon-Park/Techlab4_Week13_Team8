@@ -46,6 +46,8 @@ void UPhysicsAsset::Serialize(FStructuredArchive::FRecord Record)
 	Super::Serialize(Record);
 	FArchive& Ar = Record.GetUnderlyingArchive();
 
+	Record << SA_VALUE("PreviewMesh", PreviewMeshPath);
+
 	int32 NumBodies = Ar.IsSaving() ? SkeletalBodySetups.Num() : 0;
 	auto Bodies = Record.EnterArray("SkeletalBodySetups", NumBodies);
 	if (Ar.IsLoading()) SkeletalBodySetups.SetNum(NumBodies);

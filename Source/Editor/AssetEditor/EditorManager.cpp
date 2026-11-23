@@ -20,6 +20,8 @@
 #include "Editor/PhysicsAssetEditor/PhysicsAssetEditor.h"
 #include "Editor/ParticleEditor/ParticleSystemEditor.h"
 #include "Particles/ParticleSystemFile.h"
+#include "Physics/PhysicsAsset.h"
+#include "Physics/PhysicsAssetFile.h"
 
 #include <filesystem>
 
@@ -152,6 +154,12 @@ void FEditorManager::CreateEditor(const FString& AssetPath)
 			return;
 		}
 		Editors.Add(std::move(Editor));
+		return;
+	}
+
+	if (PhysicsAssetFile::IsPhysicsAssetPath(AssetPath))
+	{
+		OpenPhysicsAssetFile(AssetPath);
 		return;
 	}
 
@@ -409,6 +417,43 @@ void FEditorManager::OpenPhysicsAssetEditor(const FString& MeshPath, USkeletalMe
 
 	// UI를 그리는 도중에 부르므로 생성은 LateTick으로 미룬다
 	PendingPhysicsAssetOpens.Add({ MeshPath, Mesh });
+}
+
+void FEditorManager::OpenPhysicsAssetFile(const FString& AssetPath)
+{
+	const FString ResolvedPath = FAssetUtils::ResolveAssetFilePath(AssetPath);
+	const FString FilePath = ResolvedPath.empty() ? AssetPath : ResolvedPath;
+
+	UPhysicsAsset* Loaded = NewObject<UPhysicsAsset>();
+	FString Error;
+	if (!PhysicsAssetFile::Read(FilePath, *Loaded, Error))
+	{
+		HTR_LOG(Warning, "Failed to load physics asset: {} ({})", AssetPath, Error);
+		return;
+	}
+	if (Loaded->PreviewMeshPath.empty())
+	{
+		HTR_LOG(Warning, "PhysicsAsset has no preview mesh. Open it from the SkeletalMesh editor and save once: {}", AssetPath);
+		return;
+	}
+
+	const FString MeshPath = FAssetUtils::GetAssetKey(Loaded->PreviewMeshPath);
+	const FString MeshFile = FAssetUtils::ResolveAssetFilePath(Loaded->PreviewMeshPath);
+	USkeletalMesh* Mesh = Cast<USkeletalMesh>(UAssetManager::LoadFbxMesh(MeshFile.empty() ? Loaded->PreviewMeshPath : MeshFile, Error));
+	if (!Mesh)
+	{
+		HTR_LOG(Warning, "PhysicsAsset preview mesh failed to load: {} ({})", Loaded->PreviewMeshPath, Error);
+		return;
+	}
+
+	// 메시에 이미 연결된 에셋은 저장 안 한 편집이 있을 수 있으므로 그대로 둔다
+	if (!Mesh->PhysicsAsset)
+	{
+		Mesh->PhysicsAsset = Loaded;
+		Mesh->PhysicsAssetPath = FilePath;
+	}
+
+	CreatePhysicsAssetEditor({ MeshPath, Mesh });
 }
 
 void FEditorManager::CreatePhysicsAssetEditor(const FPendingPhysicsAssetOpen& Request)

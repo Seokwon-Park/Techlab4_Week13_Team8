@@ -16,6 +16,35 @@ FPhysicsAssetEditorTab::FPhysicsAssetEditorTab(FPhysicsAssetEditor& InEditor)
 	RegisterPanel(MakeUnique<FPhysicsAssetDetailsPanel>(InEditor));
 	RegisterPanel(MakeUnique<FPhysicsAssetSettingsPanel>(InEditor));
 	RegisterPanel(MakeUnique<FPhysicsAssetGraphPanel>(InEditor));
+
+	SaveCommand.Label = "Save";
+	SaveCommand.Tooltip = "Save";
+	SaveCommand.IconId = EEditorIcon::Save;
+	SaveCommand.Shortcut = { EKeyCode::S, true, false, false };
+	SaveCommand.Execute = [this] { PhysicsEditor.Save(); };
+	SaveCommand.CanExecute = [this] { return PhysicsEditor.IsDirty(); };
+}
+
+void FPhysicsAssetEditorTab::OnRender(bool bActive)
+{
+	// 기반 OnRender가 남은 영역으로 독스페이스 크기를 잡으므로 툴바를 먼저 그린다
+	if (bActive && !PhysicsEditor.IsCloseRequested())
+	{
+		DrawToolbar();
+	}
+	FDockedAssetEditorTab::OnRender(bActive);
+}
+
+void FPhysicsAssetEditorTab::DrawToolbar()
+{
+	EditorCommandUI::ToolbarButton("PhysicsAssetSave", SaveCommand);
+	ImGui::Separator();
+
+	const ImGuiFocusedFlags FocusFlags = ImGuiFocusedFlags_RootAndChildWindows | ImGuiFocusedFlags_DockHierarchy;
+	if (ImGui::IsWindowFocused(FocusFlags) && !ImGui::GetIO().WantTextInput && SaveCommand.Shortcut.IsPressedThisFrame())
+	{
+		SaveCommand.TryExecute();
+	}
 }
 
 void FPhysicsAssetEditorTab::BeforeRender()

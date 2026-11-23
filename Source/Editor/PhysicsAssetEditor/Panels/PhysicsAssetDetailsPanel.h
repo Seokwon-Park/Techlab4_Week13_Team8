@@ -18,6 +18,6 @@ protected:
 	void DrawContent() override;
 
 private:
-	void DrawBody(USkeletalBodySetup& BodySetup);
-	void DrawConstraint(UPhysicsConstraintTemplate& Template);
+	bool DrawBody(USkeletalBodySetup& BodySetup);
+	bool DrawConstraint(UPhysicsConstraintTemplate& Template);
 };

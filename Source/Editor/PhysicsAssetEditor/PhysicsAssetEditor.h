@@ -15,6 +15,7 @@ public:
 	FPhysicsAssetEditor(UEditorEngine& InEditorEngine, FEditorManager& InEditorManager,
 		const FString& InMeshPath, USkeletalMesh& InMesh)
 		: FSkeletalPreviewEditor(InEditorEngine, InEditorManager, MakeDocumentKey(InMeshPath))
+		, MeshPath(InMeshPath)
 	{
 		Mesh = &InMesh;
 	}
@@ -24,6 +25,11 @@ public:
 	void OnRenderLine(FLineBatcher& LineBatcher) override;
 
 	UPhysicsAsset* GetPhysicsAsset() const { return PhysicsAsset; }
+
+	bool IsDirty() const override { return bDirty; }
+	bool ConfirmClose() override;
+	void MarkDirty() { bDirty = true; }
+	bool Save();
 
 	void SelectBody(int32 BodyIndex);
 	void SelectConstraint(int32 ConstraintIndex);
@@ -46,6 +52,11 @@ protected:
 private:
 	// 레이에 맞은 Body·Constraint 중 가장 가까운 것. Constraint가 맞으면 Body보다 우선한다
 	bool PickPhysics(const struct FRay& Ray, EPhysicsAssetSelection& OutType, int32& OutIndex) const;
+	FString GetSaveFilePath() const;
+	void RevertFromDisk();
+
+	FString MeshPath;
+	bool bDirty = false;
 
 	UPhysicsAsset* PhysicsAsset = nullptr;
 	EPhysicsAssetSelection SelectionType = EPhysicsAssetSelection::None;

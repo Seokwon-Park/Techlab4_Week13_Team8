@@ -3,6 +3,7 @@
 #include "PhysicsAssetEditorTab.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Physics/PhysicsAsset.h"
+#include "Physics/PhysicsAssetFile.h"
 #include "Physics/PhysicsAssetUtils.h"
 #include "Physics/PhysicsDebugDraw.h"
 #include "Render/SkeletalMesh.h"
@@ -32,9 +33,83 @@ bool FPhysicsAssetEditor::InitializeResources()
 		// 실패해도 연결해 둬서 열 때마다 재생성하지 않는다
 		Mesh->PhysicsAsset = NewAsset;
 		PhysicsAsset = NewAsset;
+		bDirty = true;
 	}
 
 	return true;
+}
+
+FString FPhysicsAssetEditor::GetSaveFilePath() const
+{
+	if (!Mesh->PhysicsAssetPath.empty())
+	{
+		return Mesh->PhysicsAssetPath;
+	}
+	// USkeletalMesh::GetPhysicsAsset이 읽는 기본 위치와 같아야 다음에 열 때 로드된다
+	return (std::filesystem::path("Assets/Physics") /
+		(std::filesystem::path(Mesh->GetPath()).stem().string() + ".physicsasset")).generic_string();
+}
+
+bool FPhysicsAssetEditor::Save()
+{
+	if (!PhysicsAsset)
+	{
+		return false;
+	}
+
+	const FString FilePath = GetSaveFilePath();
+	PhysicsAsset->PreviewMeshPath = MeshPath;
+	FString Error;
+	if (!PhysicsAssetFile::Write(FilePath, *PhysicsAsset, Error))
+	{
+		HTR_LOG(Warning, "Failed to save physics asset: {} ({})", FilePath, Error);
+		return false;
+	}
+	Mesh->PhysicsAssetPath = FilePath;
+	bDirty = false;
+	HTR_LOG(Info, "Saved physics asset: {}", FilePath);
+	return true;
+}
+
+bool FPhysicsAssetEditor::ConfirmClose()
+{
+	if (!bDirty)
+	{
+		return true;
+	}
+
+	const int Result = MessageBoxW(GetActiveWindow(), L"Save changes to this physics asset?",
+		L"Physics Asset", MB_YESNOCANCEL | MB_ICONQUESTION);
+	if (Result == IDCANCEL)
+	{
+		return false;
+	}
+	if (Result == IDYES)
+	{
+		return Save();
+	}
+
+	// 메시와 공유하는 객체라 저장 안 한 편집이 남으면 레벨 시뮬레이션에 그대로 쓰인다
+	RevertFromDisk();
+	return true;
+}
+
+void FPhysicsAssetEditor::RevertFromDisk()
+{
+	const FString FilePath = GetSaveFilePath();
+	if (!PhysicsAsset || !std::filesystem::exists(FilePath))
+	{
+		return;
+	}
+
+	FString Error;
+	if (!PhysicsAssetFile::Read(FilePath, *PhysicsAsset, Error))
+	{
+		HTR_LOG(Warning, "Failed to revert physics asset: {} ({})", FilePath, Error);
+	}
+	SelectionType = EPhysicsAssetSelection::None;
+	SelectionIndex = INDEX_NONE;
+	bDirty = false;
 }
 
 void FPhysicsAssetEditor::ShutdownResources()

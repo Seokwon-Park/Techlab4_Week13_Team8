@@ -69,5 +69,6 @@ private:
 		class USkeletalMesh* Mesh = nullptr;
 	};
 	void CreatePhysicsAssetEditor(const FPendingPhysicsAssetOpen& Request);
+	void OpenPhysicsAssetFile(const FString& AssetPath);
 	TArray<FPendingPhysicsAssetOpen> PendingPhysicsAssetOpens;
 };

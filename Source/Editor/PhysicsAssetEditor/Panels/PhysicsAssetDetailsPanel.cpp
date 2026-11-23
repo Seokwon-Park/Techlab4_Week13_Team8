@@ -38,37 +38,42 @@ namespace
 		return ImGui::DragFloat(Label, &Value, GetDragSpeed(Value), 0.0f, FLT_MAX, "%.4g", ImGuiSliderFlags_AlwaysClamp);
 	}
 
-	void DrawConstraintFrame(const char* Label, const FConstraintInstance& Constraint, int32 Frame,
+	bool DrawConstraintFrame(const char* Label, const FConstraintInstance& Constraint, int32 Frame,
 		FVector& Pos, FVector& PriAxis, FVector& SecAxis)
 	{
 		ImGui::PushID(Label);
 		ImGui::TextUnformatted(Label);
-		DragVector("Position", Pos);
+		bool bEdited = DragVector("Position", Pos);
 		FRotator Rotation = Constraint.GetRefFrame(Frame).Rotation.ToFRotator();
 		if (DragRotator("Rotation", Rotation))
 		{
 			const FQuat Quat = Rotation.Quaternion();
 			PriAxis = Quat.RotateVector(FVector(1, 0, 0));
 			SecAxis = Quat.RotateVector(FVector(0, 1, 0));
+			bEdited = true;
 		}
 		ImGui::PopID();
+		return bEdited;
 	}
 
-	void DrawAngularLimit(const char* Label, EAngularConstraintMotion& Motion, float& LimitDegrees)
+	bool DrawAngularLimit(const char* Label, EAngularConstraintMotion& Motion, float& LimitDegrees)
 	{
 		static const char* MotionNames[] = { "Free", "Limited", "Locked" };   // EAngularConstraintMotion 순서
 
 		ImGui::PushID(Label);
 		ImGui::SeparatorText(Label);
+		bool bEdited = false;
 		int32 MotionIndex = static_cast<int32>(Motion);
 		if (ImGui::Combo("Motion", &MotionIndex, MotionNames, IM_ARRAYSIZE(MotionNames)))
 		{
 			Motion = static_cast<EAngularConstraintMotion>(MotionIndex);
+			bEdited = true;
 		}
 		ImGui::BeginDisabled(Motion != ACM_Limited);
-		ImGui::SliderFloat("Limit", &LimitDegrees, 0.0f, 180.0f, "%.1f deg");
+		bEdited |= ImGui::SliderFloat("Limit", &LimitDegrees, 0.0f, 180.0f, "%.1f deg");
 		ImGui::EndDisabled();
 		ImGui::PopID();
+		return bEdited;
 	}
 }
 
@@ -82,29 +87,37 @@ void FPhysicsAssetDetailsPanel::DrawContent()
 
 	const int32 BodyIndex = Editor.GetSelectedBodyIndex();
 	const int32 ConstraintIndex = Editor.GetSelectedConstraintIndex();
+	bool bEdited = false;
 	if (BodyIndex != INDEX_NONE && PhysicsAsset->SkeletalBodySetups[BodyIndex])
 	{
-		DrawBody(*PhysicsAsset->SkeletalBodySetups[BodyIndex]);
+		bEdited = DrawBody(*PhysicsAsset->SkeletalBodySetups[BodyIndex]);
 	}
 	else if (ConstraintIndex != INDEX_NONE && PhysicsAsset->ConstraintSetup[ConstraintIndex])
 	{
-		DrawConstraint(*PhysicsAsset->ConstraintSetup[ConstraintIndex]);
+		bEdited = DrawConstraint(*PhysicsAsset->ConstraintSetup[ConstraintIndex]);
 	}
 	else
 	{
 		ImGui::TextDisabled("Select a body or constraint.");
 	}
+
+	if (bEdited)
+	{
+		Editor.MarkDirty();
+	}
 }
 
-void FPhysicsAssetDetailsPanel::DrawBody(USkeletalBodySetup& BodySetup)
+bool FPhysicsAssetDetailsPanel::DrawBody(USkeletalBodySetup& BodySetup)
 {
 	ImGui::Text("Body: %s", BodySetup.BoneName.ToString().c_str());
+	bool bEdited = false;
 
 	static const char* PhysicsTypeNames[] = { "Default", "Kinematic", "Simulated" };   // EPhysicsType 순서
 	int32 PhysicsType = static_cast<int32>(BodySetup.PhysicsType);
 	if (ImGui::Combo("Physics Type", &PhysicsType, PhysicsTypeNames, IM_ARRAYSIZE(PhysicsTypeNames)))
 	{
 		BodySetup.PhysicsType = static_cast<EPhysicsType>(PhysicsType);
+		bEdited = true;
 	}
 
 	FKAggregateGeom& Geom = BodySetup.AggGeom;
@@ -113,9 +126,9 @@ void FPhysicsAssetDetailsPanel::DrawBody(USkeletalBodySetup& BodySetup)
 		FKSphereElem& Elem = Geom.SphereElems[i];
 		ImGui::PushID(i);
 		ImGui::SeparatorText("Sphere");
-		ImGui::Checkbox("Contribute To Mass", &Elem.bContributeToMass);
-		DragVector("Center", Elem.Center);
-		DragSize("Radius", Elem.Radius);
+		bEdited |= ImGui::Checkbox("Contribute To Mass", &Elem.bContributeToMass);
+		bEdited |= DragVector("Center", Elem.Center);
+		bEdited |= DragSize("Radius", Elem.Radius);
 		ImGui::PopID();
 	}
 
@@ -124,12 +137,12 @@ void FPhysicsAssetDetailsPanel::DrawBody(USkeletalBodySetup& BodySetup)
 		FKBoxElem& Elem = Geom.BoxElems[i];
 		ImGui::PushID(1000 + i);
 		ImGui::SeparatorText("Box");
-		ImGui::Checkbox("Contribute To Mass", &Elem.bContributeToMass);
-		DragVector("Center", Elem.Center);
-		DragRotator("Rotation", Elem.Rotation);
-		DragSize("X", Elem.X);
-		DragSize("Y", Elem.Y);
-		DragSize("Z", Elem.Z);
+		bEdited |= ImGui::Checkbox("Contribute To Mass", &Elem.bContributeToMass);
+		bEdited |= DragVector("Center", Elem.Center);
+		bEdited |= DragRotator("Rotation", Elem.Rotation);
+		bEdited |= DragSize("X", Elem.X);
+		bEdited |= DragSize("Y", Elem.Y);
+		bEdited |= DragSize("Z", Elem.Z);
 		ImGui::PopID();
 	}
 
@@ -138,11 +151,11 @@ void FPhysicsAssetDetailsPanel::DrawBody(USkeletalBodySetup& BodySetup)
 		FKSphylElem& Elem = Geom.SphylElems[i];
 		ImGui::PushID(2000 + i);
 		ImGui::SeparatorText("Capsule");
-		ImGui::Checkbox("Contribute To Mass", &Elem.bContributeToMass);
-		DragVector("Center", Elem.Center);
-		DragRotator("Rotation", Elem.Rotation);
-		DragSize("Radius", Elem.Radius);
-		DragSize("Length", Elem.Length);
+		bEdited |= ImGui::Checkbox("Contribute To Mass", &Elem.bContributeToMass);
+		bEdited |= DragVector("Center", Elem.Center);
+		bEdited |= DragRotator("Rotation", Elem.Rotation);
+		bEdited |= DragSize("Radius", Elem.Radius);
+		bEdited |= DragSize("Length", Elem.Length);
 		ImGui::PopID();
 	}
 
@@ -150,21 +163,22 @@ void FPhysicsAssetDetailsPanel::DrawBody(USkeletalBodySetup& BodySetup)
 	{
 		ImGui::PushID(3000 + i);
 		ImGui::SeparatorText("Convex");
-		ImGui::Checkbox("Contribute To Mass", &Geom.ConvexElems[i].bContributeToMass);
+		bEdited |= ImGui::Checkbox("Contribute To Mass", &Geom.ConvexElems[i].bContributeToMass);
 		ImGui::Text("Vertices: %d", Geom.ConvexElems[i].VertexData.Num());
 		ImGui::PopID();
 	}
 
 	ImGui::SeparatorText("Physics");
-	ImGui::Checkbox("Override Mass", &BodySetup.bOverrideMass);
+	bEdited |= ImGui::Checkbox("Override Mass", &BodySetup.bOverrideMass);
 	ImGui::BeginDisabled(!BodySetup.bOverrideMass);
-	ImGui::DragFloat("Mass (kg)", &BodySetup.MassInKgOverride, 0.1f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+	bEdited |= ImGui::DragFloat("Mass (kg)", &BodySetup.MassInKgOverride, 0.1f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::EndDisabled();
-	ImGui::DragFloat("Friction", &BodySetup.Friction, 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-	ImGui::SliderFloat("Restitution", &BodySetup.Restitution, 0.0f, 1.0f, "%.3f");
+	bEdited |= ImGui::DragFloat("Friction", &BodySetup.Friction, 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+	bEdited |= ImGui::SliderFloat("Restitution", &BodySetup.Restitution, 0.0f, 1.0f, "%.3f");
+	return bEdited;
 }
 
-void FPhysicsAssetDetailsPanel::DrawConstraint(UPhysicsConstraintTemplate& Template)
+bool FPhysicsAssetDetailsPanel::DrawConstraint(UPhysicsConstraintTemplate& Template)
 {
 	FConstraintInstance& Constraint = Template.DefaultInstance;
 	FConstraintProfileProperties& Profile = Constraint.ProfileInstance;
@@ -174,16 +188,17 @@ void FPhysicsAssetDetailsPanel::DrawConstraint(UPhysicsConstraintTemplate& Templ
 
 	// Frame1 = 자식 본 공간, Frame2 = 부모 본 공간
 	ImGui::SeparatorText("Constraint Transforms");
-	DrawConstraintFrame("Child", Constraint, 0, Constraint.Pos1, Constraint.PriAxis1, Constraint.SecAxis1);
-	DrawConstraintFrame("Parent", Constraint, 1, Constraint.Pos2, Constraint.PriAxis2, Constraint.SecAxis2);
+	bool bEdited = DrawConstraintFrame("Child", Constraint, 0, Constraint.Pos1, Constraint.PriAxis1, Constraint.SecAxis1);
+	bEdited |= DrawConstraintFrame("Parent", Constraint, 1, Constraint.Pos2, Constraint.PriAxis2, Constraint.SecAxis2);
 
-	DrawAngularLimit("Swing 1", Profile.ConeLimit.Swing1Motion, Profile.ConeLimit.Swing1LimitDegrees);
-	DrawAngularLimit("Swing 2", Profile.ConeLimit.Swing2Motion, Profile.ConeLimit.Swing2LimitDegrees);
-	DrawAngularLimit("Twist", Profile.TwistLimit.TwistMotion, Profile.TwistLimit.TwistLimitDegrees);
+	bEdited |= DrawAngularLimit("Swing 1", Profile.ConeLimit.Swing1Motion, Profile.ConeLimit.Swing1LimitDegrees);
+	bEdited |= DrawAngularLimit("Swing 2", Profile.ConeLimit.Swing2Motion, Profile.ConeLimit.Swing2LimitDegrees);
+	bEdited |= DrawAngularLimit("Twist", Profile.TwistLimit.TwistMotion, Profile.TwistLimit.TwistLimitDegrees);
 
 	ImGui::SeparatorText("Collision");
 	if (ImGui::Checkbox("Disable Collision", &Profile.bDisableCollision))
 	{
+		bEdited = true;
 		UPhysicsAsset* PhysicsAsset = Editor.GetPhysicsAsset();
 		const int32 BodyA = PhysicsAsset->FindBodyIndex(Constraint.ConstraintBone1);
 		const int32 BodyB = PhysicsAsset->FindBodyIndex(Constraint.ConstraintBone2);
@@ -199,4 +214,5 @@ void FPhysicsAssetDetailsPanel::DrawConstraint(UPhysicsConstraintTemplate& Templ
 			}
 		}
 	}
+	return bEdited;
 }

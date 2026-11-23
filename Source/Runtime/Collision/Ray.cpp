@@ -229,67 +229,67 @@ bool RayIntersectsPlane(const FRay& Ray, const FVector& PlanePoint, const FVecto
 
 bool RayIntersectsSphere(const FRay& Ray, const FVector& Center, float Radius, float& OutT)
 {
-	const FVector OC = Ray.Origin - Center;
-	const float B = OC.Dot(Ray.Direction);
-	const float C = OC.Dot(OC) - Radius * Radius;
-	const float H = B * B - C;
-	if (H < 0.0f)
+	const FVector CenterToOrigin = Ray.Origin - Center;
+	const float HalfLinearCoeff = CenterToOrigin.Dot(Ray.Direction);
+	const float ConstantCoeff = CenterToOrigin.Dot(CenterToOrigin) - Radius * Radius;
+	const float QuarterDiscriminant = HalfLinearCoeff * HalfLinearCoeff - ConstantCoeff;
+	if (QuarterDiscriminant < 0.0f)
 	{
 		return false;
 	}
 
-	const float SqrtH = std::sqrt(H);
-	float T = -B - SqrtH;
-	if (T < 0.0f)
+	const float SqrtDiscriminant = std::sqrt(QuarterDiscriminant);
+	float HitT = -HalfLinearCoeff - SqrtDiscriminant;
+	if (HitT < 0.0f)
 	{
-		T = -B + SqrtH;   // 레이 시작점이 구 안
+		HitT = -HalfLinearCoeff + SqrtDiscriminant;   // 레이 시작점이 구 안
 	}
-	if (T < 0.0f)
+	if (HitT < 0.0f)
 	{
 		return false;
 	}
-	OutT = T;
+	OutT = HitT;
 	return true;
 }
 
 bool RayIntersectsCapsule(const FRay& Ray, const FVector& A, const FVector& B, float Radius, float& OutT)
 {
-	const FVector BA = B - A;
-	const FVector OA = Ray.Origin - A;
-	const float BABA = BA.Dot(BA);
-	const float BARD = BA.Dot(Ray.Direction);
-	const float BAOA = BA.Dot(OA);
-	const float RDOA = Ray.Direction.Dot(OA);
-	const float OAOA = OA.Dot(OA);
+	const FVector Axis = B - A;
+	const FVector AToOrigin = Ray.Origin - A;
+	const float AxisLengthSq = Axis.Dot(Axis);
+	const float AxisDotDir = Axis.Dot(Ray.Direction);
+	const float AxisDotOrigin = Axis.Dot(AToOrigin);
+	const float DirDotOrigin = Ray.Direction.Dot(AToOrigin);
+	const float OriginLengthSq = AToOrigin.Dot(AToOrigin);
 
-	// 옆면(무한 원기둥)과 교차한 뒤 선분 범위 안인지 본다
-	const float K2 = BABA - BARD * BARD;
-	if (K2 > SMALL_NUMBER)
+	// 옆면
+	const float QuadraticCoeff = AxisLengthSq - AxisDotDir * AxisDotDir;
+	if (QuadraticCoeff > SMALL_NUMBER)
 	{
-		const float K1 = BABA * RDOA - BAOA * BARD;
-		const float K0 = BABA * OAOA - BAOA * BAOA - Radius * Radius * BABA;
-		const float H = K1 * K1 - K2 * K0;
-		if (H < 0.0f)
+		const float HalfLinearCoeff = AxisLengthSq * DirDotOrigin - AxisDotOrigin * AxisDotDir;
+		const float ConstantCoeff = AxisLengthSq * OriginLengthSq - AxisDotOrigin * AxisDotOrigin - Radius * Radius * AxisLengthSq;
+		const float QuarterDiscriminant = HalfLinearCoeff * HalfLinearCoeff - QuadraticCoeff * ConstantCoeff;
+		if (QuarterDiscriminant < 0.0f)
 		{
 			return false;
 		}
-		const float T = (-K1 - std::sqrt(H)) / K2;
-		const float Y = BAOA + T * BARD;
-		if (Y > 0.0f && Y < BABA && T >= 0.0f)
+		const float HitT = (-HalfLinearCoeff - std::sqrt(QuarterDiscriminant)) / QuadraticCoeff;
+		const float HitAxisProjection = AxisDotOrigin + HitT * AxisDotDir;
+		if (HitAxisProjection > 0.0f && HitAxisProjection < AxisLengthSq && HitT >= 0.0f)
 		{
-			OutT = T;
+			OutT = HitT;
 			return true;
 		}
 	}
 
 	// 양 끝 반구
-	float TA = 0.0f, TB = 0.0f;
-	const bool bHitA = RayIntersectsSphere(Ray, A, Radius, TA);
-	const bool bHitB = RayIntersectsSphere(Ray, B, Radius, TB);
+	float HitTA = 0.0f, HitTB = 0.0f;
+	const bool bHitA = RayIntersectsSphere(Ray, A, Radius, HitTA);
+	const bool bHitB = RayIntersectsSphere(Ray, B, Radius, HitTB);
 	if (!bHitA && !bHitB)
 	{
 		return false;
 	}
-	OutT = bHitA && bHitB ? std::min(TA, TB) : (bHitA ? TA : TB);
+	OutT = bHitA && bHitB ? std::min(HitTA, HitTB) : (bHitA ? HitTA : HitTB);
 	return true;
 }
