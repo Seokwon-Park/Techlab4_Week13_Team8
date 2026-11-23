@@ -8,8 +8,9 @@
 #include "Physics/CollisionQueryFilterCallback.h"
 #include "Physics/BodyInstance.h"
 #include "Physics/PhysXConversion.h"
+#include "Core/StatOverlay.h"
+#include "Core/Windows/WindowsPlatformTime.h"
 #include "Components/PrimitiveComponent.h"
-
 #include <cmath>
 #include <limits>
 #include <geometry/PxGeometryQuery.h>
@@ -17,7 +18,8 @@
 #include <PxPhysics.h>
 #include <PxScene.h>
 #include <PxSceneDesc.h>
-#include <extensions/PxDefaultSimulationFilterShader.h>
+#include <PxSceneLock.h>
+#include "Physics/PhysXSimEventCallback.h"
 
 FPhysicsScene::FPhysicsScene()
 {
@@ -33,8 +35,13 @@ FPhysicsScene::FPhysicsScene()
 	physx::PxSceneDesc Desc(Physics->getTolerancesScale());
 	Desc.gravity = physx::PxVec3(0.0f, 0.0f, Settings.DefaultGravityZ);
 	Desc.cpuDispatcher = Dispatcher;
-	Desc.filterShader = physx::PxDefaultSimulationFilterShader;
+
+	// 네이티브 씬 생성 전 이벤트 필터와 콜백 등록
+	SimulationEvents = std::make_unique<FPhysXSimEventCallback>(*this);
+	Desc.filterShader = &FPhysXSimEventCallback::FilterShader;
+	Desc.simulationEventCallback = SimulationEvents.get();
 	Desc.flags |= physx::PxSceneFlag::eENABLE_ACTIVE_ACTORS;   // SyncComponentsToBodies가 움직인 액터만 받는다
+
 	if (Settings.bEnablePCM)
 	{
 		Desc.flags |= physx::PxSceneFlag::eENABLE_PCM;
@@ -43,6 +50,16 @@ FPhysicsScene::FPhysicsScene()
 	{
 		Desc.flags.clear(physx::PxSceneFlag::eENABLE_PCM);
 	}
+
+	// 프로젝트 설정에 따른 씬 CCD 허용
+	if (!Settings.bDisableCCD)
+	{
+		Desc.flags |= physx::PxSceneFlag::eENABLE_CCD;
+	}
+
+	// 씬 접근 잠금 검사의 활성화
+	Desc.flags |= physx::PxSceneFlag::eREQUIRE_RW_LOCK;
+
 	Scene = Physics->createScene(Desc);
 }
 
@@ -57,9 +74,13 @@ FPhysicsScene::~FPhysicsScene()
 
 void FPhysicsScene::SetGravityZ(float GravityZ)
 {
-	// 유효 중력이 바뀐 경우의 네이티브 씬 갱신
+	if (!Scene) return;
+
+	// 중력 조회와 갱신의 쓰기 잠금
 	const physx::PxVec3 Gravity(0.0f, 0.0f, GravityZ);
-	if (Scene && Scene->getGravity() != Gravity)
+	const physx::PxSceneWriteLock WriteLock(*Scene);
+	//유효 중력이 바뀐 경우의 네이티브 씬 갱신
+	if (Scene->getGravity() != Gravity)
 	{
 		Scene->setGravity(Gravity);
 	}
@@ -67,6 +88,10 @@ void FPhysicsScene::SetGravityZ(float GravityZ)
 
 void FPhysicsScene::Tick(float DeltaSeconds)
 {
+	// 스텝이 없는 틱의 표시값 초기화
+	LastTickStepCount = 0;
+	LastTickStepTimeMs = 0.0;
+
 	if (!Scene || DeltaSeconds <= 0.0f)
 	{
 		return;
@@ -77,6 +102,7 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 	const double FixedStepSeconds = Settings.FixedStepSeconds;
 	const int32 MaxStepsPerTick = Settings.MaxStepsPerTick;
 	const float StepDelta = static_cast<float>(FixedStepSeconds);
+	const bool bMeasureStepTime = FStatOverlay::IsEnabled(EStatFlags::Physics);
 	AccumulatedSeconds = std::min(
 		AccumulatedSeconds + static_cast<double>(DeltaSeconds),
 		FixedStepSeconds * MaxStepsPerTick);
@@ -85,19 +111,34 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 	{
 		// 스텝 입력 적용과 PhysX 결과 수집
 		OnPreStep.Broadcast(StepDelta);
-		Scene->simulate(StepDelta);
-		if (!Scene->fetchResults(true))
+		bool bFetchedResults = false;
+		{
+			// 고정 스텝의 네이티브 씬 쓰기 잠금
+			const physx::PxSceneWriteLock WriteLock(*Scene);
+			const uint64 StartCycles = bMeasureStepTime ? FPlatformTime::GetCycles64() : 0;
+			Scene->simulate(StepDelta);
+			bFetchedResults = Scene->fetchResults(true);
+			if (bMeasureStepTime)
+			{
+				const uint64 ElapsedCycles = FPlatformTime::GetCycles64() - StartCycles;
+				LastTickStepTimeMs += FPlatformTime::ToMilliseconds64(ElapsedCycles);
+			}
+		}
+
+		if (!bFetchedResults)
 		{
 			HTR_LOG(Error, "PxScene::fetchResults failed");
 			ResetStepTime();
 			return;
 		}
 		SyncComponentsToBodies();
-
 		// 완료된 스텝의 시간 차감과 결과 전달
+		++LastTickStepCount;
 		AccumulatedSeconds -= FixedStepSeconds;
 		OnPostStep.Broadcast(StepDelta);
 	}
+	// 프레임의 물리 스텝 완료 후 게임 이벤트 발행
+	SimulationEvents->DispatchPending();
 }
 
 UPrimitiveComponent* FPhysicsScene::FindHitComponent(const physx::PxRigidActor* Actor) const
@@ -185,9 +226,12 @@ bool FPhysicsScene::QuerySingle(const FRay& WorldRay, float MaxDistance,
 	const physx::PxQueryFilterData FilterData(physx::PxQueryFlag::eSTATIC |
 		physx::PxQueryFlag::eDYNAMIC | physx::PxQueryFlag::ePREFILTER);
 
+	// 쿼리 실행과 히트 대상 역참조의 읽기 잠금
+	const physx::PxSceneReadLock ReadLock(*Scene);
+
 	// 최근접 블로킹 히트 하나의 수집과 복수 Touch 결과의 확장 지점
 	physx::PxLocationHit Hit;
-	
+
 	// 셰이프 충돌 분기
 	if (SweepGeometry)
 	{
@@ -237,15 +281,27 @@ bool FPhysicsScene::QuerySingle(const FRay& WorldRay, float MaxDistance,
 
 void FPhysicsScene::SyncComponentsToBodies()
 {
-	// fetchResults 직후에만 유효한 목록. 다음 simulate 전에 다 읽는다
-	physx::PxU32 NumActors = 0;
-	physx::PxActor** Actors = Scene->getActiveActors(NumActors);
-	for (physx::PxU32 i = 0; i < NumActors; ++i)
+	TArray<UPrimitiveComponent*> Components;
+
 	{
-		const auto* Body = static_cast<const FBodyInstance*>(Actors[i]->userData);
-		// 래그돌 바디(InstanceBodyIndex가 있음)는 건너뛴다. 스켈레탈 메시는 EndPhysicsTick에서 루트 바디로 한 번만 맞춘다
-		// (UE PhysScene_Chaos.cpp의 InstanceBodyIndex == INDEX_NONE 조건과 같음)
-		if (Body && Body->OwnerComponent && Body->InstanceBodyIndex == INDEX_NONE)
-			Body->OwnerComponent->SyncComponentToRBPhysics();   // 시뮬레이션 중이 아니면 안에서 바로 return
+		const physx::PxSceneReadLock ReadLock(*Scene);
+		// fetchResults 직후에만 유효한 목록. 다음 simulate 전에 다 읽는다
+		physx::PxU32 NumActors = 0;
+		physx::PxActor** Actors = Scene->getActiveActors(NumActors);
+		for (physx::PxU32 i = 0; i < NumActors; ++i)
+		{
+			const auto* Body = static_cast<const FBodyInstance*>(Actors[i]->userData);
+			UPrimitiveComponent* Component = Body ? Body->OwnerComponent : nullptr;
+			// PostPhysics에서 루트 기준으로 동기화할 래그돌 본 제외
+			if (Component && Body->InstanceBodyIndex == INDEX_NONE)
+			{
+				Components.Add(Component);
+			}
+		}
+	}
+	// 씬 잠금 해제 후 엔진 트랜스폼 갱신
+	for (UPrimitiveComponent* Component : Components)
+	{
+		Component->SyncComponentToRBPhysics(); // 시뮬레이션 중이 아니면 안에서 바로 return
 	}
 }

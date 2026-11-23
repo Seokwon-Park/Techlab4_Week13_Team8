@@ -18,7 +18,8 @@
 #include "Animation/BlendSpace1D.h"
 #include "Animation/BlendSpaceFile.h"
 #include "Asset/AssetManager.h"
-
+#include <PxScene.h>
+#include <PxSceneLock.h>
 #include "Physics/BodyInstance.h"
 #include "Physics/ConstraintInstance.h"
 #include "Physics/PhysicsAsset.h"
@@ -496,7 +497,11 @@ void USkeletalMeshComponent::InstantiatePhysicsAssetBodies_Internal(const UPhysi
 			continue;
 		}
 		if (physx::PxRigidDynamic* Dyn = BI->GetRigidDynamic())
+		{
+			// 등록된 래그돌 Shape 필터 갱신의 쓰기 잠금
+			const physx::PxSceneWriteLock WriteLock(*PhysScene.GetPxScene());
 			physx::PxSetGroup(*Dyn, RagdollCollisionGroup);
+		}
 		Bodies[i] = BI;
 	}
 }

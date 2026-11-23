@@ -1,11 +1,12 @@
 #include "EnginePCH.h"
 #include "ConstraintInstance.h"
-
+#include "Physics/PhysicsScene.h"
 #include "Physics/BodyInstance.h"
 #include "Physics/PhysXConversion.h"
 #include "Physics/PhysXSDK.h"
 
 #include <cmath>
+#include <PxSceneLock.h>
 #include <extensions/PxD6Joint.h>
 
 FTransform FConstraintInstance::GetRefFrame(int32 Frame) const
@@ -39,15 +40,8 @@ bool FConstraintInstance::InitConstraint(FBodyInstance* Body1, FBodyInstance* Bo
 
     physx::PxRigidActor* Actor1 = Body1->Actor;
     physx::PxRigidActor* Actor2 = Body2->Actor;
-    if (!Actor1 || !Actor2 || Actor1 == Actor2)
-    {
-        return false;
-    }
-
-    // 동일 물리 씬 등록과 동적 액터 요건 확인
-    const physx::PxScene* Scene = Actor1->getScene();
-    if (!Scene || Scene != Actor2->getScene() ||
-        (!Actor1->is<physx::PxRigidDynamic>() && !Actor2->is<physx::PxRigidDynamic>()))
+    FPhysicsScene* BodyScene = Body1->Scene;
+    if (!Actor1 || !Actor2 || Actor1 == Actor2 || !BodyScene || BodyScene != Body2->Scene)
     {
         return false;
     }
@@ -69,6 +63,15 @@ bool FConstraintInstance::InitConstraint(FBodyInstance* Body1, FBodyInstance* Bo
         return false;
     }
 
+    // 씬 등록 확인과 D6 조인트 설정의 쓰기 잠금
+    physx::PxScene* NativeScene = BodyScene->GetPxScene();
+    const physx::PxSceneWriteLock WriteLock(*NativeScene);
+    if (Actor1->getScene() != NativeScene || Actor2->getScene() != NativeScene ||
+        (!Actor1->is<physx::PxRigidDynamic>() && !Actor2->is<physx::PxRigidDynamic>()))
+    {
+        return false;
+    }
+
     // 부모와 자식 순서의 D6 조인트 생성
     ConstraintHandle = physx::PxD6JointCreate(*Physics, Actor2, LocalFrame2, Actor1, LocalFrame1);
 
@@ -77,7 +80,8 @@ bool FConstraintInstance::InitConstraint(FBodyInstance* Body1, FBodyInstance* Bo
         return false;
     }
 
-    // 생성된 조인트에 회전 제한 적용
+    // 해제 시 잠글 씬 기록과 회전 제한 적용
+    ConstraintScene = NativeScene;
     ApplyAngularLimits(*ConstraintHandle);
     return true;
 }
@@ -146,6 +150,7 @@ void FConstraintInstance::TermConstraint()
     // 네이티브 조인트 반환과 핸들 초기화
     if (ConstraintHandle)
     {
+        const physx::PxSceneWriteLock WriteLock(*ConstraintScene);
         // 조인트 해제 전 연결 액터 조회
         physx::PxRigidActor* Actor0 = nullptr;
         physx::PxRigidActor* Actor1 = nullptr;
@@ -157,7 +162,7 @@ void FConstraintInstance::TermConstraint()
         for (physx::PxRigidActor* Actor : { Actor0, Actor1 })
         {
             auto* Dynamic = Actor ? Actor->is<physx::PxRigidDynamic>() : nullptr;
-            if (Dynamic && Dynamic->getScene() &&
+            if (Dynamic && Dynamic->getScene() == ConstraintScene &&
                 !Dynamic->getRigidBodyFlags().isSet(physx::PxRigidBodyFlag::eKINEMATIC) &&
                 !Dynamic->getActorFlags().isSet(physx::PxActorFlag::eDISABLE_SIMULATION) &&
                 Dynamic->isSleeping())
@@ -165,5 +170,6 @@ void FConstraintInstance::TermConstraint()
                 Dynamic->wakeUp();
             }
         }
+        ConstraintScene = nullptr;
     }
 }

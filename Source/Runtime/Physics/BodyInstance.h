@@ -49,6 +49,9 @@ struct FBodyInstance
     void SetInstanceSimulatePhysics(bool bSimulate);
     void SetKinematicTarget(const FTransform& InWorldTransform);
 
+    // 바디별 CCD 사용 설정
+    void SetUseCCD(bool bInUseCCD);
+
     // 차량 설정용 빌린 액터 포인터, 미초기화·정적 바디는 nullptr
     physx::PxRigidDynamic* GetRigidDynamic();
 
@@ -65,4 +68,7 @@ private:
     FPhysicsScene* Scene = nullptr;
     UPrimitiveComponent* OwnerComponent = nullptr;
     physx::PxRigidActor* Actor = nullptr;
+
+    // 동적 모드에서 적용할 CCD 사용 여부
+    bool bUseCCD = false;
 };
