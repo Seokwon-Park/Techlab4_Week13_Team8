@@ -42,6 +42,10 @@ namespace UE::Core::Private
 				return;
 		}
 
+		//"_01"처럼 0으로 시작하면 이름의 일부로 둔다 ("_0"은 번호).
+		if ((NumberString.length() > 1 && NumberString[0] == '0'))
+			return;
+
 		// 4. 숫자로 변환한 뒤 1 크게 저장.
 		int32 ExternalNumber = std::stoi(NumberString);
 
