@@ -339,8 +339,7 @@ void UEditorEngine::StartPlayInEditorSession()
 	if (!GameInstance->InitializeForPlayInEditor(0) ||
 		!GameInstance->StartPlayInEditorGameInstance())
 	{
-		UWorld* FailedWorld = PIEContext.World();
-		DestroyWorldContext(FailedWorld);
+		DestroyWorldContext(PIEContext);
 		PIEViewIndex = InvalidViewIndex;
 		PIEStartEditorViewIndex = InvalidViewIndex;
 		DestroyPIEWindow();

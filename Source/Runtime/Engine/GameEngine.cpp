@@ -126,7 +126,7 @@ bool UGameEngine::OpenStartupMap(const FString& MapPath)
 	GameInstance->SetWorldContext(&Context);
 	if (!GameInstance->InitializeStandalone(MapPath) || !GameInstance->StartGameInstance())
 	{
-		DestroyWorldContext(Context.World());
+		DestroyWorldContext(Context);
 		return false;
 	}
 	HTR_LOG(Info, "Game map loaded: {}", MapPath);

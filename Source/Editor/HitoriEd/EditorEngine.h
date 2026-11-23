@@ -145,7 +145,7 @@ protected:
 
 private:
 	// 에디터 월드와 그 월드 컨텍스트를 만든다. UE의 UEditorEngine::InitEditor에 해당한다.
-	void InitEditor();
+	bool InitEditor();
 	// 아래 다섯은 Init이 순서대로 부르는 UI 초기화 단계다. UE에서는 레벨 에디터 모듈과 Slate가 맡는 일이라
 	// 대응하는 UE 함수가 없는, 이 엔진 고유의 이름이다.
 	void InitLevelEditorTab();
