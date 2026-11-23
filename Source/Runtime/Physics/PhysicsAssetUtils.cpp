@@ -56,8 +56,8 @@ namespace
 		const FVector E[3] = { FVector(1,0,0), FVector(0,1,0), FVector(0,0,1) };
 		FMatrix M = FMatrix::Identity;
 		M.SetAxis(0, E[(Axis + 1) % 3]);
-		M.SetAxis(0, E[(Axis + 2) % 3]);
-		M.SetAxis(0, E[Axis % 3]);
+		M.SetAxis(1, E[(Axis + 2) % 3]);
+		M.SetAxis(2, E[Axis]);
 		return MatrixToRotator(M);
 	}
 
@@ -80,11 +80,11 @@ namespace
 		CI.SecAxis1 = FVector(0, 1, 0);
 
 		const FMatrix ChildComp = Bones[Child].InverseBindPose.Inverse();
-		const FMatrix ParentComp = Bones[Child].InverseBindPose.Inverse();
+		const FMatrix ParentComp = Bones[Parent].InverseBindPose.Inverse();
 		const FMatrix ChildInParent = ChildComp * ParentComp.Inverse();
 		CI.Pos2 = FVector(ChildInParent[3][0], ChildInParent[3][1], ChildInParent[3][2]);
-		CI.PriAxis2 = FVector(ChildInParent[0][0], ChildInParent[0][1], ChildInParent[0][2]);
-		CI.SecAxis2 = FVector(ChildInParent[1][0], ChildInParent[1][1], ChildInParent[1][2]);
+		CI.PriAxis2 = FVector(ChildInParent[0][0], ChildInParent[0][1], ChildInParent[0][2]).Normalized();
+		CI.SecAxis2 = FVector(ChildInParent[1][0], ChildInParent[1][1], ChildInParent[1][2]).Normalized();
 
 		CI.ProfileInstance.TwistLimit.TwistMotion = Params.AngularConstraintMode;
 		CI.ProfileInstance.ConeLimit.Swing1Motion = Params.AngularConstraintMode;
@@ -114,7 +114,10 @@ bool FPhysicsAssetUtils::CreateFromSkeletalMesh(UPhysicsAsset* PhysicsAsset, USk
 		const FVector Center = (Local.Max + Local.Min) * 0.5f;
 		const int32 Axis = (Ext.X >= Ext.Y && Ext.X >= Ext.Z) ? 0 : (Ext.Y >= Ext.Z ? 1 : 2);
 		// 기준치보다 작은 뼈는 거른다
-		if (Ext[Axis] * 2.f < Params.MinBoneSize) continue;
+		// 본 로컬 크기에 본 스케일을 곱해 컴포넌트 공간(cm) 기준으로 비교한다
+		const FMatrix BoneComp = Bones[b].InverseBindPose.Inverse();
+		const float BoneScale = FVector(BoneComp[0][0], BoneComp[0][1], BoneComp[0][2]).Size();
+		if (Ext[Axis] * 2.f * BoneScale < Params.MinBoneSize) continue;
 
 		const int32 BodyIndex = CreateNewBody(PhysicsAsset, FName(Bones[b].Name), Params);
 		FKSphylElem E;

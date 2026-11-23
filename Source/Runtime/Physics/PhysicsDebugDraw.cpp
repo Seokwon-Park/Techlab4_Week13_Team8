@@ -187,7 +187,7 @@ const FKAggregateGeom* FPhysicsDebugDraw::FindStaticMeshGeom(const UStaticMeshCo
 const UPhysicsAsset* FPhysicsDebugDraw::FindPhysicsAsset(const USkeletalMeshComponent* Component) const
 {
 	const USkeletalMesh* Mesh = Component->GetSkeletalMesh();
-	return Mesh ? Mesh->GetPhysicsAsset() : nullptr;
+	return Mesh ? Mesh->PhysicsAsset : nullptr;
 }
 
 bool FPhysicsDebugDraw::GetBoneWorldTransform(const USkeletalMeshComponent* Component, const FString& BoneName, FTransform& OutBoneWorld) const
