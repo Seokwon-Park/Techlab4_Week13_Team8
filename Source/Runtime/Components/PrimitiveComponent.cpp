@@ -57,12 +57,20 @@ void UPrimitiveComponent::SetSimulatePhysics(bool bSimulate)
 	BodyInstance.SetInstanceSimulatePhysics(bSimulate);
 }
 
+// UE PrimitiveComponentPhysics.cpp SyncComponentToRBPhysics와 같은 흐름.
+// 어떤 바디를 따라갈지(GetBodyInstance)와 바디 -> 컴포넌트 변환(GetComponentTransformFromBodyInstance)은 하위 클래스가 정한다
 void UPrimitiveComponent::SyncComponentToRBPhysics()
 {
-	if (!bSimulatePhysics || !BodyInstance.IsValidBodyInstance()) return;
-	FTransform T = BodyInstance.GetWorldTransform();
-	T.Scale = FTransform::FromMatrix(GetWorldMatrix()).Scale;
-	SetWorldTransform(T.GetLocalMatrix(), false);
+	FBodyInstance* UseBI = GetBodyInstance();
+	if (!bSimulatePhysics || !UseBI || !UseBI->IsValidBodyInstance()) return;
+	SetWorldTransform(GetComponentTransformFromBodyInstance(UseBI).GetLocalMatrix(), false);
+}
+
+FTransform UPrimitiveComponent::GetComponentTransformFromBodyInstance(FBodyInstance* UseBI)
+{
+	FTransform T = UseBI->GetWorldTransform();
+	T.Scale = FTransform::FromMatrix(GetWorldMatrix()).Scale;   // PhysX 포즈에는 스케일이 없다
+	return T;
 }
 
 void UPrimitiveComponent::OnUnregister()

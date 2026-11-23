@@ -292,7 +292,8 @@ void FPhysicsScene::SyncComponentsToBodies()
 		{
 			const auto* Body = static_cast<const FBodyInstance*>(Actors[i]->userData);
 			UPrimitiveComponent* Component = Body ? Body->OwnerComponent : nullptr;
-			if (Component && Body == &Component->BodyInstance)
+			// PostPhysics에서 루트 기준으로 동기화할 래그돌 본 제외
+			if (Component && Body->InstanceBodyIndex == INDEX_NONE)
 			{
 				Components.Add(Component);
 			}
