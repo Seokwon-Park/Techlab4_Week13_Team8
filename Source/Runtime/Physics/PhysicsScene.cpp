@@ -243,7 +243,9 @@ void FPhysicsScene::SyncComponentsToBodies()
 	for (physx::PxU32 i = 0; i < NumActors; ++i)
 	{
 		const auto* Body = static_cast<const FBodyInstance*>(Actors[i]->userData);
-		if (Body && Body->OwnerComponent)
+		// 래그돌 바디(InstanceBodyIndex가 있음)는 건너뛴다. 스켈레탈 메시는 EndPhysicsTick에서 루트 바디로 한 번만 맞춘다
+		// (UE PhysScene_Chaos.cpp의 InstanceBodyIndex == INDEX_NONE 조건과 같음)
+		if (Body && Body->OwnerComponent && Body->InstanceBodyIndex == INDEX_NONE)
 			Body->OwnerComponent->SyncComponentToRBPhysics();   // 시뮬레이션 중이 아니면 안에서 바로 return
 	}
 }

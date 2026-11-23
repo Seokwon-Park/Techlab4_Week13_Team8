@@ -1392,6 +1392,16 @@ namespace
             return GraphRef;
         };
 
+        // 래그돌 켜기/끄기 (UE에서 블루프린트가 SetSimulatePhysics를 부르는 자리)
+        ActorType["SetSimulatePhysics"] = [](const FLuaActorRef& Ref, bool bSimulate)
+        {
+            FirstSkeletalMesh(Ref).SetSimulatePhysics(bSimulate);
+        };
+        ActorType["IsSimulatingPhysics"] = [](const FLuaActorRef& Ref)
+        {
+            return FirstSkeletalMesh(Ref).bSimulatePhysics;
+        };
+
         ActorType["ReloadAnimBlueprint"] = [](const FLuaActorRef& Ref) -> sol::optional<FLuaAnimGraphRef>
         {
             USkeletalMeshComponent& Component = FirstSkeletalMesh(Ref);

@@ -260,6 +260,10 @@ void USkeletalMeshComponent::InitArticulated(FPhysicsScene* PhysScene)
 	RefreshBoneTransformsNow();
 	InstantiatePhysicsAssetBodies_Internal(*PhysAsset, *PhysScene);
 
+	// UE InitArticulated: 루트 바디를 다시 찾는다
+	RootBodyData.BodyIndex = INDEX_NONE;
+	SetRootBodyIndex(FindRootBodyIndex());
+
 	for (UPhysicsConstraintTemplate* Template : PhysAsset->ConstraintSetup)
 	{
 		const FConstraintInstance& Src = Template->DefaultInstance;
@@ -294,13 +298,32 @@ void USkeletalMeshComponent::TermArticulated()
 		}
 	}
 	Bodies.Empty();
+	ResetRootBodyIndex();
 	bBlendPhysics = false;
 }
 
 void USkeletalMeshComponent::SetSimulatePhysics(bool bEnabled)
 {
+	const bool bWasSimulating = bBlendPhysics;
 	bSimulatePhysics = bEnabled;
 	bBlendPhysics = bEnabled;
+
+	// [Hitori 추가] 래그돌을 끄면 루트 바디가 수평으로 움직인 만큼만 옮기고 켜기 전 자세(회전·높이)로 세운다.
+	// UE는 컴포넌트를 쓰러진 방향 그대로 두고 일어나기는 게임 코드(Get-up 애니메이션 등)에 맡긴다
+	FBodyInstance* RootBody = GetBodyInstance();
+	if (bEnabled && !bWasSimulating && RootBody)
+	{
+		PreRagdollComponentTransform = FTransform::FromMatrix(GetWorldMatrix());
+		PreRagdollRootBodyLocation = RootBody->GetWorldTransform().Location;
+	}
+	else if (!bEnabled && bWasSimulating && RootBody)
+	{
+		const FVector Moved = RootBody->GetWorldTransform().Location - PreRagdollRootBodyLocation;
+		FTransform Upright = PreRagdollComponentTransform;
+		Upright.Location.X += Moved.X;
+		Upright.Location.Y += Moved.Y;
+		SetWorldTransform(Upright.GetLocalMatrix(), false);
+	}
 
 	if (UPhysicsAsset* PhysAsset = GetPhysicsAsset())
 	{
@@ -310,6 +333,10 @@ void USkeletalMeshComponent::SetSimulatePhysics(bool bEnabled)
 				Bodies[i]->SetInstanceSimulatePhysics(bEnabled);
 		}
 	}
+
+	// 켜는 순간의 컴포넌트-루트 바디 관계를 저장한다. 이후 컴포넌트는 이 관계를 유지하며 루트 바디를 따라간다
+	if (bEnabled)
+		SetRootBodyIndex(RootBodyData.BodyIndex);
 }
 
 void USkeletalMeshComponent::SetAllBodiesSimulatePhysics(bool bNewSimulate)
@@ -322,6 +349,9 @@ void USkeletalMeshComponent::SetAllBodiesSimulatePhysics(bool bNewSimulate)
 
 FBodyInstance* USkeletalMeshComponent::GetBodyInstance(FName BoneName) const
 {
+	if (BoneName == NAME_None)
+		return Bodies.IsValidIndex(RootBodyData.BodyIndex) ? Bodies[RootBodyData.BodyIndex] : nullptr;
+
 	const UPhysicsAsset* PhysAsset = GetPhysicsAsset();
 	const int32 Index = PhysAsset ? PhysAsset->FindBodyIndex(BoneName) : INDEX_NONE;
 	return Bodies.IsValidIndex(Index) ? Bodies[Index] : nullptr;
@@ -330,6 +360,59 @@ FBodyInstance* USkeletalMeshComponent::GetBodyInstance(FName BoneName) const
 UPhysicsAsset* USkeletalMeshComponent::GetPhysicsAsset() const
 {
 	return GetSkeletalMesh() ? GetSkeletalMesh()->GetPhysicsAsset() : nullptr;
+}
+
+// UE FindRootBodyIndex: 본 순서(부모가 앞)대로 돌며 처음 만나는 바디
+int32 USkeletalMeshComponent::FindRootBodyIndex() const
+{
+	int32 RootBodyIndex = RootBodyData.BodyIndex;
+	const UPhysicsAsset* PhysAsset = GetPhysicsAsset();
+	if (RootBodyIndex == INDEX_NONE && PhysAsset)
+	{
+		for (const FBoneInfo& Bone : GetBones())
+		{
+			const int32 BodyIndex = PhysAsset->FindBodyIndex(FName(Bone.Name));
+			if (BodyIndex != INDEX_NONE)
+			{
+				RootBodyIndex = BodyIndex;
+				break;
+			}
+		}
+	}
+	return RootBodyIndex;
+}
+
+// UE SetRootBodyIndex: TransformToRoot = 루트 바디 기준 컴포넌트 Transform (UE GetRelativeTransform)
+void USkeletalMeshComponent::SetRootBodyIndex(int32 InBodyIndex)
+{
+	if (InBodyIndex == INDEX_NONE) return;
+
+	RootBodyData.BodyIndex = InBodyIndex;
+	RootBodyData.TransformToRoot = FTransform();
+	if (Bodies.Num() == 0) return;
+
+	if (Bodies.IsValidIndex(InBodyIndex) && Bodies[InBodyIndex])
+	{
+		// 행 벡터 행렬이라 Comp = ToRoot * Body, 즉 ToRoot = Comp * Body^-1. 컴포넌트 스케일(0.01)은 ToRoot에 남는다
+		const FMatrix BodyWorld = Bodies[InBodyIndex]->GetWorldTransform().GetLocalMatrix();
+		RootBodyData.TransformToRoot = FTransform::FromMatrix(GetWorldMatrix() * BodyWorld.Inverse());
+	}
+	else
+	{
+		ResetRootBodyIndex();
+	}
+}
+
+void USkeletalMeshComponent::ResetRootBodyIndex()
+{
+	RootBodyData.BodyIndex = INDEX_NONE;
+	RootBodyData.TransformToRoot = FTransform();
+}
+
+// UE GetComponentTransformFromBodyInstance (SimulationUpatesComponentTransform 모드)
+FTransform USkeletalMeshComponent::GetComponentTransformFromBodyInstance(FBodyInstance* UseBI)
+{
+	return FTransform::FromMatrix(RootBodyData.TransformToRoot.GetLocalMatrix() * UseBI->GetWorldTransform().GetLocalMatrix());
 }
 
 void USkeletalMeshComponent::SerializeSingleAnimation(FStructuredArchive::FRecord& Record)
@@ -485,6 +568,8 @@ void USkeletalMeshComponent::RegisterEndPhysicsTick(bool bRegister)
 
 void USkeletalMeshComponent::EndPhysicsTickComponent(float DeltaTime)
 {
+	// UE EndPhysicsTickComponent: 먼저 컴포넌트를 루트 바디로 옮기고, 옮겨진 컴포넌트 기준으로 본을 맞춘다
+	SyncComponentToRBPhysics();   // bSimulatePhysics가 아니면 안에서 바로 return
 	if (!bBlendPhysics) return;
 	BlendPhysicsBones();
 	RefreshBoneTransformsNow();  // 같은 프레임에 스키닝까지 (UE도 여기서 본 변환을 확정한다)

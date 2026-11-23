@@ -63,6 +63,8 @@ public:
 
 	int32 FindBodyIndex(FName BodyName) const;
 	int32 FindConstraintIndex(FName Bone1Name, FName Bone2Name) const;
+	// 이 바디의 본을 Bone1이나 Bone2로 쓰는 Constraint 번호들
+	void BodyFindConstraints(int32 BodyIndex, TArray<int32>& Constraints) const;
 	void UpdateBodySetupIndexMap();
 
 	using Super::Serialize;

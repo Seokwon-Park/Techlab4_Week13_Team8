@@ -95,8 +95,20 @@ public:
 	void TermArticulated();
 	void SetSimulatePhysics(bool bEnabled) override;
 	void SetAllBodiesSimulatePhysics(bool bNewSimulate);
-	FBodyInstance* GetBodyInstance(FName BoneName) const;
+	// 이름이 없으면 루트 바디 (UE와 같음)
+	FBodyInstance* GetBodyInstance(FName BoneName = NAME_None) const override;
 	UPhysicsAsset* GetPhysicsAsset() const;
+
+	// 래그돌 중 컴포넌트가 따라갈 바디(본 계층에서 가장 위에 있는 바디)와 그 바디 기준 컴포넌트 Transform
+	struct FRootBodyData
+	{
+		int32 BodyIndex = INDEX_NONE;
+		FTransform TransformToRoot;
+	};
+	int32 FindRootBodyIndex() const;
+	void SetRootBodyIndex(int32 InBodyIndex);
+	void ResetRootBodyIndex();
+	FTransform GetComponentTransformFromBodyInstance(FBodyInstance* UseBI) override;
 
 protected:
 	// 단일 애니메이션 에셋 경로/루프/재생 속도를 씬에 저장·복원한다 (Serialize에서 부른다)
@@ -129,6 +141,11 @@ private:
 	UAnimInstance* AnimInstance = nullptr;
 
 	TArray<FTransform> BoneSpaceTransforms;
+
+	FRootBodyData RootBodyData;
+	// [Hitori 추가] 래그돌을 켜기 직전 상태. 끌 때 똑바로 세우는 데 쓴다
+	FTransform PreRagdollComponentTransform;
+	FVector PreRagdollRootBodyLocation = FVector(0, 0, 0);
 
 	FTransform PendingRootMotion;           // 월드 공간 누적값
 	bool bHasPendingRootMotion = false;
