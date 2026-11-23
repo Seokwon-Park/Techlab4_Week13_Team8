@@ -15,6 +15,7 @@
 #include "Animation/AnimBlueprintFile.h"
 #include "Core/Misc/Paths.h"
 #include "Editor/AnimBlueprintEditor/AnimBlueprintEditor.h"
+#include "Editor/PhysicsAssetEditor/PhysicsAssetEditor.h"
 #include "Editor/ParticleEditor/ParticleSystemEditor.h"
 #include "Particles/ParticleSystemFile.h"
 
@@ -301,6 +302,14 @@ void FEditorManager::LateTick()
 	{
 		CreateAnimBlueprintPreview(Path);
 	}
+
+	TArray<FPendingPhysicsAssetOpen> PhysicsRequests = std::move(PendingPhysicsAssetOpens);
+	PendingPhysicsAssetOpens = {};
+
+	for (const FPendingPhysicsAssetOpen& Request : PhysicsRequests)
+	{
+		CreatePhysicsAssetEditor(Request);
+	}
 }
 
 void FEditorManager::Shutdown()
@@ -314,6 +323,7 @@ void FEditorManager::Shutdown()
 	
 	PendingOpens.Empty();
 	PendingAnimBlueprintPreviews.Empty();
+	PendingPhysicsAssetOpens.Empty();
 
 	for (auto& Editor : Editors)
 	{
@@ -372,4 +382,35 @@ void FEditorManager::CreateAnimBlueprintPreview(const FString& PreviewMeshPath)
 	}
 
 	Editors.Add(std::move(Editor));
+}
+
+void FEditorManager::OpenPhysicsAssetEditor(const FString& MeshPath, USkeletalMesh* Mesh)
+{
+	if (bShuttingDown || !Mesh || MeshPath.empty())
+	{
+		return;
+	}
+
+	// UI를 그리는 도중에 부르므로 생성은 LateTick으로 미룬다
+	PendingPhysicsAssetOpens.Add({ MeshPath, Mesh });
+}
+
+void FEditorManager::CreatePhysicsAssetEditor(const FPendingPhysicsAssetOpen& Request)
+{
+	if (FAssetEditor* Existing = FindEditor(FPhysicsAssetEditor::MakeDocumentKey(Request.MeshPath)))
+	{
+		Existing->Activate();
+		return;
+	}
+
+	TUniquePtr<FAssetEditor> Editor = MakeUnique<FPhysicsAssetEditor>(EditorEngine, *this, Request.MeshPath, *Request.Mesh);
+	if (!Editor->Initialize())
+	{
+		Editor->Shutdown();
+		HTR_LOG(Warning, "Physics asset editor initialization failed: {}", Request.MeshPath);
+		return;
+	}
+
+	Editors.Add(std::move(Editor));
+	HTR_LOG(Info, "Opened physics asset editor: {}", Request.MeshPath);
 }

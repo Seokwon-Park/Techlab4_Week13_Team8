@@ -19,6 +19,8 @@ public:
 
 
 	void AddLine(const FVector& A, const FVector& B, const FVector4& Color);
+	// 반투명 면: 양면, 깊이 읽기 전용, 선보다 먼저 그린다
+	void AddTriangle(const FVector& A, const FVector& B, const FVector& C, const FVector4& Color);
 	void AddBox(FBox BoundingBox, FVector4 Color);
 
 	// 로컬 AABB의 모서리를 각각 월드로 옮겨 그린다. 회전이 살아있는 OBB가 된다.
@@ -29,8 +31,9 @@ public:
 	void AddPyramid(const FVector& BaseCenter, const FVector& Tip, float HalfWidth, const FVector4& Color);
 	// 서로 직교하는 세 원으로 와이어 구를 그립니다.
 	void AddSphere(const FVector& Center, float Radius, const FVector4& Color, int32 Segments = 16);
+	// FillAlpha > 0이면 면도 채운다 (RGB는 Color)
 	void AddSwingCone(const FVector& Apex, const FVector& Axis, const FVector& Right,
-		float Swing1Radian, float Swing2Radian, float Length, const FVector4& Color, int32 Segments = 24);
+		float Swing1Radian, float Swing2Radian, float Length, const FVector4& Color, int32 Segments = 24, float FillAlpha = 0.0f);
 	void AddConvex(const TArray<FVector>& LocalVertices, const TArray<uint32>& Indices,
 		const FMatrix& WorldMatrix, const FVector4& Color);
 	void AddCapsule(const FVector& Center, const FVector& Up, const FVector& Right,
@@ -38,14 +41,14 @@ public:
 	void AddWireArc(const FVector& Center, const FVector& AxisA, const FVector& AxisB,
 		float Radius, float StartRadian, float EndRadian, const FVector4& Color, int32 Segments = 24);
 	void AddTwistArc(const FVector& Center, const FVector& Axis, const FVector& Ref,
-		float LimitRadian, float Radius, const FVector4& Color, int32 Segments = 24);
+		float LimitRadian, float Radius, const FVector4& Color, int32 Segments = 24, float FillAlpha = 0.0f);
 
 	
 
 	void Flush();
 	void OnRender(const FMatrix& ViewProjection);
 	// 꺼 두면 다른 물체에 가려지지 않고 항상 위에 그린다 (디버그 표시용)
-	void SetDepthTest(bool bEnable) { PipelineState.DepthStencilState = bEnable ? EDepthStencilState::Default : EDepthStencilState::Disabled; }
+	void SetDepthTest(bool bEnable);
 
 private:
 	FRenderer* Renderer;
@@ -61,4 +64,10 @@ private:
 
 	uint32 MaxVertices = 0;
 	TUniquePtr<FVertexBuffer> VertexBuffer;
+
+	FPipelineState TrianglePipelineState;
+	FLineBatchVertex* TriangleVertexBase = nullptr;
+	uint32 TriangleVertexCount = 0;
+	uint32 MaxTriangleVertices = 0;
+	TUniquePtr<FVertexBuffer> TriangleVertexBuffer;
 };

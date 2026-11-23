@@ -10,6 +10,8 @@
 #include "PhysicsDebugDraw.h"
 #include "AggregateGeom.h"
 #include "ConstraintInstance.h"
+#include "PhysicsAsset.h"
+#include "Render/SkeletalMesh.h"
 
 namespace
 {
@@ -109,7 +111,67 @@ void FPhysicsDebugDraw::DrawPhysicsBodies(UWorld* World, FLineBatcher* LineBatch
 			continue;
 		}
 
-		 //TODO(B): USkeletalMesh::PhysicsAsset, UBodySetup이 들어오면 구현
+		if (const UPhysicsAsset* PhysicsAsset = FindPhysicsAsset(Component))
+		{
+			DrawPhysicsAssetBodies(LineBatcher, Component, *PhysicsAsset, Selected && Component->GetOwner() == Selected);
+		}
+	}
+}
+
+void FPhysicsDebugDraw::DrawPhysicsAssetBodies(FLineBatcher* LineBatcher, const USkeletalMeshComponent* Component,
+	const UPhysicsAsset& PhysicsAsset, bool bSelected, int32 SelectedBody)
+{
+	if (!LineBatcher || !Component)
+	{
+		return;
+	}
+
+	for (int32 BodyIndex = 0; BodyIndex < PhysicsAsset.SkeletalBodySetups.Num(); ++BodyIndex)
+	{
+		const USkeletalBodySetup* BodySetup = PhysicsAsset.SkeletalBodySetups[BodyIndex];
+		FTransform BoneWorld;
+		if (!BodySetup || !GetBoneWorldTransform(Component, BodySetup->BoneName.ToString(), BoneWorld))
+		{
+			continue;
+		}
+
+		const bool bHighlight = bSelected || BodyIndex == SelectedBody;
+		DrawAggregateGeom(LineBatcher, BodySetup->AggGeom, BoneWorld, bHighlight ? SelectedBodyColor : BodyColor);
+	}
+}
+
+void FPhysicsDebugDraw::DrawPhysicsAssetConstraints(FLineBatcher* LineBatcher, const USkeletalMeshComponent* Component,
+	const UPhysicsAsset& PhysicsAsset, int32 SelectedConstraint)
+{
+	const USkeletalMesh* Mesh = Component ? Component->GetSkeletalMesh() : nullptr;
+	if (!LineBatcher || !Mesh || Mesh->GetRenderData().LODRenderData.IsEmpty())
+	{
+		return;
+	}
+
+	const FBox& BindBox = Mesh->GetRenderData().LODRenderData[0].BindAABB;
+	const FVector ComponentScale = FTransform::FromMatrix(Component->GetWorldMatrix()).Scale;
+	const float MaxScale = std::max({ std::abs(ComponentScale.X), std::abs(ComponentScale.Y), std::abs(ComponentScale.Z) });
+	const float DrawSize = (BindBox.Max - BindBox.Min).Size() * MaxScale * ConstraintSizeRatio;
+
+	for (int32 ConstraintIndex = 0; ConstraintIndex < PhysicsAsset.ConstraintSetup.Num(); ++ConstraintIndex)
+	{
+		const UPhysicsConstraintTemplate* Template = PhysicsAsset.ConstraintSetup[ConstraintIndex];
+		if (!Template)
+		{
+			continue;
+		}
+
+		const FConstraintInstance& Constraint = Template->DefaultInstance;
+		const int32 ParentBoneIndex = Component->FindBoneIndex(Constraint.ConstraintBone2.ToString());
+		if (ParentBoneIndex < 0)
+		{
+			continue;
+		}
+
+		const FMatrix JointWorld = Constraint.GetRefFrame(1).GetLocalMatrix() * Component->GetBoneWorldMatrix(ParentBoneIndex);
+		DrawConstraintLimit(LineBatcher, Constraint, JointWorld,
+			ConstraintIndex == SelectedConstraint ? DrawSize * SelectedConstraintSizeScale : DrawSize);
 	}
 }
 
@@ -120,6 +182,12 @@ const FKAggregateGeom* FPhysicsDebugDraw::FindStaticMeshGeom(const UStaticMeshCo
 	// return (Mesh && Mesh->BodySetup) ? &Mesh->BodySetup->AggGeom : nullptr;
 	(void)Component;
 	return nullptr;
+}
+
+const UPhysicsAsset* FPhysicsDebugDraw::FindPhysicsAsset(const USkeletalMeshComponent* Component) const
+{
+	const USkeletalMesh* Mesh = Component->GetSkeletalMesh();
+	return Mesh ? Mesh->GetPhysicsAsset() : nullptr;
 }
 
 bool FPhysicsDebugDraw::GetBoneWorldTransform(const USkeletalMeshComponent* Component, const FString& BoneName, FTransform& OutBoneWorld) const
@@ -193,7 +261,7 @@ void FPhysicsDebugDraw::DrawConvexElem(FLineBatcher* LineBatcher, const FKConvex
 }
 
 void FPhysicsDebugDraw::DrawConstraintLimit(FLineBatcher* LineBatcher, const FConstraintInstance& Constraint,
-	const FMatrix& JointWorld, bool bSelected) const
+	const FMatrix& JointWorld, float DrawSize) const
 {
 	if (!LineBatcher)
 	{
@@ -210,8 +278,6 @@ void FPhysicsDebugDraw::DrawConstraintLimit(FLineBatcher* LineBatcher, const FCo
 	const float Swing2Radian = GetLimitRadian(Cone.Swing2LimitDegrees, Cone.Swing2Motion);
 	const float TwistRadian = GetLimitRadian(Twist.TwistLimitDegrees, Twist.TwistMotion);
 
-	const FVector4& ConeColor = bSelected ? SelectedConstraintColor : SwingColor;
-	const FVector4& ArcColor = bSelected ? SelectedConstraintColor : TwistColor;
 
 	// Swing: 둘 다 Locked면 안 그림, 둘 다 Free면 구, 그 외 원뿔
 	const bool bLockAllSwing = Cone.Swing1Motion == ACM_Locked && Cone.Swing2Motion == ACM_Locked;
@@ -220,22 +286,22 @@ void FPhysicsDebugDraw::DrawConstraintLimit(FLineBatcher* LineBatcher, const FCo
 	{
 		if (bFreeAllSwing)
 		{
-			LineBatcher->AddSphere(Origin, ConstraintDrawSize * 0.9f, ConeColor);
+			LineBatcher->AddSphere(Origin, DrawSize * 0.9f, SwingColor);
 		}
 		else
 		{
-			LineBatcher->AddSwingCone(Origin, AxisX, AxisY, Swing1Radian, Swing2Radian, ConstraintDrawSize, ConeColor);
+			LineBatcher->AddSwingCone(Origin, AxisX, AxisY, Swing1Radian, Swing2Radian, DrawSize, SwingColor, 24, ConstraintFillAlpha);
 		}
 	}
 
 	// Twist: Locked면 안 그림, Free면 원 전체(PI), Limited면 ±각도 부채꼴
 	if (Twist.TwistMotion != ACM_Locked)
 	{
-		LineBatcher->AddTwistArc(Origin, AxisX, AxisY, TwistRadian, ConstraintDrawSize, ArcColor);
+		LineBatcher->AddTwistArc(Origin, AxisX, AxisY, TwistRadian, DrawSize, TwistColor, 24, ConstraintFillAlpha);
 	}
 }
 
-void FPhysicsDebugDraw::DrawConstraintLimits(UWorld* World, FLineBatcher* LineBatcher, const AActor* Selected)
+void FPhysicsDebugDraw::DrawConstraintLimits(UWorld* World, FLineBatcher* LineBatcher)
 {
 	if (!World || !LineBatcher)
 	{
@@ -250,6 +316,9 @@ void FPhysicsDebugDraw::DrawConstraintLimits(UWorld* World, FLineBatcher* LineBa
 			continue;
 		}
 
-		// TODO(B): USkeletalMesh::PhysicsAsset이 들어오면 구현
+		if (const UPhysicsAsset* PhysicsAsset = FindPhysicsAsset(Component))
+		{
+			DrawPhysicsAssetConstraints(LineBatcher, Component, *PhysicsAsset);
+		}
 	}
 }

@@ -31,6 +31,8 @@ public:
 	ECoordSystem GetGizmoSpace() const { return ModeTools.GetCoordSystem(); }
 	bool IsGizmoDragging() const { return BoneGizmo.IsUsing(); }
 
+	void OpenPhysicsAssetEditor();
+
 protected:
 	// 이 에디터에 연결된 탭을 생성합니다.
 	TUniquePtr<IEditorTab> CreateTab() override;

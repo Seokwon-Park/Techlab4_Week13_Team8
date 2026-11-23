@@ -199,7 +199,7 @@ void FLevelEditorViewportClient::Draw(const FSceneView* View, FScenePassCallback
 					}
 					if (EngineShowFlags.Constraints)
 					{
-						PhysicsDebugDraw.DrawConstraintLimits(GetWorld(), LineBatcher, SelectedActor);
+						PhysicsDebugDraw.DrawConstraintLimits(GetWorld(), LineBatcher);
 					}
 				}
 

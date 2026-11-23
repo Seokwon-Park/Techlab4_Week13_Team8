@@ -10,6 +10,7 @@
 FLineBatcher::~FLineBatcher()
 {
 	delete[] VertexBufferBase;
+	delete[] TriangleVertexBase;
 }
 
 bool FLineBatcher::Init(FRenderer* InRenderer, UWorld* InWorld)
@@ -26,6 +27,16 @@ bool FLineBatcher::Init(FRenderer* InRenderer, UWorld* InWorld)
 	VertexBufferBase = new FLineBatchVertex[MaxVertices];
 
 	VertexBuffer = RenderCommand::CreateDynamicVertexBuffer(sizeof(FLineBatchVertex) * MaxVertices, sizeof(FLineBatchVertex));
+
+	TrianglePipelineState.Shader = LineShader;
+	TrianglePipelineState.Topology = EPrimitiveTopology::TriangleList;
+	TrianglePipelineState.RasterizerState = ERasterizerState::SolidNone;
+	TrianglePipelineState.BlendState = EBlendState::AlphaBlend;
+	TrianglePipelineState.DepthStencilState = EDepthStencilState::ReadOnly;
+
+	MaxTriangleVertices = 65536 * 3;
+	TriangleVertexBase = new FLineBatchVertex[MaxTriangleVertices];
+	TriangleVertexBuffer = RenderCommand::CreateDynamicVertexBuffer(sizeof(FLineBatchVertex) * MaxTriangleVertices, sizeof(FLineBatchVertex));
 
 	CB = RenderCommand::CreateConstantBuffer(sizeof(FMatrix));
 
@@ -52,6 +63,7 @@ void FLineBatcher::BeginFrame()
 {
 	VertexBufferPtr = VertexBufferBase;
 	VertexCount = 0;
+	TriangleVertexCount = 0;
 }
 
 void FLineBatcher::AddLine(const FVector& A, const FVector& B, const FVector4& Color)
@@ -63,6 +75,16 @@ void FLineBatcher::AddLine(const FVector& A, const FVector& B, const FVector4& C
 	*VertexBufferPtr++ = { B, Color };
 
 	VertexCount += 2;
+}
+
+void FLineBatcher::AddTriangle(const FVector& A, const FVector& B, const FVector& C, const FVector4& Color)
+{
+	if (TriangleVertexCount + 3 > MaxTriangleVertices)
+		return;
+
+	TriangleVertexBase[TriangleVertexCount++] = { A, Color };
+	TriangleVertexBase[TriangleVertexCount++] = { B, Color };
+	TriangleVertexBase[TriangleVertexCount++] = { C, Color };
 }
 
 namespace
@@ -201,7 +223,7 @@ void FLineBatcher::AddCapsule(const FVector& Center, const FVector& Up, const FV
 }
 
 void FLineBatcher::AddSwingCone(const FVector& Apex, const FVector& Axis, const FVector& Right,
-	float Swing1Radian, float Swing2Radian, float Length, const FVector4& Color, int32 Segments)
+	float Swing1Radian, float Swing2Radian, float Length, const FVector4& Color, int32 Segments, float FillAlpha)
 {
 	if (Length <= 0.0f || Segments < 3)
 	{
@@ -232,6 +254,7 @@ void FLineBatcher::AddSwingCone(const FVector& Apex, const FVector& Axis, const 
 
 	// 옆선은 4개 (Right, Up2, -Right, -Up2 방향)
 	const int32 SideStep = std::max(Segments / 4, 1);
+	const FVector4 FillColor(Color.X, Color.Y, Color.Z, FillAlpha);
 
 	FVector Prev = PointAt(0.0f);
 	AddLine(Apex, Prev, Color);
@@ -239,6 +262,10 @@ void FLineBatcher::AddSwingCone(const FVector& Apex, const FVector& Axis, const 
 	{
 		const FVector P = PointAt(2.0f * PI * i / Segments);
 		AddLine(Prev, P, Color);
+		if (FillAlpha > 0.0f)
+		{
+			AddTriangle(Apex, Prev, P, FillColor);
+		}
 		if (i % SideStep == 0 && i != Segments)
 		{
 			AddLine(Apex, P, Color);
@@ -289,7 +316,7 @@ void FLineBatcher::AddConvex(const TArray<FVector>& LocalVertices, const TArray<
 }
 
 void FLineBatcher::AddTwistArc(const FVector& Center, const FVector& Axis, const FVector& Ref,
-	float LimitRadian, float Radius, const FVector4& Color, int32 Segments)
+	float LimitRadian, float Radius, const FVector4& Color, int32 Segments, float FillAlpha)
 {
 	if (Radius <= 0.0f)
 	{
@@ -303,6 +330,20 @@ void FLineBatcher::AddTwistArc(const FVector& Center, const FVector& Axis, const
 	if (LimitRadian <= 0.0f)
 	{
 		return;
+	}
+
+	if (FillAlpha > 0.0f)
+	{
+		const float Limit = std::min(LimitRadian, PI);
+		const FVector4 FillColor(Color.X, Color.Y, Color.Z, FillAlpha);
+		auto ArcPoint = [&](float T) { return Center + (Ref * std::cos(T) + Up2 * std::sin(T)) * Radius; };
+		FVector Prev = ArcPoint(-Limit);
+		for (int32 i = 1; i <= Segments; ++i)
+		{
+			const FVector P = ArcPoint(-Limit + 2.0f * Limit * i / Segments);
+			AddTriangle(Center, Prev, P, FillColor);
+			Prev = P;
+		}
 	}
 
 	if (LimitRadian >= PI)
@@ -334,8 +375,28 @@ void FLineBatcher::AddWireArc(const FVector& Center, const FVector& AxisA, const
 }
 
 
+void FLineBatcher::SetDepthTest(bool bEnable)
+{
+	PipelineState.DepthStencilState = bEnable ? EDepthStencilState::Default : EDepthStencilState::Disabled;
+	TrianglePipelineState.DepthStencilState = bEnable ? EDepthStencilState::ReadOnly : EDepthStencilState::Disabled;
+}
+
 void FLineBatcher::Flush()
 {
+	// 반투명 면을 먼저 그려 선이 그 위에 보이게 한다
+	if (TriangleVertexCount > 0)
+	{
+		RenderCommand::BindPipelineState(TrianglePipelineState);
+		RenderCommand::BindVertexBuffer(TriangleVertexBuffer.get());
+		RenderCommand::BindConstantBuffer(0, CB.get(), EShaderBindFlagBits::Vertex);
+		RenderCommand::Draw(TriangleVertexCount, 0);
+	}
+
+	if (VertexCount == 0)
+	{
+		return;
+	}
+
 	RenderCommand::BindPipelineState(PipelineState);
 	RenderCommand::BindVertexBuffer(VertexBuffer.get());
 	RenderCommand::BindConstantBuffer(0, CB.get(), EShaderBindFlagBits::Vertex);
@@ -345,13 +406,20 @@ void FLineBatcher::Flush()
 
 void FLineBatcher::OnRender(const FMatrix& ViewProjection)
 {
-	if (VertexCount == 0)
+	if (VertexCount == 0 && TriangleVertexCount == 0)
 	{
 		return;
 	}
 
 	FMatrix VP = ViewProjection;
-	RenderCommand::UpdateBufferData(VertexBuffer.get(), VertexBufferBase, sizeof(FLineBatchVertex) * VertexCount);
+	if (VertexCount > 0)
+	{
+		RenderCommand::UpdateBufferData(VertexBuffer.get(), VertexBufferBase, sizeof(FLineBatchVertex) * VertexCount);
+	}
+	if (TriangleVertexCount > 0)
+	{
+		RenderCommand::UpdateBufferData(TriangleVertexBuffer.get(), TriangleVertexBase, sizeof(FLineBatchVertex) * TriangleVertexCount);
+	}
 	RenderCommand::UpdateBufferData(CB.get(), &VP, sizeof(FMatrix));
 
 	Flush();
