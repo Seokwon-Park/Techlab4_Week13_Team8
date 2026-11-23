@@ -155,6 +155,187 @@ void FPhysicsAssetEditor::SelectConstraint(int32 ConstraintIndex)
 	SelectionIndex = ConstraintIndex;
 }
 
+void FPhysicsAssetEditor::ClearSelection()
+{
+	SelectionType = EPhysicsAssetSelection::None;
+	SelectionIndex = INDEX_NONE;
+}
+
+bool FPhysicsAssetEditor::IsBoneChildOf(int32 BoneIndex, int32 AncestorBoneIndex) const
+{
+	const TArray<FBoneInfo>& Bones = Mesh->GetRefSkeleton();
+	for (int32 Parent = Bones[BoneIndex].ParentIndex; Parent >= 0; Parent = Bones[Parent].ParentIndex)
+	{
+		if (Parent == AncestorBoneIndex)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+int32 FPhysicsAssetEditor::FindControllingBodyIndex(int32 BoneIndex) const
+{
+	const TArray<FBoneInfo>& Bones = Mesh->GetRefSkeleton();
+	for (int32 Bone = BoneIndex; Bone >= 0; Bone = Bones[Bone].ParentIndex)
+	{
+		const int32 BodyIndex = PhysicsAsset->FindBodyIndex(FName(Bones[Bone].Name));
+		if (BodyIndex != INDEX_NONE)
+		{
+			return BodyIndex;
+		}
+	}
+	return INDEX_NONE;
+}
+
+int32 FPhysicsAssetEditor::FindChildConstraintIndex(FName ChildBoneName) const
+{
+	for (int32 i = 0; i < PhysicsAsset->ConstraintSetup.Num(); ++i)
+	{
+		if (PhysicsAsset->ConstraintSetup[i]->DefaultInstance.ConstraintBone1 == ChildBoneName)
+		{
+			return i;
+		}
+	}
+	return INDEX_NONE;
+}
+
+void FPhysicsAssetEditor::InitConstraintSetup(UPhysicsConstraintTemplate* Template, int32 ChildBodyIndex, int32 ParentBodyIndex, bool bKeepProfile)
+{
+	const int32 ChildBone = FindBoneIndexByName(PhysicsAsset->SkeletalBodySetups[ChildBodyIndex]->BoneName);
+	const int32 ParentBone = FindBoneIndexByName(PhysicsAsset->SkeletalBodySetups[ParentBodyIndex]->BoneName);
+	if (ChildBone == INDEX_NONE || ParentBone == INDEX_NONE)
+	{
+		return;
+	}
+
+	FConstraintInstance& Constraint = Template->DefaultInstance;
+	const FConstraintProfileProperties Profile = Constraint.ProfileInstance;
+	FPhysicsAssetUtils::InitConstraintFromBones(Constraint, Mesh->GetRefSkeleton(), ChildBone, ParentBone, FPhysAssetCreateParams());
+	if (bKeepProfile)
+	{
+		Constraint.ProfileInstance = Profile;
+	}
+	PhysicsAsset->DisableCollision(ChildBodyIndex, ParentBodyIndex);
+}
+
+void FPhysicsAssetEditor::MakeNewBody(int32 BoneIndex)
+{
+	const TArray<FBoneInfo>& Bones = Mesh->GetRefSkeleton();
+	if (!PhysicsAsset || BoneIndex < 0 || BoneIndex >= Bones.Num())
+	{
+		return;
+	}
+	const FName BoneName(Bones[BoneIndex].Name);
+	if (PhysicsAsset->FindBodyIndex(BoneName) != INDEX_NONE)
+	{
+		return;
+	}
+
+	const int32 ParentBodyIndex = FindControllingBodyIndex(BoneIndex);
+	const int32 NewBodyIndex = FPhysicsAssetUtils::CreateNewBody(PhysicsAsset, BoneName, FPhysAssetCreateParams());
+	if (!FPhysicsAssetUtils::CreateCollisionFromBone(PhysicsAsset->SkeletalBodySetups[NewBodyIndex], Mesh, BoneIndex))
+	{
+		FPhysicsAssetUtils::DestroyBody(PhysicsAsset, NewBodyIndex);
+		HTR_LOG(Warning, "Cannot add a body: bone has no skinned vertices: {}", Bones[BoneIndex].Name);
+		return;
+	}
+
+	for (int32 i = 0; i < Bones.Num(); ++i)
+	{
+		if (!IsBoneChildOf(i, BoneIndex))
+		{
+			continue;
+		}
+		const int32 ChildBodyIndex = PhysicsAsset->FindBodyIndex(FName(Bones[i].Name));
+		if (ChildBodyIndex == INDEX_NONE)
+		{
+			continue;
+		}
+
+		int32 ConstraintIndex = FindChildConstraintIndex(FName(Bones[i].Name));
+		const bool bNewConstraint = ConstraintIndex == INDEX_NONE;
+		if (bNewConstraint)
+		{
+			ConstraintIndex = FPhysicsAssetUtils::CreateNewConstraint(PhysicsAsset, FName(Bones[i].Name));
+		}
+		else
+		{
+			const FName OldParentName = PhysicsAsset->ConstraintSetup[ConstraintIndex]->DefaultInstance.ConstraintBone2;
+			const int32 OldParentBone = FindBoneIndexByName(OldParentName);
+			if (OldParentBone != INDEX_NONE && IsBoneChildOf(OldParentBone, BoneIndex))
+			{
+				continue;
+			}
+			const int32 OldParentBody = PhysicsAsset->FindBodyIndex(OldParentName);
+			if (OldParentBody != INDEX_NONE && OldParentBody == ParentBodyIndex)
+			{
+				PhysicsAsset->EnableCollision(ChildBodyIndex, OldParentBody);
+			}
+		}
+		InitConstraintSetup(PhysicsAsset->ConstraintSetup[ConstraintIndex], ChildBodyIndex, NewBodyIndex, !bNewConstraint);
+	}
+
+	if (ParentBodyIndex != INDEX_NONE)
+	{
+		const int32 ConstraintIndex = FPhysicsAssetUtils::CreateNewConstraint(PhysicsAsset, BoneName);
+		InitConstraintSetup(PhysicsAsset->ConstraintSetup[ConstraintIndex], NewBodyIndex, ParentBodyIndex, false);
+	}
+
+	SelectBody(NewBodyIndex);
+	MarkDirty();
+}
+
+void FPhysicsAssetEditor::DeleteBody(int32 BodyIndex)
+{
+	if (!PhysicsAsset || BodyIndex < 0 || BodyIndex >= PhysicsAsset->SkeletalBodySetups.Num())
+	{
+		return;
+	}
+
+	const FName BoneName = PhysicsAsset->SkeletalBodySetups[BodyIndex]->BoneName;
+	const int32 BoneIndex = FindBoneIndexByName(BoneName);
+	const int32 ParentBone = BoneIndex != INDEX_NONE ? Mesh->GetRefSkeleton()[BoneIndex].ParentIndex : INDEX_NONE;
+	const int32 ParentBodyIndex = ParentBone >= 0 ? FindControllingBodyIndex(ParentBone) : INDEX_NONE;
+	if (ParentBodyIndex != INDEX_NONE)
+	{
+		TArray<int32> Constraints;
+		PhysicsAsset->BodyFindConstraints(BodyIndex, Constraints);
+		for (int32 ConstraintIndex : Constraints)
+		{
+			UPhysicsConstraintTemplate* Constraint = PhysicsAsset->ConstraintSetup[ConstraintIndex];
+			if (!(Constraint->DefaultInstance.ConstraintBone2 == BoneName))
+			{
+				continue;
+			}
+			const FName ChildName = Constraint->DefaultInstance.ConstraintBone1;
+			const int32 ChildBodyIndex = PhysicsAsset->FindBodyIndex(ChildName);
+			if (ChildBodyIndex == INDEX_NONE)
+			{
+				continue;
+			}
+			const int32 NewConstraintIndex = FPhysicsAssetUtils::CreateNewConstraint(PhysicsAsset, ChildName, Constraint);
+			InitConstraintSetup(PhysicsAsset->ConstraintSetup[NewConstraintIndex], ChildBodyIndex, ParentBodyIndex, true);
+		}
+	}
+
+	FPhysicsAssetUtils::DestroyBody(PhysicsAsset, BodyIndex);
+	ClearSelection();
+	MarkDirty();
+}
+
+void FPhysicsAssetEditor::DeleteConstraint(int32 ConstraintIndex)
+{
+	if (!PhysicsAsset || ConstraintIndex < 0 || ConstraintIndex >= PhysicsAsset->ConstraintSetup.Num())
+	{
+		return;
+	}
+
+	FPhysicsAssetUtils::DestroyConstraint(PhysicsAsset, ConstraintIndex);
+	ClearSelection();
+	MarkDirty();
+}
+
 void FPhysicsAssetEditor::OnBoneSelected()
 {
 	SelectionType = EPhysicsAssetSelection::None;

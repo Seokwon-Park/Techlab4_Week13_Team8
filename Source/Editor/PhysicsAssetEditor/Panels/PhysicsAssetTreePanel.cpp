@@ -41,6 +41,16 @@ void FPhysicsAssetTreePanel::DrawContent()
 		ImGui::PopStyleVar();
 	}
 	ImGui::EndChild();
+
+	switch (PendingAction)
+	{
+	case EPendingAction::AddBody:          Editor.MakeNewBody(PendingIndex); break;
+	case EPendingAction::DeleteBody:       Editor.DeleteBody(PendingIndex); break;
+	case EPendingAction::DeleteConstraint: Editor.DeleteConstraint(PendingIndex); break;
+	default: break;
+	}
+	PendingAction = EPendingAction::None;
+	PendingIndex = INDEX_NONE;
 }
 
 int32 FPhysicsAssetTreePanel::FindBody(int32 BoneIndex) const
@@ -113,6 +123,15 @@ void FPhysicsAssetTreePanel::DrawBone(int32 BoneIndex)
 	{
 		Editor.SelectBone(BoneIndex);
 	}
+	if (ImGui::BeginPopupContextItem("BoneContext"))
+	{
+		if (ImGui::MenuItem("Add Body", nullptr, false, BodyIndex == INDEX_NONE))
+		{
+			PendingAction = EPendingAction::AddBody;
+			PendingIndex = BoneIndex;
+		}
+		ImGui::EndPopup();
+	}
 
 	if (bOpen)
 	{
@@ -147,6 +166,15 @@ void FPhysicsAssetTreePanel::DrawBody(int32 BoneIndex, int32 BodyIndex, bool bNe
 	if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen())
 	{
 		Editor.SelectBody(BodyIndex);
+	}
+	if (ImGui::BeginPopupContextItem("BodyContext"))
+	{
+		if (ImGui::MenuItem("Delete Body"))
+		{
+			PendingAction = EPendingAction::DeleteBody;
+			PendingIndex = BodyIndex;
+		}
+		ImGui::EndPopup();
 	}
 
 	if (bOpen)
@@ -188,6 +216,15 @@ void FPhysicsAssetTreePanel::DrawConstraints(int32 BoneIndex)
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
 		{
 			Editor.SelectConstraint(ConstraintIndex);
+		}
+		if (ImGui::BeginPopupContextItem("ConstraintContext"))
+		{
+			if (ImGui::MenuItem("Delete Constraint"))
+			{
+				PendingAction = EPendingAction::DeleteConstraint;
+				PendingIndex = ConstraintIndex;
+			}
+			ImGui::EndPopup();
 		}
 		ImGui::PopID();
 	}

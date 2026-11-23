@@ -45,7 +45,7 @@ private:
 	const FVector4 BodyColor = FVector4(0.3f, 0.8f, 1.0f, 1.0f);
 	const FVector4 SelectedBodyColor = FVector4(1.0f, 0.6f, 0.1f, 1.0f);
 	const FVector4 SolidBodyColor = FVector4(0.6f, 0.45f, 1.0f, 1.0f);
-	const float BodyFillAlpha = 0.15f;
+	const float BodyFillAlpha = 0.2f;
 
 	const FVector4 SwingColor = FVector4(1.0f, 0.3f, 0.3f, 1.0f);
 	const FVector4 TwistColor = FVector4(0.3f, 1.0f, 0.3f, 1.0f);
