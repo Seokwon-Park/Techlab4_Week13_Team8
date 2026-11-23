@@ -42,26 +42,6 @@ namespace
 		return TransformBox(LocalBox, InverseBindPose.Inverse());
 	}
 
-	// 정점이 없는 본: 첫 자식까지의 선분을 감싸는 상자로 대체. 자식이 없으면 무효
-	FBox SegmentToFirstChild(const TArray<FBoneInfo>& Bones, int32 Bone)
-	{
-		for (int32 c = Bone + 1; c < Bones.Num(); ++c)
-		{
-			if (Bones[c].ParentIndex != Bone) continue;
-			const FVector End = Bones[c].LocalBindPose.Location;
-			const float Pad = End.Size() * 0.15f;
-			FBox B{ FVector(-Pad, -Pad,-Pad), FVector(Pad,Pad,Pad) };
-			for (int32 a = 0; a < 3; ++a)
-			{
-				B.Min[a] = std::min(B.Min[a], End[a] - Pad);
-				B.Max[a] = std::max(B.Max[a], End[a] + Pad);
-			}
-			return B;
-		}
-
-		return FBox{ FVector(1,1,1), FVector(-1,-1,-1) };
-	}
-
 	// 로컬 Z를 Axis(0=X,1=Y,2=Z) 방향으로 돌리는 회전. 순환 치환이라 좌표계 손잡이가 유지된다
 	FRotator RotationZTo(int32 Axis)
 	{
@@ -120,8 +100,10 @@ bool FPhysicsAssetUtils::CreateFromSkeletalMesh(UPhysicsAsset* PhysicsAsset, USk
 	// 1) 본마다 캡슐 하나
 	for (int32 b = 0; b < Bones.Num(); ++b)
 	{
-		FBox Local = IsValidBox(LOD.BoneBounds[b]) ? ToBoneLocal(LOD.BoneBounds[b], Bones[b].InverseBindPose) : SegmentToFirstChild(Bones, b);
-		if (!IsValidBox(Local)) continue;
+		// UE CreateFromSkeletalMeshInternal: 정점이 없는 본은 크기가 0이라 MinBoneSize를 못 넘어 바디가 생기지 않는다.
+		// (예: root 본. 선분으로 대신 만들면 발끝~골반을 덮는 캡슐이 바닥에 박혀 래그돌이 튀어 오른다)
+		if (!IsValidBox(LOD.BoneBounds[b])) continue;
+		const FBox Local = ToBoneLocal(LOD.BoneBounds[b], Bones[b].InverseBindPose);
 
 		const FVector Ext = (Local.Max - Local.Min) * 0.5f;   // half size
 		const FVector Center = (Local.Max + Local.Min) * 0.5f;
@@ -141,7 +123,7 @@ bool FPhysicsAssetUtils::CreateFromSkeletalMesh(UPhysicsAsset* PhysicsAsset, USk
 		PhysicsAsset->SkeletalBodySetups[BodyIndex]->AggGeom.SphylElems.Add(E);
 		BodyOfBone[b] = BodyIndex;
 
-		// 캡슐을 만든 박스 그대로 보관. 정점 경로든 SegmentToFirstChild 경로든 항상 유효하다
+		// 캡슐을 만든 박스 그대로 보관 (3단계 겹침 검사용)
 		if (BodyIndex >= BodyCompBox.Num()) BodyCompBox.SetNum(BodyIndex + 1);
 		BodyCompBox[BodyIndex] = ToComponent(Local, Bones[b].InverseBindPose);
 	}
@@ -161,8 +143,7 @@ bool FPhysicsAssetUtils::CreateFromSkeletalMesh(UPhysicsAsset* PhysicsAsset, USk
 	}
 
 	// 3) 바인드 포즈에서 겹치는 바디 쌍은 충돌 끄기 (조인트로 안 이어진 쌍 포함)
-	//	LOD.BoneBounds가 아니라 1단계에서 캡슐을 만든 박스로 비교한다.
-	//	정점이 없는 본(SegmentToFirstChild 경로)은 BoneBounds가 무효라 결과를 믿을 수 없기 때문
+	//	1단계에서 캡슐을 만든 박스(컴포넌트 공간)로 비교한다.
 	//	UE PhysicsAssetUtils의 기본 정책은 확인 못 함. 처음엔 전부 꺼도 시연엔 충분
 	for (int32 i = 0; i < BodyCompBox.Num(); ++i)
 		for (int32 j = i + 1; j < BodyCompBox.Num(); ++j)
@@ -193,4 +174,58 @@ int32 FPhysicsAssetUtils::CreateNewConstraint(UPhysicsAsset* PhysAsset, FName In
 	if (InConstraintSetup) Template->DefaultInstance = InConstraintSetup->DefaultInstance;
 	PhysAsset->ConstraintSetup.Add(Template);
 	return PhysAsset->ConstraintSetup.Num() - 1;
+}
+
+// UE DestroyConstraint
+void FPhysicsAssetUtils::DestroyConstraint(UPhysicsAsset* PhysAsset, int32 ConstraintIndex)
+{
+	if (!PhysAsset || !PhysAsset->ConstraintSetup.IsValidIndex(ConstraintIndex)) return;
+	PhysAsset->ConstraintSetup.RemoveAt(ConstraintIndex);   // 객체는 GC가 정리 (UE와 같음)
+}
+
+namespace
+{
+	// UE RemoveBodyFromCollisionTableInternal: 지울 바디가 들어간 쌍은 빼고, 뒤 번호는 하나씩 당긴다
+	void RemoveBodyFromCollisionTableInternal(UPhysicsAsset* PhysAsset, int32 BodyIndex)
+	{
+		TMap<FRigidBodyIndexPair, bool, FRigidBodyIndexPairHash> NewCDT;
+		for (int32 i = 1; i < PhysAsset->SkeletalBodySetups.Num(); ++i)
+		{
+			for (int32 j = 0; j < i; ++j)
+			{
+				if (!PhysAsset->CollisionDisableTable.Contains(FRigidBodyIndexPair(j, i))) continue;
+				if (i == BodyIndex || j == BodyIndex) continue;
+
+				const int32 NewI = i > BodyIndex ? i - 1 : i;
+				const int32 NewJ = j > BodyIndex ? j - 1 : j;
+				NewCDT.Add(FRigidBodyIndexPair(NewJ, NewI), false);
+			}
+		}
+		PhysAsset->CollisionDisableTable = NewCDT;
+	}
+
+	// UE RemoveBodyConstraintsInternal: 지울 때마다 번호가 바뀌므로 매번 다시 찾는다
+	void RemoveBodyConstraintsInternal(UPhysicsAsset* PhysAsset, int32 BodyIndex)
+	{
+		TArray<int32> Constraints;
+		PhysAsset->BodyFindConstraints(BodyIndex, Constraints);
+		while (Constraints.Num() > 0)
+		{
+			FPhysicsAssetUtils::DestroyConstraint(PhysAsset, Constraints[0]);
+			PhysAsset->BodyFindConstraints(BodyIndex, Constraints);
+		}
+	}
+}
+
+// UE DestroyBody: 충돌 표 정리 -> 연결된 Constraint 제거 -> 바디 제거 -> 본 이름 캐시 갱신.
+// 순서가 중요하다. Constraint는 BoneName으로 찾으므로 바디를 지우기 전에 지운다
+void FPhysicsAssetUtils::DestroyBody(UPhysicsAsset* PhysAsset, int32 BodyIndex)
+{
+	if (!PhysAsset || !PhysAsset->SkeletalBodySetups.IsValidIndex(BodyIndex)) return;
+
+	RemoveBodyFromCollisionTableInternal(PhysAsset, BodyIndex);
+	RemoveBodyConstraintsInternal(PhysAsset, BodyIndex);
+
+	PhysAsset->SkeletalBodySetups.RemoveAt(BodyIndex);   // 객체는 GC가 정리 (UE와 같음)
+	PhysAsset->UpdateBodySetupIndexMap();
 }

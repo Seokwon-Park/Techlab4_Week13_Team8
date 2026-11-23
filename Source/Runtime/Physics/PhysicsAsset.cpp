@@ -34,6 +34,19 @@ int32 UPhysicsAsset::FindConstraintIndex(FName Bone1Name, FName Bone2Name) const
 	return INDEX_NONE;
 }
 
+// UE UPhysicsAsset::BodyFindConstraints
+void UPhysicsAsset::BodyFindConstraints(int32 BodyIndex, TArray<int32>& Constraints) const
+{
+	Constraints.Empty();
+	const FName BodyName = SkeletalBodySetups[BodyIndex]->BoneName;
+	for (int32 ConIdx = 0; ConIdx < ConstraintSetup.Num(); ++ConIdx)
+	{
+		const FConstraintInstance& CI = ConstraintSetup[ConIdx]->DefaultInstance;
+		if (CI.ConstraintBone1 == BodyName || CI.ConstraintBone2 == BodyName)
+			Constraints.Add(ConIdx);
+	}
+}
+
 void UPhysicsAsset::UpdateBodySetupIndexMap()
 {
 	BodySetupIndexMap.Empty();

@@ -35,6 +35,7 @@ UMaterial* UMaterial::CreateInstance(const UMaterial* Source)
 	Instance->Shader = Source->Shader;
 	Instance->Textures = Source->Textures;
 	Instance->BlendState = Source->BlendState;
+	Instance->bRenderBeforeDOF = Source->bRenderBeforeDOF;
 	Instance->DepthStencilState = Source->DepthStencilState;
 	Instance->SamplerState = Source->SamplerState;
 	Instance->BaseColor = Source->BaseColor;
@@ -123,7 +124,7 @@ void UMaterial::SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMate
 
 void UMaterial::Serialize(FStructuredArchive::FRecord Record)
 {
-	Super::Serialize(Record);   // "Properties" (리플렉션 프로퍼티. 지금은 없음)
+	Super::Serialize(Record);   // "Properties" (리플렉션 프로퍼티)
 
 	FArchive& Ar = Record.GetUnderlyingArchive();
 

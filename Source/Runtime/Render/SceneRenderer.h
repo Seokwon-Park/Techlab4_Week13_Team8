@@ -97,7 +97,8 @@ public:
 	bool Render(FRenderer* Renderer, const std::function<void(FScenePassCallbacks&)>& ExtraPasses = nullptr);
 
 	// 반투명 렌더링
-	void RenderTranslucent(FRenderer* Renderer, FConstantBuffer* FogConstants = nullptr);
+	void RenderTranslucent(FRenderer* Renderer, FConstantBuffer* FogConstants = nullptr,
+		EMeshPassType Pass = EMeshPassType::Translucent);
 
 	// 전체 렌더 큐 조회
 	FRenderQueue& GetRenderQueue() { return RenderData.RenderQueue; }
@@ -137,7 +138,7 @@ private:
 		FRenderGraphTextureRef SceneColor, FRenderGraphTextureRef Depth);
 	// 반투명 물체
 	bool RenderTranslucency(FRenderGraphBuilder& Graph, FRenderer* Renderer, FRenderGraphTextureRef SceneColor,
-		FRenderGraphTextureRef Depth);
+		FRenderGraphTextureRef Depth, EMeshPassType Pass);
 	// 화면 전체 후처리. FXAA를 거치면 FinalColor를 FXAA 결과 텍스처로 바꾼다.
 	bool AddPostProcessingPasses(FRenderGraphBuilder& Graph, FRenderer* Renderer, FSceneViewTargets& Targets,
 		const FSceneRenderOptions& Options, const FScenePassCallbacks& Callbacks,

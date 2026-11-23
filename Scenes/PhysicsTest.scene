@@ -617,13 +617,18 @@
                                 "bHiddenInGame": false,
                                 "bReceiveShadow": true,
                                 "bVisible": true,
-                                "bSimulatePhysics": true
+                                "bSimulatePhysics": false
+                            },
+                            "SingleAnimation": {
+                                "Asset": "FBX/UAL2_Standard_RM/UAL2_Standard_RM_Armature_Zombie_Walk_Fwd_Loop.anim.bin",
+                                "Looping": true,
+                                "PlayRate": 1.0
                             }
                         }
                     ],
                     "Name": "Ragdoll",
                     "Properties": {
-                        "ScriptPath": "",
+                        "ScriptPath": "Scripts/ragdoll_toggle.lua",
                         "bActorEnableCollision": true
                     }
                 }
