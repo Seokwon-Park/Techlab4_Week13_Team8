@@ -368,7 +368,7 @@ FString FPhysicsAssetGraphPanel::GetBodyName(int32 BodyIndex) const
 
 FString FPhysicsAssetGraphPanel::GetShapesLabel(int32 BodyIndex) const
 {
-	return "Shapes: " + std::to_string(Editor.GetPhysicsAsset()->SkeletalBodySetups[BodyIndex]->AggGeom.GetelementCount());
+	return "Shapes: " + std::to_string(Editor.GetPhysicsAsset()->SkeletalBodySetups[BodyIndex]->AggGeom.GetElementCount());
 }
 
 FString FPhysicsAssetGraphPanel::GetConstraintLabel(int32 ConstraintIndex) const

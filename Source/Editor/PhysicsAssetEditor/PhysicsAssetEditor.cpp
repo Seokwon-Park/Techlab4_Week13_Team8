@@ -16,7 +16,7 @@ bool FPhysicsAssetEditor::InitializeResources()
 		return false;
 	}
 
-	PhysicsAsset = Mesh->PhysicsAsset;
+	PhysicsAsset = Mesh->GetPhysicsAsset();
 	if (!PhysicsAsset)
 	{
 		UPhysicsAsset* NewAsset = NewObject<UPhysicsAsset>(Mesh);
