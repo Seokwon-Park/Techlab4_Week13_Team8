@@ -141,7 +141,7 @@ void FPhysicsDebugDraw::DrawPhysicsAssetBodies(FLineBatcher* LineBatcher, const 
 }
 
 void FPhysicsDebugDraw::DrawPhysicsAssetConstraints(FLineBatcher* LineBatcher, const USkeletalMeshComponent* Component,
-	const UPhysicsAsset& PhysicsAsset, int32 SelectedConstraint)
+	const UPhysicsAsset& PhysicsAsset, int32 SelectedConstraint, float ConstraintDrawSize)
 {
 	const USkeletalMesh* Mesh = Component ? Component->GetSkeletalMesh() : nullptr;
 	if (!LineBatcher || !Mesh || Mesh->GetRenderData().LODRenderData.IsEmpty())
@@ -152,7 +152,7 @@ void FPhysicsDebugDraw::DrawPhysicsAssetConstraints(FLineBatcher* LineBatcher, c
 	const FBox& BindBox = Mesh->GetRenderData().LODRenderData[0].BindAABB;
 	const FVector ComponentScale = FTransform::FromMatrix(Component->GetWorldMatrix()).Scale;
 	const float MaxScale = std::max({ std::abs(ComponentScale.X), std::abs(ComponentScale.Y), std::abs(ComponentScale.Z) });
-	const float DrawSize = (BindBox.Max - BindBox.Min).Size() * MaxScale * ConstraintSizeRatio;
+	const float DrawSize = (BindBox.Max - BindBox.Min).Size() * MaxScale * ConstraintSizeRatio * ConstraintDrawSize;
 
 	for (int32 ConstraintIndex = 0; ConstraintIndex < PhysicsAsset.ConstraintSetup.Num(); ++ConstraintIndex)
 	{

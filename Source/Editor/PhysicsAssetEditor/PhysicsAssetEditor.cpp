@@ -115,6 +115,6 @@ void FPhysicsAssetEditor::OnRenderLine(FLineBatcher& LineBatcher)
 	}
 	if (bShowConstraints)
 	{
-		DebugDraw.DrawPhysicsAssetConstraints(&LineBatcher, MeshComponent, *PhysicsAsset, GetSelectedConstraintIndex());
+		DebugDraw.DrawPhysicsAssetConstraints(&LineBatcher, MeshComponent, *PhysicsAsset, GetSelectedConstraintIndex(), ConstraintDrawSize);
 	}
 }

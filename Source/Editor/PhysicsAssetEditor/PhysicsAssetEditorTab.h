@@ -8,7 +8,6 @@ class FPhysicsAssetEditorTab : public FDockedAssetEditorTab
 {
 public:
 	explicit FPhysicsAssetEditorTab(FPhysicsAssetEditor& InEditor);
-	void DrawMenuBar() override;
 
 private:
 	void BeforeRender() override;

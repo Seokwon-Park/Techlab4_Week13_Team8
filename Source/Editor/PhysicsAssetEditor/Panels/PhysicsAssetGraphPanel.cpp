@@ -1,0 +1,389 @@
+#include "EnginePCH.h"
+#include "PhysicsAssetGraphPanel.h"
+#include "Physics/PhysicsAsset.h"
+
+namespace NodeEditor = ax::NodeEditor;
+
+namespace
+{
+	// UE Graph 패널 배색: Body 초록, Constraint 노랑
+	const ImVec4 BodyNodeColor(0.25f, 0.45f, 0.20f, 1.0f);
+	const ImVec4 ConstraintNodeColor(0.45f, 0.42f, 0.20f, 1.0f);
+	const ImVec4 LinkColor(0.85f, 0.85f, 0.85f, 1.0f);
+
+	// 노드 사이 빈 칸 (노드 편집기 좌표). 노드 크기는 글자로 계산한다
+	constexpr float ColumnGap = 60.0f;
+	constexpr float RowGap = 20.0f;
+
+	// 노드 하나의 크기 어림: 핀 PinCount개("o")와 글자 줄들, 노드 안쪽 여백
+	ImVec2 EstimateNodeSize(std::initializer_list<FString> Lines, int32 PinCount)
+	{
+		float TextWidth = 0.0f;
+		for (const FString& Line : Lines)
+		{
+			TextWidth = std::max(TextWidth, ImGui::CalcTextSize(Line.c_str()).x);
+		}
+		const ImGuiStyle& Style = ImGui::GetStyle();
+		const float PinWidth = ImGui::CalcTextSize("o").x + Style.ItemSpacing.x;
+		const ImVec4& Padding = NodeEditor::GetStyle().NodePadding;   // 왼쪽, 위, 오른쪽, 아래
+		const float TextHeight = ImGui::GetTextLineHeightWithSpacing() * static_cast<float>(Lines.size()) - Style.ItemSpacing.y;
+		return ImVec2(TextWidth + PinWidth * PinCount + Padding.x + Padding.z,
+			TextHeight + Padding.y + Padding.w);
+	}
+
+	// 노드·핀·링크 ID. 루트 Body는 고정, Constraint마다 10개 칸을 쓴다
+	constexpr int32 RootNodeId = 1;
+	constexpr int32 RootOutputPinId = 2;
+	constexpr int32 ConstraintIdBase = 100;
+	constexpr int32 ConstraintIdStride = 10;
+	enum EConstraintSlot : int32
+	{
+		Slot_ConstraintNode = 0,
+		Slot_ConstraintInPin,
+		Slot_ConstraintOutPin,
+		Slot_OtherBodyNode,
+		Slot_OtherBodyInPin,
+		Slot_LinkToConstraint,
+		Slot_LinkToOtherBody,
+	};
+
+	int32 ConstraintSlotId(int32 ConstraintIndex, EConstraintSlot Slot)
+	{
+		return ConstraintIdBase + ConstraintIndex * ConstraintIdStride + Slot;
+	}
+
+	bool IsConstraintOnBone(const FConstraintInstance& Constraint, FName BoneName)
+	{
+		return Constraint.ConstraintBone1 == BoneName || Constraint.ConstraintBone2 == BoneName;
+	}
+}
+
+FPhysicsAssetGraphPanel::~FPhysicsAssetGraphPanel()
+{
+	if (Context)
+	{
+		NodeEditor::DestroyEditor(Context);
+	}
+}
+
+void FPhysicsAssetGraphPanel::DrawContent()
+{
+	UPhysicsAsset* PhysicsAsset = Editor.GetPhysicsAsset();
+	if (!PhysicsAsset)
+	{
+		return;
+	}
+
+	SyncRootWithEditorSelection();
+	if (RootBody < 0 || RootBody >= PhysicsAsset->SkeletalBodySetups.Num())
+	{
+		RootBody = INDEX_NONE;
+		ImGui::TextDisabled("Select a body.");
+		return;
+	}
+
+	if (!Context)
+	{
+		NodeEditor::Config Config;
+		Config.SettingsFile = nullptr;
+		Context = NodeEditor::CreateEditor(&Config);
+	}
+
+	NodeEditor::EditorContext* PreviousContext = NodeEditor::GetCurrentEditor();
+	NodeEditor::SetCurrentEditor(Context);
+	NodeEditor::Begin("PhysicsAssetGraph");
+
+	Nodes.Reset();
+	const FName RootBoneName = PhysicsAsset->SkeletalBodySetups[RootBody]->BoneName;
+
+	// 루트에 붙은 Constraint와 반대편 Body
+	struct FRow { int32 ConstraintIndex; int32 OtherBody; };
+	TArray<FRow> Rows;
+	for (int32 ConstraintIndex = 0; ConstraintIndex < PhysicsAsset->ConstraintSetup.Num(); ++ConstraintIndex)
+	{
+		const UPhysicsConstraintTemplate* Template = PhysicsAsset->ConstraintSetup[ConstraintIndex];
+		if (!Template || !IsConstraintOnBone(Template->DefaultInstance, RootBoneName))
+		{
+			continue;
+		}
+		const FConstraintInstance& Constraint = Template->DefaultInstance;
+		const FName OtherBoneName = Constraint.ConstraintBone1 == RootBoneName ? Constraint.ConstraintBone2 : Constraint.ConstraintBone1;
+		Rows.Add({ ConstraintIndex, PhysicsAsset->FindBodyIndex(OtherBoneName) });
+	}
+
+	// 열 위치와 줄 간격은 노드 글자 크기로 정한다 (이름이 길면 노드가 넓어져 다음 열과 겹치므로)
+	const ImVec2 RootSize = EstimateNodeSize({ "Body", GetBodyName(RootBody), GetShapesLabel(RootBody) }, 1);
+	float ConstraintColumnWidth = 0.0f;
+	float RowHeight = RootSize.y;
+	for (const FRow& Row : Rows)
+	{
+		const ImVec2 Size = EstimateNodeSize({ "Constraint", GetConstraintLabel(Row.ConstraintIndex) }, 2);
+		ConstraintColumnWidth = std::max(ConstraintColumnWidth, Size.x);
+		RowHeight = std::max(RowHeight, Size.y);
+		if (Row.OtherBody != INDEX_NONE)
+		{
+			RowHeight = std::max(RowHeight, EstimateNodeSize({ "Body", GetBodyName(Row.OtherBody), GetShapesLabel(Row.OtherBody) }, 1).y);
+		}
+	}
+	const float ConstraintColumnX = RootSize.x + ColumnGap;
+	const float OtherBodyColumnX = ConstraintColumnX + ConstraintColumnWidth + ColumnGap;
+	const float RowSpacing = RowHeight + RowGap;
+
+	// 1열: 루트 Body
+	DrawBodyNode(RootNodeId, RootBody, 0, RootOutputPinId, ImVec2(0.0f, 0.0f));
+
+	// 2열: Constraint, 3열: 반대편 Body. 루트 기준으로 세로 가운데 정렬
+	for (int32 RowIndex = 0; RowIndex < Rows.Num(); ++RowIndex)
+	{
+		const int32 ConstraintIndex = Rows[RowIndex].ConstraintIndex;
+		const int32 OtherBody = Rows[RowIndex].OtherBody;
+		const float Y = (RowIndex - (Rows.Num() - 1) * 0.5f) * RowSpacing;
+
+		DrawConstraintNode(ConstraintSlotId(ConstraintIndex, Slot_ConstraintNode), ConstraintIndex,
+			ConstraintSlotId(ConstraintIndex, Slot_ConstraintInPin), ConstraintSlotId(ConstraintIndex, Slot_ConstraintOutPin),
+			ImVec2(ConstraintColumnX, Y));
+		NodeEditor::Link(ConstraintSlotId(ConstraintIndex, Slot_LinkToConstraint), RootOutputPinId,
+			ConstraintSlotId(ConstraintIndex, Slot_ConstraintInPin), LinkColor);
+
+		if (OtherBody != INDEX_NONE)
+		{
+			DrawBodyNode(ConstraintSlotId(ConstraintIndex, Slot_OtherBodyNode), OtherBody,
+				ConstraintSlotId(ConstraintIndex, Slot_OtherBodyInPin), 0, ImVec2(OtherBodyColumnX, Y));
+			NodeEditor::Link(ConstraintSlotId(ConstraintIndex, Slot_LinkToOtherBody), ConstraintSlotId(ConstraintIndex, Slot_ConstraintOutPin),
+				ConstraintSlotId(ConstraintIndex, Slot_OtherBodyInPin), LinkColor);
+		}
+	}
+
+	PushEditorSelectionToGraph();
+	const NodeEditor::NodeId DoubleClickedNode = NodeEditor::GetDoubleClickedNode();
+	NodeEditor::End();
+
+	if (bLayoutDirty)
+	{
+		NodeEditor::NavigateToContent(0.0f);
+		bLayoutDirty = false;
+	}
+
+	PullGraphSelectionToEditor();
+	NodeEditor::SetCurrentEditor(PreviousContext);
+
+	// 더블클릭: 그 Body를 루트로 다시 그린다 (UE HandleNodeDoubleClicked)
+	if (DoubleClickedNode)
+	{
+		const FGraphNode* Node = FindNode(static_cast<int32>(DoubleClickedNode.Get()));
+		if (Node && Node->Type == EPhysicsAssetSelection::Body)
+		{
+			SetRootBody(Node->Index);
+		}
+	}
+}
+
+void FPhysicsAssetGraphPanel::SyncRootWithEditorSelection()
+{
+	const EPhysicsAssetSelection Type = Editor.GetSelectionType();
+	const int32 Index = Type == EPhysicsAssetSelection::Body ? Editor.GetSelectedBodyIndex() : Editor.GetSelectedConstraintIndex();
+	if (Type == SyncedType && Index == SyncedIndex)
+	{
+		return;
+	}
+
+	// 그래프 밖(트리·뷰포트)에서 선택이 바뀌었다
+	SyncedType = Type;
+	SyncedIndex = Index;
+	bPushSelection = true;
+
+	if (Type == EPhysicsAssetSelection::Body)
+	{
+		SetRootBody(Index);
+	}
+	else if (Type == EPhysicsAssetSelection::Constraint && !IsConstraintInGraph(Index))
+	{
+		// 지금 그래프에 없는 Constraint면 자식 Body(Bone1)를 루트로. 없으면 부모 Body
+		const UPhysicsAsset* PhysicsAsset = Editor.GetPhysicsAsset();
+		const FConstraintInstance& Constraint = PhysicsAsset->ConstraintSetup[Index]->DefaultInstance;
+		int32 Body = PhysicsAsset->FindBodyIndex(Constraint.ConstraintBone1);
+		if (Body == INDEX_NONE)
+		{
+			Body = PhysicsAsset->FindBodyIndex(Constraint.ConstraintBone2);
+		}
+		SetRootBody(Body);
+	}
+}
+
+void FPhysicsAssetGraphPanel::SetRootBody(int32 BodyIndex)
+{
+	if (BodyIndex == RootBody)
+	{
+		return;
+	}
+	RootBody = BodyIndex;
+	bLayoutDirty = true;
+	bPushSelection = true;
+}
+
+bool FPhysicsAssetGraphPanel::IsConstraintInGraph(int32 ConstraintIndex) const
+{
+	const UPhysicsAsset* PhysicsAsset = Editor.GetPhysicsAsset();
+	if (RootBody < 0 || RootBody >= PhysicsAsset->SkeletalBodySetups.Num())
+	{
+		return false;
+	}
+	return IsConstraintOnBone(PhysicsAsset->ConstraintSetup[ConstraintIndex]->DefaultInstance,
+		PhysicsAsset->SkeletalBodySetups[RootBody]->BoneName);
+}
+
+void FPhysicsAssetGraphPanel::DrawBodyNode(int32 NodeId, int32 BodyIndex, int32 InputPinId, int32 OutputPinId, const ImVec2& Position)
+{
+	Nodes.Add({ NodeId, EPhysicsAssetSelection::Body, BodyIndex });
+	if (bLayoutDirty)
+	{
+		NodeEditor::SetNodePosition(NodeId, Position);
+	}
+
+	NodeEditor::PushStyleColor(NodeEditor::StyleColor_NodeBg, BodyNodeColor);
+	NodeEditor::BeginNode(NodeId);
+	if (InputPinId)
+	{
+		NodeEditor::BeginPin(InputPinId, NodeEditor::PinKind::Input);
+		ImGui::TextUnformatted("o");
+		NodeEditor::EndPin();
+		ImGui::SameLine();
+	}
+	ImGui::BeginGroup();
+	ImGui::TextUnformatted("Body");
+	ImGui::TextUnformatted(GetBodyName(BodyIndex).c_str());
+	ImGui::TextUnformatted(GetShapesLabel(BodyIndex).c_str());
+	ImGui::EndGroup();
+	if (OutputPinId)
+	{
+		ImGui::SameLine();
+		NodeEditor::BeginPin(OutputPinId, NodeEditor::PinKind::Output);
+		ImGui::TextUnformatted("o");
+		NodeEditor::EndPin();
+	}
+	NodeEditor::EndNode();
+	NodeEditor::PopStyleColor();
+}
+
+void FPhysicsAssetGraphPanel::DrawConstraintNode(int32 NodeId, int32 ConstraintIndex, int32 InputPinId, int32 OutputPinId, const ImVec2& Position)
+{
+	Nodes.Add({ NodeId, EPhysicsAssetSelection::Constraint, ConstraintIndex });
+	if (bLayoutDirty)
+	{
+		NodeEditor::SetNodePosition(NodeId, Position);
+	}
+
+	NodeEditor::PushStyleColor(NodeEditor::StyleColor_NodeBg, ConstraintNodeColor);
+	NodeEditor::BeginNode(NodeId);
+	NodeEditor::BeginPin(InputPinId, NodeEditor::PinKind::Input);
+	ImGui::TextUnformatted("o");
+	NodeEditor::EndPin();
+	ImGui::SameLine();
+	ImGui::BeginGroup();
+	ImGui::TextUnformatted("Constraint");
+	ImGui::TextUnformatted(GetConstraintLabel(ConstraintIndex).c_str());
+	ImGui::EndGroup();
+	ImGui::SameLine();
+	NodeEditor::BeginPin(OutputPinId, NodeEditor::PinKind::Output);
+	ImGui::TextUnformatted("o");
+	NodeEditor::EndPin();
+	NodeEditor::EndNode();
+	NodeEditor::PopStyleColor();
+}
+
+void FPhysicsAssetGraphPanel::PushEditorSelectionToGraph()
+{
+	if (!bPushSelection)
+	{
+		return;
+	}
+	bPushSelection = false;
+
+	const int32 NodeId = FindNodeId(SyncedType, SyncedIndex);
+	if (NodeId)
+	{
+		NodeEditor::SelectNode(NodeId);
+	}
+	else
+	{
+		NodeEditor::ClearSelection();
+	}
+	SyncedGraphNodeId = NodeId;
+}
+
+void FPhysicsAssetGraphPanel::PullGraphSelectionToEditor()
+{
+	NodeEditor::NodeId SelectedNode;
+	const int32 Count = NodeEditor::GetSelectedNodes(&SelectedNode, 1);
+	const int32 NodeId = Count > 0 ? static_cast<int32>(SelectedNode.Get()) : 0;
+	if (NodeId == SyncedGraphNodeId)
+	{
+		return;
+	}
+	SyncedGraphNodeId = NodeId;
+
+	// 클릭: 에디터 선택만 바꾸고 루트는 유지한다 (UE HandleSelectionChanged)
+	const FGraphNode* Node = FindNode(NodeId);
+	if (!Node)
+	{
+		return;
+	}
+	if (Node->Type == EPhysicsAssetSelection::Body)
+	{
+		Editor.SelectBody(Node->Index);
+	}
+	else
+	{
+		Editor.SelectConstraint(Node->Index);
+	}
+	SyncedType = Node->Type;
+	SyncedIndex = Node->Index;
+}
+
+const FPhysicsAssetGraphPanel::FGraphNode* FPhysicsAssetGraphPanel::FindNode(int32 NodeId) const
+{
+	for (const FGraphNode& Node : Nodes)
+	{
+		if (Node.NodeId == NodeId)
+		{
+			return &Node;
+		}
+	}
+	return nullptr;
+}
+
+int32 FPhysicsAssetGraphPanel::FindNodeId(EPhysicsAssetSelection Type, int32 Index) const
+{
+	// 같은 Body가 루트와 반대편에 둘 다 있으면 먼저 그린 루트를 고른다
+	for (const FGraphNode& Node : Nodes)
+	{
+		if (Node.Type == Type && Node.Index == Index)
+		{
+			return Node.NodeId;
+		}
+	}
+	return 0;
+}
+
+FString FPhysicsAssetGraphPanel::GetBoneDisplayName(FName BoneName) const
+{
+	const int32 BoneIndex = Editor.FindBoneIndexByName(BoneName);
+	return BoneIndex >= 0 ? Editor.GetBoneItems()[BoneIndex].Name : FString("?");
+}
+
+FString FPhysicsAssetGraphPanel::GetBodyName(int32 BodyIndex) const
+{
+	return GetBoneDisplayName(Editor.GetPhysicsAsset()->SkeletalBodySetups[BodyIndex]->BoneName);
+}
+
+FString FPhysicsAssetGraphPanel::GetShapesLabel(int32 BodyIndex) const
+{
+	return "Shapes: " + std::to_string(Editor.GetPhysicsAsset()->SkeletalBodySetups[BodyIndex]->AggGeom.GetelementCount());
+}
+
+FString FPhysicsAssetGraphPanel::GetConstraintLabel(int32 ConstraintIndex) const
+{
+	// UE Graph 표기: 자식 : 부모 (Bone1 : Bone2)
+	const FConstraintInstance& Constraint = Editor.GetPhysicsAsset()->ConstraintSetup[ConstraintIndex]->DefaultInstance;
+	return GetBoneDisplayName(Constraint.ConstraintBone1) + " : " + GetBoneDisplayName(Constraint.ConstraintBone2);
+}

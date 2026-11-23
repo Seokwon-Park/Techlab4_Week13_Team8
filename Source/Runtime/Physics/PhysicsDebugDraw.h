@@ -31,7 +31,7 @@ public:
 	void DrawPhysicsAssetBodies(FLineBatcher* LineBatcher, const USkeletalMeshComponent* Component,
 		const UPhysicsAsset& PhysicsAsset, bool bSelected, int32 SelectedBody = INDEX_NONE);
 	void DrawPhysicsAssetConstraints(FLineBatcher* LineBatcher, const USkeletalMeshComponent* Component,
-		const UPhysicsAsset& PhysicsAsset, int32 SelectedConstraint = INDEX_NONE);
+		const UPhysicsAsset& PhysicsAsset, int32 SelectedConstraint = INDEX_NONE, float ConstraintDrawSize = 1.0f);
 
 private:
 	// 바디 기본색(하늘색)과 선택된 액터의 강조색(주황)
@@ -41,7 +41,7 @@ private:
 	const FVector4 SwingColor = FVector4(1.0f, 0.3f, 0.3f, 1.0f);
 	const FVector4 TwistColor = FVector4(0.3f, 1.0f, 0.3f, 1.0f);
 	const float ConstraintFillAlpha = 0.35f;
-	const float ConstraintSizeRatio = 0.03f;
+	const float ConstraintSizeRatio = 0.016f;
 	const float SelectedConstraintSizeScale = 2.5f;
 
 	// 메시 에셋의 BodySetup 모양. B의 UBodySetup이 들어오기 전까지는 nullptr

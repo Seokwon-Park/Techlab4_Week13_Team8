@@ -36,6 +36,8 @@ public:
 
 	bool bShowBodies = true;
 	bool bShowConstraints = true;
+	// UE 에디터 옵션 ConstraintDrawSize. 조인트 길이 배율 (툴바 슬라이더 0~4)
+	float ConstraintDrawSize = 1.0f;
 
 protected:
 	TUniquePtr<IEditorTab> CreateTab() override;
