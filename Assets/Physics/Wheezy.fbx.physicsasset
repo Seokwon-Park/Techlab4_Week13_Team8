@@ -1,0 +1,817 @@
+{
+    "CollisionDisableTable": [
+        {
+            "A": 0,
+            "B": 9
+        },
+        {
+            "A": 8,
+            "B": 9
+        },
+        {
+            "A": 4,
+            "B": 5
+        },
+        {
+            "A": 0,
+            "B": 1
+        },
+        {
+            "A": 4,
+            "B": 6
+        },
+        {
+            "A": 0,
+            "B": 2
+        },
+        {
+            "A": 4,
+            "B": 7
+        },
+        {
+            "A": 0,
+            "B": 3
+        },
+        {
+            "A": 0,
+            "B": 5
+        },
+        {
+            "A": 0,
+            "B": 6
+        },
+        {
+            "A": 0,
+            "B": 7
+        },
+        {
+            "A": 0,
+            "B": 8
+        },
+        {
+            "A": 5,
+            "B": 6
+        },
+        {
+            "A": 1,
+            "B": 2
+        },
+        {
+            "A": 5,
+            "B": 7
+        },
+        {
+            "A": 1,
+            "B": 3
+        },
+        {
+            "A": 1,
+            "B": 5
+        },
+        {
+            "A": 1,
+            "B": 6
+        },
+        {
+            "A": 1,
+            "B": 7
+        },
+        {
+            "A": 1,
+            "B": 8
+        },
+        {
+            "A": 1,
+            "B": 9
+        },
+        {
+            "A": 6,
+            "B": 7
+        },
+        {
+            "A": 2,
+            "B": 3
+        },
+        {
+            "A": 2,
+            "B": 4
+        },
+        {
+            "A": 2,
+            "B": 5
+        },
+        {
+            "A": 2,
+            "B": 6
+        },
+        {
+            "A": 2,
+            "B": 7
+        },
+        {
+            "A": 2,
+            "B": 8
+        },
+        {
+            "A": 2,
+            "B": 9
+        },
+        {
+            "A": 3,
+            "B": 4
+        },
+        {
+            "A": 3,
+            "B": 5
+        },
+        {
+            "A": 3,
+            "B": 6
+        },
+        {
+            "A": 3,
+            "B": 7
+        },
+        {
+            "A": 3,
+            "B": 8
+        },
+        {
+            "A": 3,
+            "B": 9
+        },
+        {
+            "A": 4,
+            "B": 8
+        },
+        {
+            "A": 4,
+            "B": 9
+        },
+        {
+            "A": 5,
+            "B": 8
+        },
+        {
+            "A": 5,
+            "B": 9
+        },
+        {
+            "A": 6,
+            "B": 8
+        }
+    ],
+    "ConstraintSetup": [
+        {
+            "ConstraintBone1": "Spine1",
+            "ConstraintBone2": "Body",
+            "Pos1": {
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "Pos2": {
+                "X": 0.21225379407405853,
+                "Y": -9.313225746154785e-09,
+                "Z": -2.9802308176840597e-08
+            },
+            "PriAxis1": {
+                "X": 1.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "PriAxis2": {
+                "X": 1.0,
+                "Y": -5.8197002772431006e-11,
+                "Z": 2.842170943040401e-14
+            },
+            "Properties": {},
+            "SecAxis1": {
+                "X": 0.0,
+                "Y": 1.0,
+                "Z": 0.0
+            },
+            "SecAxis2": {
+                "X": 5.8200555486109806e-11,
+                "Y": 1.0,
+                "Z": 0.0
+            },
+            "Swing1LimitDegrees": 45.0,
+            "Swing1Motion": 1,
+            "Swing2LimitDegrees": 45.0,
+            "Swing2Motion": 1,
+            "TwistLimitDegrees": 45.0,
+            "TwistMotion": 1,
+            "bDisableCollision": true
+        },
+        {
+            "ConstraintBone1": "Spine2",
+            "ConstraintBone2": "Spine1",
+            "Pos1": {
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "Pos2": {
+                "X": 0.17494861781597137,
+                "Y": -7.683411240577698e-09,
+                "Z": 1.4901132772138226e-08
+            },
+            "PriAxis1": {
+                "X": 1.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "PriAxis2": {
+                "X": 1.0,
+                "Y": 0.0,
+                "Z": 2.842170943040401e-14
+            },
+            "Properties": {},
+            "SecAxis1": {
+                "X": 0.0,
+                "Y": 1.0,
+                "Z": 0.0
+            },
+            "SecAxis2": {
+                "X": -3.552713678800501e-15,
+                "Y": 1.0,
+                "Z": -1.6940658945086007e-21
+            },
+            "Swing1LimitDegrees": 45.0,
+            "Swing1Motion": 1,
+            "Swing2LimitDegrees": 45.0,
+            "Swing2Motion": 1,
+            "TwistLimitDegrees": 45.0,
+            "TwistMotion": 1,
+            "bDisableCollision": true
+        },
+        {
+            "ConstraintBone1": "Spine3",
+            "ConstraintBone2": "Spine2",
+            "Pos1": {
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "Pos2": {
+                "X": 0.14278897643089294,
+                "Y": -6.2282197177410126e-09,
+                "Z": 1.4210854715202004e-14
+            },
+            "PriAxis1": {
+                "X": 1.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "PriAxis2": {
+                "X": 1.0,
+                "Y": 5.821831905450381e-11,
+                "Z": 2.842170943040401e-14
+            },
+            "Properties": {},
+            "SecAxis1": {
+                "X": 0.0,
+                "Y": 1.0,
+                "Z": 0.0
+            },
+            "SecAxis2": {
+                "X": -5.821831905450381e-11,
+                "Y": 1.0,
+                "Z": -3.3881317890172014e-21
+            },
+            "Swing1LimitDegrees": 45.0,
+            "Swing1Motion": 1,
+            "Swing2LimitDegrees": 45.0,
+            "Swing2Motion": 1,
+            "TwistLimitDegrees": 45.0,
+            "TwistMotion": 1,
+            "bDisableCollision": true
+        },
+        {
+            "ConstraintBone1": "Head",
+            "ConstraintBone2": "Spine3",
+            "Pos1": {
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "Pos2": {
+                "X": 0.11930614709854126,
+                "Y": -5.180481821298599e-09,
+                "Z": 0.0
+            },
+            "PriAxis1": {
+                "X": 1.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "PriAxis2": {
+                "X": 1.0,
+                "Y": -3.552713678800501e-15,
+                "Z": 2.842170943040401e-14
+            },
+            "Properties": {},
+            "SecAxis1": {
+                "X": 0.0,
+                "Y": 1.0,
+                "Z": 0.0
+            },
+            "SecAxis2": {
+                "X": 3.552713678800501e-15,
+                "Y": 1.0,
+                "Z": 0.0
+            },
+            "Swing1LimitDegrees": 45.0,
+            "Swing1Motion": 1,
+            "Swing2LimitDegrees": 45.0,
+            "Swing2Motion": 1,
+            "TwistLimitDegrees": 45.0,
+            "TwistMotion": 1,
+            "bDisableCollision": true
+        },
+        {
+            "ConstraintBone1": "Jaw",
+            "ConstraintBone2": "Head",
+            "Pos1": {
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "Pos2": {
+                "X": 0.013862441293895245,
+                "Y": -5.820766091346741e-10,
+                "Z": -0.1950158178806305
+            },
+            "PriAxis1": {
+                "X": 1.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "PriAxis2": {
+                "X": 7.152556804612686e-07,
+                "Y": 1.7763604392902763e-15,
+                "Z": -1.0
+            },
+            "Properties": {},
+            "SecAxis1": {
+                "X": 0.0,
+                "Y": 1.0,
+                "Z": 0.0
+            },
+            "SecAxis2": {
+                "X": 4.3713942687872986e-08,
+                "Y": 1.0,
+                "Z": 3.375077994860476e-14
+            },
+            "Swing1LimitDegrees": 45.0,
+            "Swing1Motion": 1,
+            "Swing2LimitDegrees": 45.0,
+            "Swing2Motion": 1,
+            "TwistLimitDegrees": 45.0,
+            "TwistMotion": 1,
+            "bDisableCollision": true
+        },
+        {
+            "ConstraintBone1": "ShoulderLeft",
+            "ConstraintBone2": "Spine3",
+            "Pos1": {
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "Pos2": {
+                "X": -0.03593067079782486,
+                "Y": -0.2499968409538269,
+                "Z": 0.0724022313952446
+            },
+            "PriAxis1": {
+                "X": 1.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "PriAxis2": {
+                "X": 0.271274596452713,
+                "Y": -0.9603357911109924,
+                "Z": -0.0645393580198288
+            },
+            "Properties": {},
+            "SecAxis1": {
+                "X": 0.0,
+                "Y": 1.0,
+                "Z": 0.0
+            },
+            "SecAxis2": {
+                "X": -0.8734583854675293,
+                "Y": -0.27379223704338074,
+                "Z": 0.40262672305107117
+            },
+            "Swing1LimitDegrees": 45.0,
+            "Swing1Motion": 1,
+            "Swing2LimitDegrees": 45.0,
+            "Swing2Motion": 1,
+            "TwistLimitDegrees": 45.0,
+            "TwistMotion": 1,
+            "bDisableCollision": true
+        },
+        {
+            "ConstraintBone1": "ElbowLeft",
+            "ConstraintBone2": "ShoulderLeft",
+            "Pos1": {
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "Pos2": {
+                "X": 0.1492864340543747,
+                "Y": 0.047706544399261475,
+                "Z": -0.0028986558318138123
+            },
+            "PriAxis1": {
+                "X": 1.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "PriAxis2": {
+                "X": 0.9986295700073242,
+                "Y": 0.05213688313961029,
+                "Z": -0.004561267793178558
+            },
+            "Properties": {},
+            "SecAxis1": {
+                "X": 0.0,
+                "Y": 1.0,
+                "Z": 0.0
+            },
+            "SecAxis2": {
+                "X": -0.05233592912554741,
+                "Y": 0.9948294758796692,
+                "Z": -0.0870361179113388
+            },
+            "Swing1LimitDegrees": 45.0,
+            "Swing1Motion": 1,
+            "Swing2LimitDegrees": 45.0,
+            "Swing2Motion": 1,
+            "TwistLimitDegrees": 45.0,
+            "TwistMotion": 1,
+            "bDisableCollision": true
+        },
+        {
+            "ConstraintBone1": "ShoulderRight",
+            "ConstraintBone2": "Spine3",
+            "Pos1": {
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "Pos2": {
+                "X": -0.03593067824840546,
+                "Y": 0.2449999898672104,
+                "Z": 0.07240217924118042
+            },
+            "PriAxis1": {
+                "X": 1.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "PriAxis2": {
+                "X": 0.2712743580341339,
+                "Y": 0.9603357911109924,
+                "Z": -0.06453994661569595
+            },
+            "Properties": {},
+            "SecAxis1": {
+                "X": 0.0,
+                "Y": 1.0,
+                "Z": 0.0
+            },
+            "SecAxis2": {
+                "X": 0.8734584450721741,
+                "Y": -0.2737920582294464,
+                "Z": -0.40262675285339355
+            },
+            "Swing1LimitDegrees": 45.0,
+            "Swing1Motion": 1,
+            "Swing2LimitDegrees": 45.0,
+            "Swing2Motion": 1,
+            "TwistLimitDegrees": 45.0,
+            "TwistMotion": 1,
+            "bDisableCollision": true
+        },
+        {
+            "ConstraintBone1": "ElbowRight",
+            "ConstraintBone2": "ShoulderRight",
+            "Pos1": {
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "Pos2": {
+                "X": 0.15148155391216278,
+                "Y": -0.04833231866359711,
+                "Z": -0.0027780532836914063
+            },
+            "PriAxis1": {
+                "X": 1.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "PriAxis2": {
+                "X": 0.9986295700073242,
+                "Y": -0.052136730402708054,
+                "Z": -0.004561454989016056
+            },
+            "Properties": {},
+            "SecAxis1": {
+                "X": 0.0,
+                "Y": 1.0,
+                "Z": 0.0
+            },
+            "SecAxis2": {
+                "X": 0.05233585089445114,
+                "Y": 0.9948294758796692,
+                "Z": 0.08703634887933731
+            },
+            "Swing1LimitDegrees": 45.0,
+            "Swing1Motion": 1,
+            "Swing2LimitDegrees": 45.0,
+            "Swing2Motion": 1,
+            "TwistLimitDegrees": 45.0,
+            "TwistMotion": 1,
+            "bDisableCollision": true
+        }
+    ],
+    "Properties": {},
+    "SkeletalBodySetups": [
+        {
+            "BoneName": "Body",
+            "BoxElems": [],
+            "Friction": 0.5,
+            "MassInKgOverride": 0.0,
+            "PhysicsType": 0,
+            "Properties": {},
+            "Restitution": 0.10000000149011612,
+            "SphereElems": [],
+            "SphylElems": [
+                {
+                    "Center": {
+                        "X": 0.19360367953777313,
+                        "Y": -0.0008704960346221924,
+                        "Z": 0.011049628257751465
+                    },
+                    "Length": 0.04514515399932861,
+                    "Radius": 0.3220900297164917,
+                    "Rotation": {
+                        "Pitch": -0.0,
+                        "Roll": 0.0,
+                        "Yaw": 0.0
+                    }
+                }
+            ],
+            "bOverrideMass": false
+        },
+        {
+            "BoneName": "Spine1",
+            "BoxElems": [],
+            "Friction": 0.5,
+            "MassInKgOverride": 0.0,
+            "PhysicsType": 0,
+            "Properties": {},
+            "Restitution": 0.10000000149011612,
+            "SphereElems": [],
+            "SphylElems": [
+                {
+                    "Center": {
+                        "X": 0.07513607293367386,
+                        "Y": -0.0008704960346221924,
+                        "Z": 0.01104968786239624
+                    },
+                    "Length": 0.04514515399932861,
+                    "Radius": 0.3220900297164917,
+                    "Rotation": {
+                        "Pitch": -0.0,
+                        "Roll": 0.0,
+                        "Yaw": 0.0
+                    }
+                }
+            ],
+            "bOverrideMass": false
+        },
+        {
+            "BoneName": "Spine2",
+            "BoxElems": [],
+            "Friction": 0.5,
+            "MassInKgOverride": 0.0,
+            "PhysicsType": 0,
+            "Properties": {},
+            "Restitution": 0.10000000149011612,
+            "SphereElems": [],
+            "SphylElems": [
+                {
+                    "Center": {
+                        "X": 0.05838973820209503,
+                        "Y": -0.0008704960346221924,
+                        "Z": -0.001248776912689209
+                    },
+                    "Length": 0.020548105239868164,
+                    "Radius": 0.3220900297164917,
+                    "Rotation": {
+                        "Pitch": -0.0,
+                        "Roll": 0.0,
+                        "Yaw": 0.0
+                    }
+                }
+            ],
+            "bOverrideMass": false
+        },
+        {
+            "BoneName": "Spine3",
+            "BoxElems": [],
+            "Friction": 0.5,
+            "MassInKgOverride": 0.0,
+            "PhysicsType": 0,
+            "Properties": {},
+            "Restitution": 0.10000000149011612,
+            "SphereElems": [],
+            "SphylElems": [
+                {
+                    "Center": {
+                        "X": -0.0014847218990325928,
+                        "Y": -0.0008705109357833862,
+                        "Z": -0.021157249808311462
+                    },
+                    "Length": 0.1607048511505127,
+                    "Radius": 0.31245559453964233,
+                    "Rotation": {
+                        "Pitch": -90.0000228881836,
+                        "Roll": 0.0,
+                        "Yaw": 0.0
+                    }
+                }
+            ],
+            "bOverrideMass": false
+        },
+        {
+            "BoneName": "Head",
+            "BoxElems": [],
+            "Friction": 0.5,
+            "MassInKgOverride": 0.0,
+            "PhysicsType": 0,
+            "Properties": {},
+            "Restitution": 0.10000000149011612,
+            "SphereElems": [],
+            "SphylElems": [
+                {
+                    "Center": {
+                        "X": 0.11025108397006989,
+                        "Y": -0.0008705034852027893,
+                        "Z": -0.06427761912345886
+                    },
+                    "Length": 0.0799221396446228,
+                    "Radius": 0.23953300714492798,
+                    "Rotation": {
+                        "Pitch": -0.0,
+                        "Roll": 0.0,
+                        "Yaw": 0.0
+                    }
+                }
+            ],
+            "bOverrideMass": false
+        },
+        {
+            "BoneName": "Jaw",
+            "BoxElems": [],
+            "Friction": 0.5,
+            "MassInKgOverride": 0.0,
+            "PhysicsType": 0,
+            "Properties": {},
+            "Restitution": 0.10000000149011612,
+            "SphereElems": [],
+            "SphylElems": [
+                {
+                    "Center": {
+                        "X": -0.10187070071697235,
+                        "Y": -0.0008704960346221924,
+                        "Z": -0.13784261047840118
+                    },
+                    "Length": 0.11986085772514343,
+                    "Radius": 0.23381955921649933,
+                    "Rotation": {
+                        "Pitch": -90.0000228881836,
+                        "Roll": 0.0,
+                        "Yaw": 0.0
+                    }
+                }
+            ],
+            "bOverrideMass": false
+        },
+        {
+            "BoneName": "ShoulderLeft",
+            "BoxElems": [],
+            "Friction": 0.5,
+            "MassInKgOverride": 0.0,
+            "PhysicsType": 0,
+            "Properties": {},
+            "Restitution": 0.10000000149011612,
+            "SphereElems": [],
+            "SphylElems": [
+                {
+                    "Center": {
+                        "X": 0.1116156131029129,
+                        "Y": 0.08359216898679733,
+                        "Z": 0.0005769580602645874
+                    },
+                    "Length": 0.07783716917037964,
+                    "Radius": 0.29444801807403564,
+                    "Rotation": {
+                        "Pitch": -90.0000228881836,
+                        "Roll": 0.0,
+                        "Yaw": 0.0
+                    }
+                }
+            ],
+            "bOverrideMass": false
+        },
+        {
+            "BoneName": "ElbowLeft",
+            "BoxElems": [],
+            "Friction": 0.5,
+            "MassInKgOverride": 0.0,
+            "PhysicsType": 0,
+            "Properties": {},
+            "Restitution": 0.10000000149011612,
+            "SphereElems": [],
+            "SphylElems": [
+                {
+                    "Center": {
+                        "X": 0.013321198523044586,
+                        "Y": 0.013197660446166992,
+                        "Z": 0.01263025775551796
+                    },
+                    "Length": 0.08101308345794678,
+                    "Radius": 0.17742666602134705,
+                    "Rotation": {
+                        "Pitch": -0.0,
+                        "Roll": 90.0000228881836,
+                        "Yaw": 90.0000228881836
+                    }
+                }
+            ],
+            "bOverrideMass": false
+        },
+        {
+            "BoneName": "ShoulderRight",
+            "BoxElems": [],
+            "Friction": 0.5,
+            "MassInKgOverride": 0.0,
+            "PhysicsType": 0,
+            "Properties": {},
+            "Restitution": 0.10000000149011612,
+            "SphereElems": [],
+            "SphylElems": [
+                {
+                    "Center": {
+                        "X": 0.11474214494228363,
+                        "Y": -0.08448359370231628,
+                        "Z": 0.0007489025592803955
+                    },
+                    "Length": 0.0778382420539856,
+                    "Radius": 0.29444754123687744,
+                    "Rotation": {
+                        "Pitch": -90.0000228881836,
+                        "Roll": 0.0,
+                        "Yaw": 0.0
+                    }
+                }
+            ],
+            "bOverrideMass": false
+        },
+        {
+            "BoneName": "ElbowRight",
+            "BoxElems": [],
+            "Friction": 0.5,
+            "MassInKgOverride": 0.0,
+            "PhysicsType": 0,
+            "Properties": {},
+            "Restitution": 0.10000000149011612,
+            "SphereElems": [],
+            "SphylElems": [
+                {
+                    "Center": {
+                        "X": 0.014264926314353943,
+                        "Y": -0.013408713042736053,
+                        "Z": 0.012704484164714813
+                    },
+                    "Length": 0.08101239800453186,
+                    "Radius": 0.17742669582366943,
+                    "Rotation": {
+                        "Pitch": -0.0,
+                        "Roll": 90.0000228881836,
+                        "Yaw": 90.0000228881836
+                    }
+                }
+            ],
+            "bOverrideMass": false
+        }
+    ]
+}
