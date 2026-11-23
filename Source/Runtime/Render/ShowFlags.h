@@ -13,6 +13,8 @@ struct FEngineShowFlags
 	bool AntiAliasing = false;
 	// 데칼
 	bool Decals = true;
+	// 피사계 심도
+	bool DepthOfField = true;
 	// 화면 가장자리를 어둡게 하는 비네트
 	bool Vignette = true;
 	// 카메라 페이드와 레터박스. UE에는 없는 이 엔진 고유의 플래그다.
@@ -21,6 +23,10 @@ struct FEngineShowFlags
 	bool SkeletalMeshes = true;
 	// 파티클 시스템 컴포넌트 (Sprite, Mesh, Beam, Ribbon 이미터 전부). UE의 Particles 쇼 플래그
 	bool Particles = true;
+	// 물리 바디(BodySetup Shape) 와이어프레임. 디버그 표시라 기본은 끈다
+	bool PhysicsBodies = false;
+	// 물리 조인트 제한 (Swing 콘, Twist 부채꼴)
+	bool Constraints = false;
 };
 
 // 뷰포트가 씬을 어떤 방식으로 보여 줄지. 한 번에 하나만 고른다.

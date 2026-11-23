@@ -48,8 +48,10 @@
 #include "Script/LuaBindings.h"
 #include "Physics/Collision.h"
 #include "Core/ConfigFile.h"
+#include "Physics/PhysicsScene.h"
 #include "Components/ShapeComponent.h"
 #include "Particles/ParticleEventManager.h"
+#include "Physics/PhysicsSettings.h"
 
 namespace
 {
@@ -83,6 +85,15 @@ UWorld::~UWorld()
 
 bool UWorld::Init()
 {
+	// 레벨 생성 전 월드 전용 물리 씬 준비
+	PhysicsScene = MakeUnique<FPhysicsScene>();
+	if (!PhysicsScene->GetPxScene())
+	{
+		HTR_LOG(Error, "Failed to create world PhysX scene");
+		PhysicsScene.reset();
+		return false;
+	}
+
 	// Spawn Actor로 카메라 생성하고 세팅하기
 	PersistentLevel = NewObject<ULevel>(this);
 
@@ -211,7 +222,19 @@ void UWorld::GameWorldTick(float DeltaTime)
 	// 모든 Actor를 도는 대신 등록된 Tick 함수만 실행한다
 	{
 		SCOPE_CYCLE_COUNTER(STAT_ActorTick);
-		TickTaskManager.RunAllTickGroups(DeltaTime);
+		TickTaskManager.RunTickGroup(ETickingGroup::PrePhysics, DeltaTime);
+		// 프레임의 물리 결과 확정
+		if (PhysicsScene)
+		{
+			// 레벨 오버라이드 또는 프로젝트 기본 중력 선택
+			const float GravityZ = IsWorldGravityOverridden()
+				? GetWorldGravityZ() : FPhysicsSettings::Get().DefaultGravityZ;
+			PhysicsScene->SetGravityZ(GravityZ);
+			PhysicsScene->Tick(DeltaTime);
+		}
+		TickTaskManager.RunTickGroup(ETickingGroup::DuringPhysics, DeltaTime);
+		TickTaskManager.RunTickGroup(ETickingGroup::PostPhysics, DeltaTime);
+		TickTaskManager.RunTickGroup(ETickingGroup::PostUpdateWork, DeltaTime);
 	}
 
 	// 코루틴 Tick
@@ -965,6 +988,10 @@ void UWorld::BeginPlay()
 void UWorld::EndPlay()
 {
 	CoroutineScheduler.Reset();
+	if (PhysicsScene)
+	{
+		PhysicsScene->ResetStepTime();
+	}
 	bBegunPlay = false;
 	if (PlayerController)
 	{
@@ -984,9 +1011,16 @@ void UWorld::EndPlay()
 UWorld* UWorld::CreateWorld(const EWorldType InWorldType, bool bInformEngineOfWorld, FName WorldName)
 {
 	UWorld* NewWorld = NewObject<UWorld>(nullptr, WorldName);
+	if (!NewWorld){ return nullptr; }
+
 	NewWorld->SetFlags(EObjectFlags::RF_Transactional);
 	NewWorld->WorldType = InWorldType;
-	NewWorld->Init();
+
+	if (!NewWorld->Init())
+	{
+		delete NewWorld;
+		return nullptr;
+	}
 
 	return NewWorld;
 }
@@ -999,7 +1033,10 @@ UWorld* UWorld::GetDuplicatedWorldForPIE(UWorld * InWorld)
 	}
 
 	UWorld* PIEWorld = CreateWorld(EWorldType::PIE, false);
-
+	if (!PIEWorld)
+	{
+		return nullptr;
+	}
 	FObjectDuplicationParameters Params(InWorld, nullptr);
 	Params.DuplicationSeed.Add(InWorld, PIEWorld);
 	Params.DuplicationSeed.Add(InWorld->GetPersistentLevel(), PIEWorld->GetPersistentLevel());

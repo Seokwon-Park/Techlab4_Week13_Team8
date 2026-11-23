@@ -27,12 +27,13 @@ struct FGpuSkinVertex
 static_assert(sizeof(FGpuSkinVertex) == 96);
 
 
+// LineShader.hlsl의 VS_INPUT과 필드 순서가 같아야 한다
 struct FLineBatchVertex
 {
-	FVector Position = FVector();
-	FVector2 UV = FVector2();
-	FVector4 Color = FVector4();
+	FVector Position = FVector(); // 0
+	FVector4 Color = FVector4();  // 12
 };
+static_assert(sizeof(FLineBatchVertex) == 28);
 
 struct FTextVertex
 {

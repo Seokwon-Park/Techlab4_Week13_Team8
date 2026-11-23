@@ -1,0 +1,75 @@
+#pragma once
+
+#include "Core/Delegate/Delegate.h"
+
+class AActor;
+class FCollisionQueryFilterCallback;
+class UPrimitiveComponent;
+struct FHitResult;
+struct FRay;
+struct FVector;
+struct FQuat;
+
+namespace physx
+{
+	class PxScene;
+	class PxGeometry;
+	class PxQuat;
+	class PxRigidActor;
+}
+
+DECLARE_DELEGATE(FPhysicsStepDelegate, float);
+
+class FPhysicsScene
+{
+public:
+	FPhysicsScene();
+	~FPhysicsScene();
+
+	// 네이티브 씬 소유권 중복 방지
+	FPhysicsScene(const FPhysicsScene&) = delete;
+	FPhysicsScene& operator=(const FPhysicsScene&) = delete;
+
+	// 월드에서 결정한 Z축 중력 적용
+	void SetGravityZ(float GravityZ);
+
+	// 월드 시간 누적과 고정 스텝 실행
+	void Tick(float DeltaSeconds);
+	void ResetStepTime() { AccumulatedSeconds = 0.0; }
+
+	// 바디 생성과 차량 쿼리용 비소유 씬 접근
+	physx::PxScene* GetPxScene() const { return Scene; }
+
+	// 월드 공간 정점 충돌 검사
+	bool Raycast(const FRay& WorldRay, float MaxDistance, FHitResult& OutHit,
+		const AActor* IgnoreActor = nullptr) const;
+
+	// 월드공간 구체 충돌 검사
+	bool SweepSphere(const FRay& WorldRay, float MaxDistance, float Radius, FHitResult& OutHit,
+		const AActor* IgnoreActor = nullptr) const;
+
+	// 월드공간 박스 충돌 검사
+	bool SweepBox(const FRay& WorldRay, float MaxDistance, const FVector& HalfExtent,
+		const FQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor = nullptr) const;
+
+	// 월드공간 캡슐 충돌 검사
+	bool SweepCapsule(const FRay& WorldRay, float MaxDistance, float Radius, float HalfHeight,
+		const FQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor = nullptr) const;
+
+	// 물리 계산 전후 Delegate
+	FPhysicsStepDelegate OnPreStep;
+	FPhysicsStepDelegate OnPostStep;
+
+private:
+	friend class FCollisionQueryFilterCallback;
+
+	physx::PxScene* Scene = nullptr;
+	double AccumulatedSeconds = 0.0;
+
+	// PhysX 쿼리, 엔진 히트 결과
+	bool QuerySingle(const FRay& WorldRay, float MaxDistance, const physx::PxGeometry* SweepGeometry,
+		const physx::PxQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor) const;
+
+	// 액터 사용자 데이터의 소유 컴포넌트 조회
+	UPrimitiveComponent* FindHitComponent(const physx::PxRigidActor* Actor) const;
+};

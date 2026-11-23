@@ -26,14 +26,7 @@ FVector4 UShapeComponent::GetDebugColor() const
 void UShapeComponent::AddWireArc(FLineBatcher* LineBatcher, const FVector& Center, const FVector& AxisA, const FVector& AxisB,
 	float Radius, float StartRad, float EndRad, const FVector4& Color, int32 Segments)
 {
-	auto PointAt = [&](float T) { return Center + AxisA * (std::cos(T) * Radius) + AxisB * (std::sin(T) * Radius); };
-	FVector Prev = PointAt(StartRad);
-	for (int32 i = 1; i <= Segments; ++i)
-	{
-		const FVector P = PointAt(StartRad + (EndRad - StartRad) * i / Segments);
-		LineBatcher->AddLine(Prev, P, Color);
-		Prev = P;
-	}
+	LineBatcher->AddWireArc(Center, AxisA, AxisB, Radius, StartRad, EndRad, Color, Segments);
 }
 
 void DrawCollisionShapes(UWorld* World, FLineBatcher* LineBatcher, const AActor* Selected)

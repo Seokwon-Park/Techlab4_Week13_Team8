@@ -72,6 +72,7 @@ struct FEditorSettings
 
 	bool bGammaCorrection = true;
 	float DisplayGamma = 2.2f;
+	bool bShowDepthOfField = true;
 	bool bShowVignette = true;
 	bool bShowCameraOverlay = true;
 	bool bShowSkeletalMesh = true;

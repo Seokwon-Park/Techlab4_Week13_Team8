@@ -218,11 +218,23 @@ namespace EditorViewportUI
 				{ "Decals", EEditorIcon::ShowDecal, &Flags.Decals },
 				{ "Fog", EEditorIcon::ShowFog, &Flags.Fog },
 				{ "Anti-aliasing", EEditorIcon::ShowAntiAliasing, &Flags.AntiAliasing },
+				{ "Depth of Field", EEditorIcon::Camera, &Flags.DepthOfField },
 				{ "Vignette", EEditorIcon::ShowVignette, &Flags.Vignette },
 				{ "Camera Overlay", EEditorIcon::ShowCameraOverlay, &Flags.CameraOverlay },
 			};
 			EditorIcons::MenuSection("Show Flags");
 			for (const FFlagRow& Row : Rows)
+			{
+				if (EditorIcons::MenuRow(Row.Label, Row.Icon, *Row.Value, true, true))
+					*Row.Value = !*Row.Value;
+			}
+
+			const FFlagRow PhysicsRows[] = {
+				{ "Physics Bodies", EEditorIcon::ViewWireframe, &Flags.PhysicsBodies },
+				{ "Constraints", EEditorIcon::Rotate, &Flags.Constraints },
+			};
+			EditorIcons::MenuSection("Physics");
+			for (const FFlagRow& Row : PhysicsRows)
 			{
 				if (EditorIcons::MenuRow(Row.Label, Row.Icon, *Row.Value, true, true))
 					*Row.Value = !*Row.Value;

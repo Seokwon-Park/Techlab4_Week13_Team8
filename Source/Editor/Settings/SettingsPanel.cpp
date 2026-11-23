@@ -118,6 +118,7 @@ void FSettingsPanel::OnRender()
 	ImGui::SetNextItemWidth(200.0f);
 	ImGui::SliderFloat("Display Gamma", &Settings.DisplayGamma, 1.0f, 3.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::EndDisabled();
+	ImGui::Checkbox("Depth of Field", &Settings.bShowDepthOfField);
 	ImGui::Checkbox("Vignette", &Settings.bShowVignette);
 	ImGui::Checkbox("Camera Fade / Letterbox", &Settings.bShowCameraOverlay);
 	ImGui::Checkbox("Skeletal Mesh", &Settings.bShowSkeletalMesh);
@@ -229,6 +230,7 @@ bool FSettingsPanel::SaveSettings() const
 
 	File << "GammaCorrection=" << Settings.bGammaCorrection << "\n";
 	File << "DisplayGamma=" << Settings.DisplayGamma << "\n";
+	File << "ShowDepthOfField=" << Settings.bShowDepthOfField << "\n";
 	File << "ShowVignette=" << Settings.bShowVignette << "\n";
 	File << "ShowCameraOverlay=" << Settings.bShowCameraOverlay << "\n";
 	File << "ShowSkeletalMesh=" << Settings.bShowSkeletalMesh << "\n";
@@ -390,6 +392,7 @@ bool FSettingsPanel::LoadSettings()
 
 				else if (Key == "GammaCorrection")   Settings.bGammaCorrection = std::stoi(ValueStr);
 				else if (Key == "DisplayGamma")      Settings.DisplayGamma = std::stof(ValueStr);
+				else if (Key == "ShowDepthOfField")   Settings.bShowDepthOfField = std::stoi(ValueStr);
 				else if (Key == "ShowVignette")      Settings.bShowVignette = std::stoi(ValueStr);
 				else if (Key == "ShowCameraOverlay") Settings.bShowCameraOverlay = std::stoi(ValueStr);
 				else if (Key == "ShowSkeletalMesh")  Settings.bShowSkeletalMesh = std::stoi(ValueStr);

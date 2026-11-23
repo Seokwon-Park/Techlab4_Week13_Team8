@@ -593,4 +593,5 @@ void AActor::CalcCamera(float DeltaTime, FMinimalViewInfo& OutPOV)
 	// 카메라없음 -> 액터자신
 	OutPOV.Location = GetActorLocation();
 	OutPOV.Rotation = GetActorRotation();
+	OutPOV.DepthOfField = FDepthOfFieldSettings{};
 }

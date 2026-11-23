@@ -115,8 +115,6 @@ bool UEditorEngine::Init()
 	if (!Super::Init())
 		return false;
 
-	GEditor = this;
-
 	// FEngineLoop가 소유한 창·스왑체인·렌더러를 받아 둔다.
 	MainWindow = GetEngineLoop().GetMainWindow();
 	MainWindowSC = GetEngineLoop().GetSwapchain();
@@ -125,7 +123,11 @@ bool UEditorEngine::Init()
 	// 순서에 의미가 있다. 패널은 ImGui와 렌더러를, 명령은 패널을 쓴다.
 	// InitEditor만 UE에 있는 이름이다. 나머지 다섯은 UE에서 레벨 에디터 모듈과 Slate가 맡는 일이라
 	// 대응하는 UE 함수가 없는, 이 엔진 고유의 단계다.
-	InitEditor();
+	if (!InitEditor())
+	{
+		return false;
+	}
+	GEditor = this;
 	InitLevelEditorTab();
 	InitImGui();
 	InitEditorRenderers();
@@ -136,11 +138,19 @@ bool UEditorEngine::Init()
 }
 
 // 에디터 월드와 그 월드 컨텍스트를 만든다. UE의 UEditorEngine::InitEditor가 하는 일 중 이 부분에 해당한다.
-void UEditorEngine::InitEditor()
+bool UEditorEngine::InitEditor()
 {
+	// 유효한 에디터 월드 생성 후 컨텍스트 등록
+	UWorld* NewEditorWorld = UWorld::CreateWorld(EWorldType::Editor, true);
+	if (!NewEditorWorld)
+	{
+		return false;
+	}
+
 	FWorldContext& InitialWorldContext = CreateNewWorldContext(EWorldType::Editor);
-	InitialWorldContext.SetCurrentWorld(UWorld::CreateWorld(EWorldType::Editor, true));
-	EditorWorld = InitialWorldContext.World();
+	InitialWorldContext.SetCurrentWorld(NewEditorWorld);
+	EditorWorld = NewEditorWorld;
+	return true;
 }
 
 // 에디터 탭 관리자와 레벨 에디터 탭을 만들고 메뉴 동작과 출력 로그를 연결한다.
@@ -753,6 +763,7 @@ void UEditorEngine::Tick(const float DeltaTime)
 					Options.SpotShadowMapSize = S.GetSpotShadowMapSize();
 					Options.bGammaCorrection = S.bGammaCorrection;
 					Options.DisplayGamma = S.DisplayGamma;
+					ShowFlags.DepthOfField = S.bShowDepthOfField;
 					ShowFlags.Vignette = S.bShowVignette;
 					ShowFlags.CameraOverlay = S.bShowCameraOverlay;
 					ShowFlags.SkeletalMeshes = S.bShowSkeletalMesh;

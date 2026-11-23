@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Types.h"   // DEFINE_ENUM_OPERATORS
+#include "Core/EngineString.h"
 
 class UObject;
 class FName;
