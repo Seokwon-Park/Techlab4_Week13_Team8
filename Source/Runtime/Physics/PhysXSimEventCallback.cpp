@@ -27,6 +27,7 @@ physx::PxFilterFlags FPhysXSimEventCallback::FilterShader(
         !PxFilterObjectIsTrigger(AttributesA) && !PxFilterObjectIsTrigger(AttributesB))
     {
         OutPairFlags |= PxPairFlag::eNOTIFY_TOUCH_FOUND;
+        OutPairFlags |= PxPairFlag::eDETECT_CCD_CONTACT;
     }
     return Result;
 }

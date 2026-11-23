@@ -48,6 +48,12 @@ FPhysicsScene::FPhysicsScene()
 		Desc.flags.clear(physx::PxSceneFlag::eENABLE_PCM);
 	}
 
+	// 프로젝트 설정에 따른 씬 CCD 허용
+	if (!Settings.bDisableCCD)
+	{
+		Desc.flags |= physx::PxSceneFlag::eENABLE_CCD;
+	}
+
 	// 씬 접근 잠금 검사의 활성화
 	Desc.flags |= physx::PxSceneFlag::eREQUIRE_RW_LOCK;
 

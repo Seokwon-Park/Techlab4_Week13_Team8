@@ -174,8 +174,9 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
         {
             Shape->setFlag(physx::PxShapeFlag::eSIMULATION_SHAPE, true);
         }
-        DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC,
-            InBodyType == EPhysicsBodyType::Kinematic);
+        const bool bKinematic = InBodyType == EPhysicsBodyType::Kinematic;
+        DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, bKinematic);
+        DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_CCD, !bKinematic && bUseCCD);
     }
 
     // 씬 등록과 바디 역참조 설정의 쓰기 잠금
@@ -267,10 +268,18 @@ void FBodyInstance::SetInstanceSimulatePhysics(bool bSimulate)
         return;
     }
 
+    if (bKinematic)
+    {
+        // 키네마틱 전환 전 CCD 해제
+        DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_CCD, false);
+    }
+
     DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, bKinematic);
+
     if (bSimulate)
     {
-        // 동적 전환 직후의 시뮬레이션 재개
+        // 동적 복귀 시 CCD 복원과 시뮬레이션 재개
+        DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_CCD, bUseCCD);
         DynamicActor->wakeUp();
     }
 }
@@ -296,6 +305,27 @@ void FBodyInstance::SetKinematicTarget(const FTransform& InWorldTransform)
     if (WorldPose.isValid())
     {
         DynamicActor->setKinematicTarget(WorldPose);
+    }
+}
+
+void FBodyInstance::SetUseCCD(bool bInUseCCD)
+{
+    physx::PxRigidDynamic* DynamicActor = GetRigidDynamic();
+    if (!DynamicActor)
+    {
+        // 초기화 전 또는 정적 바디의 CCD 설정 저장
+        bUseCCD = bInUseCCD;
+        return;
+    }
+
+    // 등록된 바디의 CCD 설정과 플래그 변경 잠금
+    const physx::PxSceneWriteLock WriteLock(*Scene->GetPxScene());
+    bUseCCD = bInUseCCD;
+
+    if (!DynamicActor->getRigidBodyFlags().isSet(physx::PxRigidBodyFlag::eKINEMATIC))
+    {
+        // 동적 모드의 CCD 설정 즉시 반영
+        DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_CCD, bUseCCD);
     }
 }
 
