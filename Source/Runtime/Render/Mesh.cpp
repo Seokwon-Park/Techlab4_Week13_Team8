@@ -3,6 +3,8 @@
 #include "Renderer.h"
 #include "Asset/AssetManager.h"
 #include "Engine/PrimitiveSceneProxy.h"
+#include "Physics/BodySetup.h"
+#include "UObject/UObjectGlobals.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -96,4 +98,25 @@ void UStaticMesh::UnregisterProxy(FPrimitiveSceneProxy* Proxy)
     const auto It = std::find(RenderProxies.begin(), RenderProxies.end(), Proxy);
     if (It != RenderProxies.end())
         RenderProxies.RemoveAtSwap(static_cast<uint32>(It - RenderProxies.begin()));
+}
+
+UBodySetup* UStaticMesh::GetBodySetup()
+{
+    if (BodySetup) return BodySetup;
+
+    const FBox& Box = MeshData.AABB;
+    if (Box.Min.X > Box.Max.X || Box.Min.Y > Box.Max.Y || Box.Min.Z > Box.Max.Z) return nullptr;
+
+    constexpr float MinThickness = 0.01f;
+    const FVector Size = Box.Max - Box.Min;
+
+    FKBoxElem Elem;
+    Elem.Center = (Box.Min + Box.Max) * 0.5f;
+    Elem.X = std::max(Size.X, MinThickness);
+    Elem.Y = std::max(Size.Y, MinThickness);
+    Elem.Z = std::max(Size.Z, MinThickness);
+
+    BodySetup = NewObject<UBodySetup>(this);
+    BodySetup->AggGeom.BoxElems.Add(Elem);
+    return BodySetup;
 }

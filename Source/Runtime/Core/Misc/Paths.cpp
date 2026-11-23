@@ -4,6 +4,11 @@
 #include <fstream>
 #include <Windows.h>
 
+// 프로젝트 솔루션이 만드는 빌드 설정 (HITORI_ENGINE_DIR, HITORI_PROJECT_FILE). 엔진 솔루션에는 없다.
+#if __has_include("HitoriBuildConfig.h")
+#include "HitoriBuildConfig.h"
+#endif
+
 namespace fs = std::filesystem;
 
 namespace
@@ -22,28 +27,76 @@ namespace
 	}
 }
 
-bool FPaths::InitEngineDir()
+namespace
 {
-	wchar_t ExePath[MAX_PATH] = {};
-	if (!GetModuleFileNameW(nullptr, ExePath, MAX_PATH)) return false;
-
-	std::error_code Ec;
-	fs::path Dir = fs::path(ExePath).parent_path();
-	while (!Dir.empty())
+	bool IsEngineDir(const fs::path& Dir)
 	{
-		if (fs::exists(Dir / L"Resources" / L"Shader", Ec))
-		{
-			GEngineDir = Dir;
-			return true;
-		}
-		const fs::path Parent = Dir.parent_path();
-		if (Parent == Dir) break;
-		Dir = Parent;
+		std::error_code Ec;
+		return !Dir.empty() && fs::exists(Dir / L"Resources" / L"Shader", Ec);
 	}
 
-	// exe 위쪽에 엔진 폴더가 없으면 예전처럼 작업 디렉터리(디버거의 debugdir)를 엔진 폴더로 본다.
+	fs::path EngineDirFromProjectFile(const fs::path& ProjectFile)
+	{
+		if (ProjectFile.empty()) return {};
+		FProjectDescriptor Descriptor;
+		if (!Descriptor.Load(ProjectFile)) return {};
+		return Descriptor.ResolveEngineDir(ProjectFile);
+	}
+}
+
+fs::path FPaths::BuiltProjectFile()
+{
+#ifdef HITORI_PROJECT_FILE
+	return fs::path(HITORI_PROJECT_FILE);   // u8 리터럴(char8_t)은 UTF-8로 읽힌다
+#else
+	return {};
+#endif
+}
+
+bool FPaths::InitEngineDir(const fs::path& ProjectFileHint)
+{
+	std::error_code Ec;
+
+	// 1. exe 위쪽
+	wchar_t ExePath[MAX_PATH] = {};
+	if (GetModuleFileNameW(nullptr, ExePath, MAX_PATH))
+	{
+		fs::path Dir = fs::path(ExePath).parent_path();
+		while (!Dir.empty())
+		{
+			if (IsEngineDir(Dir))
+			{
+				GEngineDir = Dir;
+				return true;
+			}
+			const fs::path Parent = Dir.parent_path();
+			if (Parent == Dir) break;
+			Dir = Parent;
+		}
+	}
+
+	// 2. 빌드할 때 정해진 엔진 폴더. 프로젝트 솔루션이 Intermediate/Generated/BuildConfig에 만든다.
+#ifdef HITORI_ENGINE_DIR
+	if (const fs::path Built(HITORI_ENGINE_DIR); IsEngineDir(Built))
+	{
+		GEngineDir = Built.lexically_normal();
+		return true;
+	}
+#endif
+
+	// 3. 프로젝트 파일이 기억하는 엔진 폴더 (엔진을 옮긴 뒤 프로젝트를 다시 생성하기 전 등)
+	for (const fs::path& ProjectFile : { ProjectFileHint, BuiltProjectFile() })
+	{
+		if (const fs::path FromProject = EngineDirFromProjectFile(ProjectFile); IsEngineDir(FromProject))
+		{
+			GEngineDir = FromProject.lexically_normal();
+			return true;
+		}
+	}
+
+	// 4. 예전처럼 작업 디렉터리(디버거의 debugdir)를 엔진 폴더로 본다.
 	GEngineDir = fs::current_path(Ec);
-	return fs::exists(GEngineDir / L"Resources" / L"Shader", Ec);
+	return IsEngineDir(GEngineDir);
 }
 
 const fs::path& FPaths::EngineDir() { return GEngineDir; }
@@ -150,9 +203,25 @@ bool FProjectDescriptor::Load(const fs::path& File, FString* OutError)
 		return false;
 	}
 
-	FileVersion = Root.value("FileVersion", CurrentFileVersion);
+	// v1 파일에는 Modules와 EngineDir가 없다. 없으면 코드 없는 프로젝트로 읽는다.
+	FileVersion = Root.value("FileVersion", 1);
 	Name = Root.value("Name", FString());
 	Description = Root.value("Description", FString());
+	EngineDir = Root.value("EngineDir", FString());
+
+	Modules.Empty();
+	const auto ModulesIt = Root.find("Modules");
+	if (ModulesIt != Root.end() && ModulesIt->is_array())
+	{
+		// UE의 .uproject처럼 {"Name": "MyGame"} 객체 배열. 문자열만 적어도 받는다.
+		for (const json& Module : *ModulesIt)
+		{
+			FString ModuleName;
+			if (Module.is_string()) ModuleName = Module.get<FString>();
+			else if (Module.is_object()) ModuleName = Module.value("Name", FString());
+			if (!ModuleName.empty()) Modules.Add(ModuleName);
+		}
+	}
 	return true;
 }
 
@@ -162,9 +231,25 @@ bool FProjectDescriptor::Save(const fs::path& File) const
 	Root["FileVersion"] = FileVersion;
 	Root["Name"] = Name;
 	Root["Description"] = Description;
+	if (!EngineDir.empty()) Root["EngineDir"] = EngineDir;
+	if (!Modules.IsEmpty())
+	{
+		json ModulesJson = json::array();
+		for (const FString& ModuleName : Modules)
+			ModulesJson.push_back({ { "Name", ModuleName }, { "Type", "Runtime" } });
+		Root["Modules"] = ModulesJson;
+	}
 
 	std::ofstream Out(File);
 	if (!Out) return false;
 	Out << Root.dump(4) << '\n';
 	return static_cast<bool>(Out);
+}
+
+fs::path FProjectDescriptor::ResolveEngineDir(const fs::path& ProjectFile) const
+{
+	if (EngineDir.empty()) return {};
+	const fs::path Dir = FPaths::FromUtf8(EngineDir);
+	if (Dir.is_absolute()) return Dir.lexically_normal();
+	return (ProjectFile.parent_path() / Dir).lexically_normal();
 }

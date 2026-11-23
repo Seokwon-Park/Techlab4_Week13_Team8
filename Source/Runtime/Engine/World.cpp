@@ -13,6 +13,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/MyPlayerController.h"
 #include "GameFramework/GameModeBase.h"
+#include "Engine/Blueprint.h"
 #include "GameFramework/GameplayInfoActors.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Input/InputSystem.h"
@@ -47,6 +48,7 @@
 
 #include "Script/LuaBindings.h"
 #include "Physics/Collision.h"
+#include "Core/ConfigFile.h"
 #include "Physics/PhysicsScene.h"
 #include "Components/ShapeComponent.h"
 #include "Particles/ParticleEventManager.h"
@@ -146,6 +148,14 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 	// 4. Level->Actors에 등록한 뒤 컴포넌트를 월드에 연결한다.
 	PersistentLevel->AddActor(NewActor);
 	NewActor->RegisterAllComponents();
+
+	// 데이터 Blueprint면 BP 기본값(프로퍼티, 컴포넌트)을 덮어쓴다. 기본값의 루트 Transform은 쓰지 않고 스폰 위치를 지킨다.
+	if (FBlueprint::IsBlueprintClass(Class))
+	{
+		FBlueprint::ApplyActorDefaults(NewActor);
+		if (NewActor->GetRootComponent())
+			NewActor->GetRootComponent()->SetTransform(SpawnTransform);
+	}
 
 	// 월드가 재생 중일 때 생성된 액터만 별도 BeginPlay 대기열에 넣는다.
 	if (bBegunPlay) BeginPlayList.Enqueue(NewActor);
@@ -1218,7 +1228,17 @@ void UWorld::ResetWorldSettings()
 
 UClass* UWorld::ResolveGameModeClass() const
 {
-	return AGameModeBase::ResolveClass(GameModeOverride, AGameModeBase::StaticClass(), AGameModeBase::StaticClass());
+	// 씬의 GameMode Override가 비어 있으면 프로젝트 기본값을 쓴다.
+	// UE의 Project Settings > Maps & Modes > Default GameMode(GlobalDefaultGameMode) 자리다.
+	// 플레이를 시작할 때만 불리므로 매번 읽는다. 에디터에서 ini를 고치면 다음 플레이부터 반영된다.
+	FString ClassName = GameModeOverride;
+	if (ClassName.empty())
+	{
+		FConfigFile Config;
+		if (Config.Load("Config/DefaultGame.ini"))
+			ClassName = Config.GetString("Game", "GlobalDefaultGameMode", "");
+	}
+	return AGameModeBase::ResolveClass(ClassName, AGameModeBase::StaticClass(), AGameModeBase::StaticClass());
 }
 
 float UWorld::GetEffectiveTimeDilation() const

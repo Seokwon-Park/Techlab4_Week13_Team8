@@ -69,6 +69,8 @@ public:
     void UnregisterProxy(FPrimitiveSceneProxy* Proxy);
 
     const uint16 SortID;
+
+    class UBodySetup* GetBodySetup();
 private:
     static inline uint16 NextSortID = 0;
     struct FMaterialSlotsHash
@@ -79,4 +81,6 @@ private:
     FBox RenderBounds;
     std::unordered_map<std::vector<UMaterial*>, TWeakPtr<const FMeshRenderState>, FMaterialSlotsHash> RenderStates;
     TArray<FPrimitiveSceneProxy*> RenderProxies;
+
+    class UBodySetup* BodySetup = nullptr;
 };

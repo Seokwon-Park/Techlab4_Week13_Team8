@@ -10,4 +10,12 @@ public:
 
 protected:
 	void DrawContent() override;
+
+private:
+	// 물리 단계별 확인용 (임시). C의 Physics Asset 에디터가 생기면 지운다
+	void DrawPhysicsDebug();
+
+	class UPhysicsAsset* DebugPhysicsAsset = nullptr;
+	float DebugMinBoneSize = 20.0f;
+	FString DebugMessage;
 };
