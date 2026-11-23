@@ -37,8 +37,16 @@ public:
 
 	// 월드 시간 누적과 고정 스텝 실행
 	void Tick(float DeltaSeconds);
-	void ResetStepTime() { AccumulatedSeconds = 0.0; }
 
+	// 물리 누적 시간과 마지막 틱 통계 초기화
+	void ResetStepTime()
+	{
+		AccumulatedSeconds = 0.0;
+		LastTickStepCount = 0;
+		LastTickStepTimeMs = 0.0;
+	}
+	int32 GetLastTickStepCount() const { return LastTickStepCount; }
+	double GetLastTickStepTimeMs() const { return LastTickStepTimeMs; }
 	// 바디 생성과 차량 쿼리용 비소유 씬 접근
 	physx::PxScene* GetPxScene() const { return Scene; }
 
@@ -69,6 +77,10 @@ private:
 	std::unique_ptr<FPhysXSimEventCallback> SimulationEvents; // PhysX 이벤트 콜백
 	physx::PxScene* Scene = nullptr;
 	double AccumulatedSeconds = 0.0;
+
+	// 마지막 물리 틱의 완료 스텝 수와 처리 시간 합계
+	int32 LastTickStepCount = 0;
+	double LastTickStepTimeMs = 0.0;
 
 	// PhysX 쿼리, 엔진 히트 결과
 	bool QuerySingle(const FRay& WorldRay, float MaxDistance, const physx::PxGeometry* SweepGeometry,

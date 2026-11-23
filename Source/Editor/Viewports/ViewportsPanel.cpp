@@ -6,7 +6,8 @@
 #include "Core/StatOverlay.h"
 #include "Core/Stats/LightweightStats.h"
 #include "Render/RenderCommand.h"
-
+#include "Engine/World.h"
+#include "Physics/PhysicsScene.h"
 #include <algorithm>
 #include <cassert>
 #include <format>
@@ -317,6 +318,24 @@ void FViewportsPanel::DrawStatOverlay(ImDrawList* DrawList, const ImVec2& ViewMi
 				{std::format("  {:.1f} fps", FStatOverlay::GetFPS()), ValueColor});
 		Lines.Add({std::format("  {:.2f} ms", FStatOverlay::GetFrameTimeMs()),
 			ValueColor});
+	}
+
+	if (FStatOverlay::IsEnabled(EStatFlags::Physics))
+	{
+		Lines.Add({ "Physics", TitleColor });
+
+		const UWorld* World = Client->GetWorld();
+		const FPhysicsScene* PhysicsScene = World ? World->GetPhysicsScene() : nullptr;
+		if (PhysicsScene)
+		{
+			const char* Label = World->IsPaused() ? "  Paused | Last tick" : "  Last tick";
+			Lines.Add({ std::format("{}  {} steps  {:.2f} ms", Label,
+				PhysicsScene->GetLastTickStepCount(), PhysicsScene->GetLastTickStepTimeMs()), ValueColor });
+		}
+		else
+		{
+			Lines.Add({ "  No physics scene", ValueColor });
+		}
 	}
 
 	if (FStatOverlay::IsEnabled(EStatFlags::Memory)) {

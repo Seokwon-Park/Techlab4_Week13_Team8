@@ -8,7 +8,8 @@
 #include "Physics/CollisionQueryFilterCallback.h"
 #include "Physics/BodyInstance.h"
 #include "Physics/PhysXConversion.h"
-
+#include "Core/StatOverlay.h"
+#include "Core/Windows/WindowsPlatformTime.h"
 #include <cmath>
 #include <limits>
 #include <geometry/PxGeometryQuery.h>
@@ -85,6 +86,10 @@ void FPhysicsScene::SetGravityZ(float GravityZ)
 
 void FPhysicsScene::Tick(float DeltaSeconds)
 {
+	// 스텝이 없는 틱의 표시값 초기화
+	LastTickStepCount = 0;
+	LastTickStepTimeMs = 0.0;
+
 	if (!Scene || DeltaSeconds <= 0.0f)
 	{
 		return;
@@ -95,6 +100,7 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 	const double FixedStepSeconds = Settings.FixedStepSeconds;
 	const int32 MaxStepsPerTick = Settings.MaxStepsPerTick;
 	const float StepDelta = static_cast<float>(FixedStepSeconds);
+	const bool bMeasureStepTime = FStatOverlay::IsEnabled(EStatFlags::Physics);
 	AccumulatedSeconds = std::min(
 		AccumulatedSeconds + static_cast<double>(DeltaSeconds),
 		FixedStepSeconds * MaxStepsPerTick);
@@ -107,8 +113,14 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 		{
 			// 고정 스텝의 네이티브 씬 쓰기 잠금
 			const physx::PxSceneWriteLock WriteLock(*Scene);
+			const uint64 StartCycles = bMeasureStepTime ? FPlatformTime::GetCycles64() : 0;
 			Scene->simulate(StepDelta);
 			bFetchedResults = Scene->fetchResults(true);
+			if (bMeasureStepTime)
+			{
+				const uint64 ElapsedCycles = FPlatformTime::GetCycles64() - StartCycles;
+				LastTickStepTimeMs += FPlatformTime::ToMilliseconds64(ElapsedCycles);
+			}
 		}
 
 		if (!bFetchedResults)
@@ -118,6 +130,7 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 			return;
 		}
 		// 완료된 스텝의 시간 차감과 결과 전달
+		++LastTickStepCount;
 		AccumulatedSeconds -= FixedStepSeconds;
 		OnPostStep.Broadcast(StepDelta);
 	}
