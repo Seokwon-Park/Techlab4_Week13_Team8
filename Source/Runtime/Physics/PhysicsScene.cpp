@@ -184,7 +184,7 @@ bool FPhysicsScene::QuerySingle(const FRay& WorldRay, float MaxDistance,
 
 	// 최근접 블로킹 히트 하나의 수집과 복수 Touch 결과의 확장 지점
 	physx::PxLocationHit Hit;
-	
+
 	// 셰이프 충돌 분기
 	if (SweepGeometry)
 	{
