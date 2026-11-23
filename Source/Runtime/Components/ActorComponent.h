@@ -40,16 +40,19 @@ public:
 	virtual void Deactivate();
 	virtual bool ShouldActivate() const { return !bIsActive; }
 	virtual void SetActive(bool bNewActive);
+
 	bool IsActive() const { return bIsActive; }
 	void SetAutoActivate(bool bNewAutoActivate);
 	bool IsAutoActivate() const { return bAutoActivate; }
 	bool IsVisible() const { return bVisible; }
 	bool IsHiddenInGame() const { return bHiddenInGame; }
+
 	virtual bool IsShown(bool bGameView) const { return bVisible && !(bGameView && bHiddenInGame); }
 	virtual void SetVisibility(bool bNewVisibility);
 	virtual void SetHiddenInGame(bool bNewHidden);
 	virtual void MarkRenderStateDirty() {}
 	virtual void PostEditChangeProperty(const FProperty& Property) override;
+
 	void SetComponentTickEnabled(bool bEnabled);
 	bool IsComponentTickEnabled() const { return PrimaryComponentTick.bCanEverTick && PrimaryComponentTick.IsTickFunctionEnabled(); }
 	void RegisterComponentTickFunctions(bool bRegister);
@@ -63,6 +66,9 @@ public:
 
 	bool IsRegistered() const { return bRegistered; }
 	bool IsRenderStateCreated() const { return bRenderStateCreated; }
+
+	void CreatePhysicsState();
+	void DestroyPhysicsState();
 
 	UWorld* GetWorld() const { return WorldPrivate; }
 protected:
@@ -83,6 +89,12 @@ protected:
 	bool bVisible = true;
 	UPROPERTY(EditAnywhere)
 	bool bHiddenInGame = false;
+
+	virtual bool ShouldCreatePhysicsState() const { return false; }
+	virtual void OnCreatePhysicsState() { bPhysicsStateCreated = true; }
+	virtual void OnDestroyPhysicsState() { bPhysicsStateCreated = false; }
+
+	bool bPhysicsStateCreated = false;
 
 	void ExecuteRegisterEvents();
 	void ExecuteUnregisterEvents();

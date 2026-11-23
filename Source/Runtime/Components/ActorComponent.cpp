@@ -135,6 +135,24 @@ void UActorComponent::UnregisterComponent()
 	WorldPrivate = nullptr;
 }
 
+void UActorComponent::CreatePhysicsState()
+{
+	if (!bPhysicsStateCreated && GetWorld() && ShouldCreatePhysicsState())
+	{
+		OnCreatePhysicsState();
+		assert(bPhysicsStateCreated && "Forgaot to Call OnCreatePhysicsState: Super");
+	}
+}
+
+void UActorComponent::DestroyPhysicsState()
+{
+	if (bPhysicsStateCreated)
+	{
+		OnDestroyPhysicsState();
+		assert(!bPhysicsStateCreated && "Forgot to Call OnDestroyPhysicsState: Super");
+	}
+}
+
 void UActorComponent::OnRegister()
 {
 	bRegistered = true;
@@ -168,10 +186,12 @@ void UActorComponent::ExecuteRegisterEvents()
 		CreateRenderState();
 		assert(bRenderStateCreated && "Forgot to Call CreateRenderState: Super ");
 	}
+	CreatePhysicsState();
 }
 
 void UActorComponent::ExecuteUnregisterEvents()
 {
+	DestroyPhysicsState();
 	if (bRenderStateCreated)
 	{
 		DestroyRenderState();
