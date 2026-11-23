@@ -24,6 +24,7 @@
 #include "Text/TextRenderer.h"
 #include "UObject/UObjectIterator.h"
 #include "Render/GPUStats.h"
+#include "Render/PostProcess/DepthOfFieldSetupData.h"
 
 #include <cmath>
 #include <algorithm>
@@ -520,11 +521,98 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 		if (ViewFamily.EngineShowFlags.Decals && !RenderDecals(Graph, Renderer, Options, SceneTextures)) return false;
 	}
 
-	
+	FRenderGraphTextureRef ToneMapInput = LightingHDR;
+	const FDepthOfFieldSettings& DOF = View.DepthOfField;
+	const float SensorWidth = DOF.SensorWidthMm * 0.001f; // mm -> m
+	const float FocalLength = 0.5f * SensorWidth * std::abs(View.ProjectionMatrix.M[1][0]);
+	const float FocusDelta = DOF.FocusDistance - FocalLength;
+
+	if(ViewFamily.ViewMode == VMI_Lit && ViewFamily.EngineShowFlags.Rendering && ViewFamily.EngineShowFlags.DepthOfField && View.bIsPerspective && FocalLength > 0.0f && DOF.FStop > 0.0f && FocusDelta > 0.0f)
+	{
+		FPipelineState* Pipeline = FRenderResourceManager::GetPSO(EPSOType::DepthOfFieldSetup);
+		FConstantBuffer* Constants = Renderer->GetDepthOfFieldConstants();
+
+		if (Pipeline && Pipeline->Shader && Constants && Pipeline->Shader->Name == "Resources/Shader/DepthOfFieldSetup.hlsl")
+		{
+			DepthOfFieldSetupData Data{};
+			Data.ProjectionA = View.ProjectionMatrix.M[0][2];
+			Data.ProjectionB = View.ProjectionMatrix.M[3][2];
+			Data.FocusDistance = DOF.FocusDistance;
+			Data.InfinityCoCRadius = (FocalLength * FocalLength) / (DOF.FStop * FocusDelta) * (0.5f * Width / SensorWidth);
+
+			const FRenderGraphTextureDesc CoCDesc{ Width, Height, ETextureFormat::R16_Float };
+			const FRenderGraphTextureRef CoC = Graph.CreateTexture(CoCDesc, "DOF.CoC");
+			if (!CoC) return false;
+
+			FRenderGraphRasterPassDesc Pass = MakeViewportPass("DOF.Setup", CoC);
+			Pass.ReadTextures = { Depth };
+
+			if (!Graph.AddRasterPass(std::move(Pass), [this, Pipeline, Constants, Data]
+				{
+					if (!bCorePassSucceeded) return;
+
+					RenderCommand::UpdateBufferData(Constants, &Data, sizeof(Data));
+					RenderCommand::BindPipelineState(*Pipeline);
+					RenderCommand::BindConstantBuffer(0, Constants, EShaderBindFlagBits::Pixel);
+					RenderCommand::BindVertexBuffer(nullptr);
+					RenderCommand::Draw(3);
+				})) return false;
+
+			FPipelineState* GatherPipeline = FRenderResourceManager::GetPSO(EPSOType::DepthOfFieldGather);
+			if (GatherPipeline && GatherPipeline->Shader &&
+				GatherPipeline->Shader->Name == "Resources/Shader/DepthOfFieldGather.hlsl")
+			{
+				const FRenderGraphTextureDesc GatherDesc{
+					(Width + 1) / 2, (Height + 1) / 2, ETextureFormat::R16G16B16A16_Float
+				};
+				const FRenderGraphTextureRef NearLayer = Graph.CreateTexture(GatherDesc, "DOF.Near");
+				const FRenderGraphTextureRef FarLayer = Graph.CreateTexture(GatherDesc, "DOF.Far");
+				if (!NearLayer || !FarLayer) return false;
+
+				FRenderGraphRasterPassDesc GatherPass{};
+				GatherPass.Name = "DOF.Gather";
+				GatherPass.ReadTextures = { LightingHDR, CoC };
+				GatherPass.ColorAttachments = {
+					{ NearLayer, ERenderGraphLoadAction::Load },
+					{ FarLayer, ERenderGraphLoadAction::Load }
+				};
+				if (!Graph.AddRasterPass(std::move(GatherPass), [this, GatherPipeline]
+					{
+						if (!bCorePassSucceeded) return;
+
+						RenderCommand::BindPipelineState(*GatherPipeline);
+						RenderCommand::BindVertexBuffer(nullptr);
+						RenderCommand::Draw(3);
+					})) return false;
+
+				FPipelineState* RecombinePipeline = FRenderResourceManager::GetPSO(EPSOType::DepthOfFieldRecombine);
+				if (RecombinePipeline && RecombinePipeline->Shader &&
+					RecombinePipeline->Shader->Name == "Resources/Shader/DepthOfFieldRecombine.hlsl")
+				{
+					const FRenderGraphTextureRef RecombinedHDR = Graph.CreateTexture(HDRDesc, "DOF.RecombinedHDR");
+					if (!RecombinedHDR) return false;
+
+					FRenderGraphRasterPassDesc RecombinePass = MakeViewportPass("DOF.Recombine", RecombinedHDR);
+					RecombinePass.ReadTextures = { LightingHDR, CoC, NearLayer, FarLayer };
+					if (!Graph.AddRasterPass(std::move(RecombinePass), [this, RecombinePipeline]
+						{
+							if (!bCorePassSucceeded) return;
+
+							RenderCommand::BindPipelineState(*RecombinePipeline);
+							RenderCommand::BindSamplerState(0, ESamplerState::LinearClamp, EShaderBindFlagBits::Pixel);
+							RenderCommand::BindVertexBuffer(nullptr);
+							RenderCommand::Draw(3);
+						})) return false;
+
+					ToneMapInput = RecombinedHDR;
+				}
+			}
+		}
+	}
 
 	FRenderGraphRasterPassDesc ToneMap{};
 	ToneMap.Name = "ToneMap";
-	ToneMap.ReadTextures = { LightingHDR };
+	ToneMap.ReadTextures = { ToneMapInput };
 	ToneMap.ColorAttachments = { { SceneColor, ERenderGraphLoadAction::Clear, { 0.0f, 0.0f, 0.0f, 1.0f } } };
 	if (!Graph.AddRasterPass(std::move(ToneMap), [this, Renderer, &Graph, LightingHDR, bGamma = Options.bGammaCorrection, DisplayGamma = Options.DisplayGamma]
 		{

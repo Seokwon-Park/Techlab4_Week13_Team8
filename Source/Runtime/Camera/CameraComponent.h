@@ -4,6 +4,7 @@
 #include "../Components/SceneComponent.h"
 #include "../Math/EngineMath.h"
 #include "../Math/Rotator.h"
+#include "Camera/DepthOfFieldSettings.h"
 #include "CameraComponent.generated.h"
 
 struct FMinimalViewInfo;
@@ -68,6 +69,8 @@ public:
 	void UpdateRotation(float DeltaTime); // 마우스 우클릭 회전
 	void UpdateZoom(float DeltaTime);     // 마우스 휠 줌
 
+	const FDepthOfFieldSettings& GetDepthOfFieldSettings() const { return DepthOfField; }
+
 protected:
 	float FieldOfView = 60.0f;
 	float AspectRatio = 16.0f / 9.0f;
@@ -76,6 +79,9 @@ protected:
 
 	bool bIsOrthogonal = false;
 	float OrthoWidth = 16.0f;
+
+	UPROPERTY(EditAnywhere)
+	FDepthOfFieldSettings DepthOfField;
 	
 	float MoveSpeed = 10.0f;
 	float MouseSensitivity = 0.05f;

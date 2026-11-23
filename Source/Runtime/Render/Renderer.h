@@ -51,6 +51,7 @@ public:
 
 	FConstantBuffer* GetToneMapConstants() const { return ToneMapConstants.get(); }
 	FConstantBuffer* GetDecalConstants() const { return DecalConstants.get(); }
+	FConstantBuffer* GetDepthOfFieldConstants() const { return DepthOfFieldSetupConstants.get(); }
 	
 private:
 	void EnsurePerObjectSlotCapacity(uint32 SlotCount);
@@ -65,6 +66,7 @@ private:
 	TUniquePtr<FVertexBuffer> MeshParticleInstanceBuffer;
 	TUniquePtr<FConstantBuffer> ToneMapConstants;
 	TUniquePtr<FConstantBuffer> DecalConstants;
+	TUniquePtr<FConstantBuffer> DepthOfFieldSetupConstants;
 	uint32 PerObjectSlotCapacity = 0;
 	bool bUsePerObjectSlots = false;
 	TArray<ComPtr<ID3D11Query>> OcclusionQueries;
