@@ -43,6 +43,10 @@ public:
 	void AddTwistArc(const FVector& Center, const FVector& Axis, const FVector& Ref,
 		float LimitRadian, float Radius, const FVector4& Color, int32 Segments = 24, float FillAlpha = 0.0f);
 	void AddCylinder(const FVector& Start, const FVector& End, float Radius, const FVector4& Color, int32 Segments = 8);
+	// 닫힌 도형의 반투명 면: 뒷면은 그리지 않는다. HalfHeight == Radius면 구가 된다
+	void AddSolidCapsule(const FVector& Center, const FVector& Up, const FVector& Right,
+		float Radius, float HalfHeight, const FVector4& Color, int32 Segments = 16, int32 Rings = 6);
+	void AddSolidOrientedBox(const FBox& LocalBox, const FMatrix& WorldMatrix, const FVector4& Color);
 
 	
 
@@ -71,4 +75,10 @@ private:
 	uint32 TriangleVertexCount = 0;
 	uint32 MaxTriangleVertices = 0;
 	TUniquePtr<FVertexBuffer> TriangleVertexBuffer;
+
+	void AddSolidTriangle(const FVector& A, const FVector& B, const FVector& C, const FVector4& Color, const FVector& Outward);
+	FPipelineState SolidPipelineState;
+	FLineBatchVertex* SolidVertexBase = nullptr;
+	uint32 SolidVertexCount = 0;
+	TUniquePtr<FVertexBuffer> SolidVertexBuffer;
 };

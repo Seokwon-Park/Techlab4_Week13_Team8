@@ -311,6 +311,16 @@ void UWorld::EditorWorldTick(float DeltaTime)
 		}
 		Comp->UpdateInEditor();
 	}
+
+	// 애니메이션은 돌리지 않고 본 트랜스폼만 채운다. 비어 있으면 Physics Body·소켓 위치를 구할 수 없다
+	for (TObjectIterator<USkinnedMeshComponent> Comp; Comp; ++Comp)
+	{
+		if (!Comp || !Comp->IsRegistered() || Comp->GetWorld() != this || !Comp->AreBoneTransformsDirty())
+		{
+			continue;
+		}
+		Comp->UpdateBoneTransformsNow();
+	}
 }
 
 void UWorld::PreviewWorldTick(float DeltaTime)

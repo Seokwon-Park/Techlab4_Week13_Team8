@@ -184,7 +184,7 @@ void FPhysicsAssetEditor::OnRenderLine(FLineBatcher& LineBatcher)
 	FPhysicsDebugDraw DebugDraw;
 	if (bShowBodies)
 	{
-		DebugDraw.DrawPhysicsAssetBodies(&LineBatcher, MeshComponent, *PhysicsAsset, false, GetSelectedBodyIndex());
+		DebugDraw.DrawPhysicsAssetBodies(&LineBatcher, MeshComponent, *PhysicsAsset, false, GetSelectedBodyIndex(), true);
 	}
 	if (bShowConstraints)
 	{

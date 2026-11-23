@@ -11,6 +11,7 @@ FLineBatcher::~FLineBatcher()
 {
 	delete[] VertexBufferBase;
 	delete[] TriangleVertexBase;
+	delete[] SolidVertexBase;
 }
 
 bool FLineBatcher::Init(FRenderer* InRenderer, UWorld* InWorld)
@@ -38,6 +39,11 @@ bool FLineBatcher::Init(FRenderer* InRenderer, UWorld* InWorld)
 	TriangleVertexBase = new FLineBatchVertex[MaxTriangleVertices];
 	TriangleVertexBuffer = RenderCommand::CreateDynamicVertexBuffer(sizeof(FLineBatchVertex) * MaxTriangleVertices, sizeof(FLineBatchVertex));
 
+	SolidPipelineState = TrianglePipelineState;
+	SolidPipelineState.RasterizerState = ERasterizerState::SolidBack;
+	SolidVertexBase = new FLineBatchVertex[MaxTriangleVertices];
+	SolidVertexBuffer = RenderCommand::CreateDynamicVertexBuffer(sizeof(FLineBatchVertex) * MaxTriangleVertices, sizeof(FLineBatchVertex));
+
 	CB = RenderCommand::CreateConstantBuffer(sizeof(FMatrix));
 
 	return true;
@@ -64,6 +70,7 @@ void FLineBatcher::BeginFrame()
 	VertexBufferPtr = VertexBufferBase;
 	VertexCount = 0;
 	TriangleVertexCount = 0;
+	SolidVertexCount = 0;
 }
 
 void FLineBatcher::AddLine(const FVector& A, const FVector& B, const FVector4& Color)
@@ -85,6 +92,18 @@ void FLineBatcher::AddTriangle(const FVector& A, const FVector& B, const FVector
 	TriangleVertexBase[TriangleVertexCount++] = { A, Color };
 	TriangleVertexBase[TriangleVertexCount++] = { B, Color };
 	TriangleVertexBase[TriangleVertexCount++] = { C, Color };
+}
+
+void FLineBatcher::AddSolidTriangle(const FVector& A, const FVector& B, const FVector& C, const FVector4& Color, const FVector& Outward)
+{
+	if (SolidVertexCount + 3 > MaxTriangleVertices)
+		return;
+
+	// 이 엔진은 Cross(B - A, C - A)가 보는 쪽을 향하는 면이 앞면이다 (GeometryGenerator와 같은 감김)
+	const bool bFlip = (B - A).Cross(C - A).Dot(Outward) < 0.0f;
+	SolidVertexBase[SolidVertexCount++] = { A, Color };
+	SolidVertexBase[SolidVertexCount++] = { bFlip ? C : B, Color };
+	SolidVertexBase[SolidVertexCount++] = { bFlip ? B : C, Color };
 }
 
 namespace
@@ -390,6 +409,83 @@ void FLineBatcher::AddCylinder(const FVector& Start, const FVector& End, float R
 	}
 }
 
+void FLineBatcher::AddSolidCapsule(const FVector& Center, const FVector& Up, const FVector& Right,
+	float Radius, float HalfHeight, const FVector4& Color, int32 Segments, int32 Rings)
+{
+	if (Radius <= 0.0f || Segments < 3 || Rings < 1)
+	{
+		return;
+	}
+
+	const float Segment = std::max(HalfHeight - Radius, 0.0f);
+	const FVector Forward = Up.Cross(Right).GetSafeNormal();
+
+	// 위 극점에서 아래 극점까지 고리마다 (축 방향 위치, 반지름)
+	TArray<std::pair<float, float>> Profile;
+	for (int32 i = 0; i <= Rings; ++i)
+	{
+		const float Phi = 0.5f * PI * (1.0f - static_cast<float>(i) / Rings);
+		Profile.Add({ Segment + Radius * std::sin(Phi), Radius * std::cos(Phi) });
+	}
+	for (int32 i = 0; i <= Rings; ++i)
+	{
+		const float Phi = -0.5f * PI * static_cast<float>(i) / Rings;
+		Profile.Add({ -Segment + Radius * std::sin(Phi), Radius * std::cos(Phi) });
+	}
+
+	auto PointAt = [&](int32 RingIndex, int32 SegmentIndex)
+	{
+		const float T = 2.0f * PI * SegmentIndex / Segments;
+		const auto& [Axial, RingRadius] = Profile[RingIndex];
+		return Center + Up * Axial + (Right * std::cos(T) + Forward * std::sin(T)) * RingRadius;
+	};
+
+	auto OutwardOf = [&](const FVector& P)
+	{
+		const float Axial = std::clamp((P - Center).Dot(Up), -Segment, Segment);
+		return P - (Center + Up * Axial);
+	};
+
+	for (int32 r = 0; r + 1 < Profile.Num(); ++r)
+	{
+		for (int32 s = 0; s < Segments; ++s)
+		{
+			const FVector A = PointAt(r, s);
+			const FVector B = PointAt(r, s + 1);
+			const FVector C = PointAt(r + 1, s + 1);
+			const FVector D = PointAt(r + 1, s);
+			const FVector Outward = OutwardOf((A + B + C + D) * 0.25f);
+			AddSolidTriangle(A, B, C, Color, Outward);
+			AddSolidTriangle(A, C, D, Color, Outward);
+		}
+	}
+}
+
+void FLineBatcher::AddSolidOrientedBox(const FBox& LocalBox, const FMatrix& WorldMatrix, const FVector4& Color)
+{
+	FVector Corners[8];
+	for (int32 c = 0; c < 8; ++c)
+	{
+		const FVector Local((c & 1) ? LocalBox.Max.X : LocalBox.Min.X,
+			(c & 2) ? LocalBox.Max.Y : LocalBox.Min.Y,
+			(c & 4) ? LocalBox.Max.Z : LocalBox.Min.Z);
+		Corners[c] = WorldMatrix.TransformPosition(Local);
+	}
+
+	static const int32 Faces[6][4] = {
+		{ 0, 2, 3, 1 }, { 4, 5, 7, 6 }, { 0, 1, 5, 4 },
+		{ 2, 6, 7, 3 }, { 0, 4, 6, 2 }, { 1, 3, 7, 5 },
+	};
+	const FVector BoxCenter = WorldMatrix.TransformPosition((LocalBox.Min + LocalBox.Max) * 0.5f);
+	for (const auto& Face : Faces)
+	{
+		const FVector FaceCenter = (Corners[Face[0]] + Corners[Face[1]] + Corners[Face[2]] + Corners[Face[3]]) * 0.25f;
+		const FVector Outward = FaceCenter - BoxCenter;
+		AddSolidTriangle(Corners[Face[0]], Corners[Face[1]], Corners[Face[2]], Color, Outward);
+		AddSolidTriangle(Corners[Face[0]], Corners[Face[2]], Corners[Face[3]], Color, Outward);
+	}
+}
+
 void FLineBatcher::AddWireArc(const FVector& Center, const FVector& AxisA, const FVector& AxisB,
 	float Radius, float StartRadian, float EndRadian, const FVector4& Color, int32 Segments)
 {
@@ -408,11 +504,19 @@ void FLineBatcher::SetDepthTest(bool bEnable)
 {
 	PipelineState.DepthStencilState = bEnable ? EDepthStencilState::Default : EDepthStencilState::Disabled;
 	TrianglePipelineState.DepthStencilState = bEnable ? EDepthStencilState::ReadOnly : EDepthStencilState::Disabled;
+	SolidPipelineState.DepthStencilState = TrianglePipelineState.DepthStencilState;
 }
 
 void FLineBatcher::Flush()
 {
 	// 반투명 면을 먼저 그려 선이 그 위에 보이게 한다
+	if (SolidVertexCount > 0)
+	{
+		RenderCommand::BindPipelineState(SolidPipelineState);
+		RenderCommand::BindVertexBuffer(SolidVertexBuffer.get());
+		RenderCommand::BindConstantBuffer(0, CB.get(), EShaderBindFlagBits::Vertex);
+		RenderCommand::Draw(SolidVertexCount, 0);
+	}
 	if (TriangleVertexCount > 0)
 	{
 		RenderCommand::BindPipelineState(TrianglePipelineState);
@@ -435,7 +539,7 @@ void FLineBatcher::Flush()
 
 void FLineBatcher::OnRender(const FMatrix& ViewProjection)
 {
-	if (VertexCount == 0 && TriangleVertexCount == 0)
+	if (VertexCount == 0 && TriangleVertexCount == 0 && SolidVertexCount == 0)
 	{
 		return;
 	}
@@ -448,6 +552,10 @@ void FLineBatcher::OnRender(const FMatrix& ViewProjection)
 	if (TriangleVertexCount > 0)
 	{
 		RenderCommand::UpdateBufferData(TriangleVertexBuffer.get(), TriangleVertexBase, sizeof(FLineBatchVertex) * TriangleVertexCount);
+	}
+	if (SolidVertexCount > 0)
+	{
+		RenderCommand::UpdateBufferData(SolidVertexBuffer.get(), SolidVertexBase, sizeof(FLineBatchVertex) * SolidVertexCount);
 	}
 	RenderCommand::UpdateBufferData(CB.get(), &VP, sizeof(FMatrix));
 

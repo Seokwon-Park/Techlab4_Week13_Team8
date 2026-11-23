@@ -8,6 +8,7 @@
 #include "Components/SkeletalMeshComponent.h"
 
 #include "PhysicsDebugDraw.h"
+#include "BodySetup.h"
 #include "AggregateGeom.h"
 #include "ConstraintInstance.h"
 #include "PhysicsAsset.h"
@@ -46,7 +47,7 @@ namespace
 
 
 void FPhysicsDebugDraw::DrawAggregateGeom(FLineBatcher* LineBatcher, const FKAggregateGeom& Geom,
-	const FTransform& BodyWorld, const FVector4& Color)
+	const FTransform& BodyWorld, const FVector4& Color, float FillAlpha)
 {
 	if (!LineBatcher)
 	{
@@ -55,22 +56,22 @@ void FPhysicsDebugDraw::DrawAggregateGeom(FLineBatcher* LineBatcher, const FKAgg
 
 	for (const FKSphereElem& SphereElem : Geom.SphereElems)
 	{
-		DrawSphereElem(LineBatcher, SphereElem, BodyWorld, Color);
+		DrawSphereElem(LineBatcher, SphereElem, BodyWorld, Color, FillAlpha);
 	}
 
 	for (const FKBoxElem& BoxElem : Geom.BoxElems)
 	{
-		DrawBoxElem(LineBatcher, BoxElem, BodyWorld, Color);
+		DrawBoxElem(LineBatcher, BoxElem, BodyWorld, Color, FillAlpha);
 	}
 
 	for (const FKSphylElem& SphylElem : Geom.SphylElems)
 	{
-		DrawSphylElem(LineBatcher, SphylElem, BodyWorld, Color);
+		DrawSphylElem(LineBatcher, SphylElem, BodyWorld, Color, FillAlpha);
 	}
 
 	for (const FKConvexElem& ConvexElem : Geom.ConvexElems)
 	{
-		DrawConvexElem(LineBatcher, ConvexElem, BodyWorld, Color);
+		DrawConvexElem(LineBatcher, ConvexElem, BodyWorld, Color, FillAlpha);
 	}
 }
 
@@ -133,7 +134,7 @@ void FPhysicsDebugDraw::DrawPhysicsBodies(UWorld* World, FLineBatcher* LineBatch
 }
 
 void FPhysicsDebugDraw::DrawPhysicsAssetBodies(FLineBatcher* LineBatcher, const USkeletalMeshComponent* Component,
-	const UPhysicsAsset& PhysicsAsset, bool bSelected, int32 SelectedBody)
+	const UPhysicsAsset& PhysicsAsset, bool bSelected, int32 SelectedBody, bool bSolid)
 {
 	if (!LineBatcher || !Component)
 	{
@@ -150,7 +151,8 @@ void FPhysicsDebugDraw::DrawPhysicsAssetBodies(FLineBatcher* LineBatcher, const 
 		}
 
 		const bool bHighlight = bSelected || BodyIndex == SelectedBody;
-		DrawAggregateGeom(LineBatcher, BodySetup->AggGeom, BoneWorld, bHighlight ? SelectedBodyColor : BodyColor);
+		const FVector4& Color = bHighlight ? SelectedBodyColor : (bSolid ? SolidBodyColor : BodyColor);
+		DrawAggregateGeom(LineBatcher, BodySetup->AggGeom, BoneWorld, Color, bSolid ? BodyFillAlpha : 0.0f);
 	}
 }
 
@@ -201,7 +203,8 @@ bool FPhysicsDebugDraw::GetConstraintFrames(const USkeletalMeshComponent* Compon
 	FMatrix& OutParentFrameWorld, FMatrix& OutChildFrameWorld) const
 {
 	const int32 ParentBoneIndex = Component->FindBoneIndex(Constraint.ConstraintBone2.ToString());
-	if (ParentBoneIndex < 0)
+	// GetBoneWorldMatrix는 본 트랜스폼이 아직 없으면 Identity를 돌려줘 모든 Constraint가 원점에 모인다
+	if (ParentBoneIndex < 0 || ParentBoneIndex >= Component->GetComponentSpaceTransform().Num())
 	{
 		return false;
 	}
@@ -214,13 +217,10 @@ bool FPhysicsDebugDraw::GetConstraintFrames(const USkeletalMeshComponent* Compon
 	return true;
 }
 
-const FKAggregateGeom* FPhysicsDebugDraw::FindStaticMeshGeom(const UStaticMeshComponent* Component) const
+const FKAggregateGeom* FPhysicsDebugDraw::FindStaticMeshGeom(UStaticMeshComponent* Component) const
 {
-	// TODO(B): UStaticMesh::BodySetup이 들어오면 아래로 바꾼다
-	// const UStaticMesh* Mesh = Component->GetStaticMesh();
-	// return (Mesh && Mesh->BodySetup) ? &Mesh->BodySetup->AggGeom : nullptr;
-	(void)Component;
-	return nullptr;
+	const UBodySetup* BodySetup = Component->GetBodySetup();
+	return BodySetup ? &BodySetup->AggGeom : nullptr;
 }
 
 const UPhysicsAsset* FPhysicsDebugDraw::FindPhysicsAsset(const USkeletalMeshComponent* Component) const
@@ -242,7 +242,7 @@ bool FPhysicsDebugDraw::GetBoneWorldTransform(const USkeletalMeshComponent* Comp
 	return true;
 }
 
-void FPhysicsDebugDraw::DrawSphereElem(FLineBatcher* LineBatcher, const FKSphereElem& SphereElem, const FTransform& BodyWorld, const FVector4& Color) const
+void FPhysicsDebugDraw::DrawSphereElem(FLineBatcher* LineBatcher, const FKSphereElem& SphereElem, const FTransform& BodyWorld, const FVector4& Color, float FillAlpha) const
 {
 	FMatrix	BodyMatrix = BodyWorld.GetLocalMatrix();
 	FVector	WorldCenter = BodyMatrix.TransformPosition(SphereElem.Center);
@@ -250,9 +250,14 @@ void FPhysicsDebugDraw::DrawSphereElem(FLineBatcher* LineBatcher, const FKSphere
 	float	WorldRadius = SphereElem.Radius * MaxScale;
 
 	LineBatcher->AddSphere(WorldCenter, WorldRadius, Color);
+	if (FillAlpha > 0.0f)
+	{
+		LineBatcher->AddSolidCapsule(WorldCenter, FVector(0, 0, 1), FVector(1, 0, 0), WorldRadius, WorldRadius,
+			FVector4(Color.X, Color.Y, Color.Z, FillAlpha));
+	}
 }
 
-void FPhysicsDebugDraw::DrawBoxElem(FLineBatcher* LineBatcher, const FKBoxElem& BoxElem, const FTransform& BodyWorld, const FVector4& Color) const
+void FPhysicsDebugDraw::DrawBoxElem(FLineBatcher* LineBatcher, const FKBoxElem& BoxElem, const FTransform& BodyWorld, const FVector4& Color, float FillAlpha) const
 {
 	FMatrix	BodyMatrix = BodyWorld.GetLocalMatrix();
 	FMatrix ElemMatrix = MakeElemMatrix(BoxElem.Center, BoxElem.Rotation);
@@ -261,9 +266,13 @@ void FPhysicsDebugDraw::DrawBoxElem(FLineBatcher* LineBatcher, const FKBoxElem& 
 	FBox	LocalBox{ HalfExtent * -1.0f, HalfExtent };
 
 	LineBatcher->AddOrientedBox(LocalBox, ElemWorld, Color);
+	if (FillAlpha > 0.0f)
+	{
+		LineBatcher->AddSolidOrientedBox(LocalBox, ElemWorld, FVector4(Color.X, Color.Y, Color.Z, FillAlpha));
+	}
 }
 
-void FPhysicsDebugDraw::DrawSphylElem(FLineBatcher* LineBatcher, const FKSphylElem& SphylElem, const FTransform& BodyWorld, const FVector4& Color) const
+void FPhysicsDebugDraw::DrawSphylElem(FLineBatcher* LineBatcher, const FKSphylElem& SphylElem, const FTransform& BodyWorld, const FVector4& Color, float FillAlpha) const
 {
 	const FMatrix BodyMatrix = BodyWorld.GetLocalMatrix();
 	const FMatrix ElemWorld = MakeElemMatrix(SphylElem.Center, SphylElem.Rotation) * BodyMatrix;
@@ -280,9 +289,13 @@ void FPhysicsDebugDraw::DrawSphylElem(FLineBatcher* LineBatcher, const FKSphylEl
 	const float HalfHeight = SphylElem.Length * 0.5f * LengthScale + WorldRadius;
 
 	LineBatcher->AddCapsule(Center, Up, Right, WorldRadius, HalfHeight, Color);
+	if (FillAlpha > 0.0f)
+	{
+		LineBatcher->AddSolidCapsule(Center, Up, Right, WorldRadius, HalfHeight, FVector4(Color.X, Color.Y, Color.Z, FillAlpha));
+	}
 }
 
-void FPhysicsDebugDraw::DrawConvexElem(FLineBatcher* LineBatcher, const FKConvexElem& ConvexElem, const FTransform& BodyWorld, const FVector4& Color) const
+void FPhysicsDebugDraw::DrawConvexElem(FLineBatcher* LineBatcher, const FKConvexElem& ConvexElem, const FTransform& BodyWorld, const FVector4& Color, float /*FillAlpha*/) const
 {
 	const TArray<FVector>& Vertices = ConvexElem.VertexData;
 	const FMatrix BodyMatrix = BodyWorld.GetLocalMatrix();
