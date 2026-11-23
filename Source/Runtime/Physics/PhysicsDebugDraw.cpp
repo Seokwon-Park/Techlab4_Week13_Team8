@@ -157,16 +157,12 @@ void FPhysicsDebugDraw::DrawPhysicsAssetBodies(FLineBatcher* LineBatcher, const 
 void FPhysicsDebugDraw::DrawPhysicsAssetConstraints(FLineBatcher* LineBatcher, const USkeletalMeshComponent* Component,
 	const UPhysicsAsset& PhysicsAsset, int32 SelectedConstraint, float ConstraintDrawSize)
 {
-	const USkeletalMesh* Mesh = Component ? Component->GetSkeletalMesh() : nullptr;
-	if (!LineBatcher || !Mesh || Mesh->GetRenderData().LODRenderData.IsEmpty())
+	if (!LineBatcher || !Component)
 	{
 		return;
 	}
 
-	const FBox& BindBox = Mesh->GetRenderData().LODRenderData[0].BindAABB;
-	const FVector ComponentScale = FTransform::FromMatrix(Component->GetWorldMatrix()).Scale;
-	const float MaxScale = std::max({ std::abs(ComponentScale.X), std::abs(ComponentScale.Y), std::abs(ComponentScale.Z) });
-	const float DrawSize = (BindBox.Max - BindBox.Min).Size() * MaxScale * ConstraintSizeRatio * ConstraintDrawSize;
+	const float DrawSize = GetConstraintDrawSize(Component, ConstraintDrawSize);
 
 	for (int32 ConstraintIndex = 0; ConstraintIndex < PhysicsAsset.ConstraintSetup.Num(); ++ConstraintIndex)
 	{
@@ -177,20 +173,45 @@ void FPhysicsDebugDraw::DrawPhysicsAssetConstraints(FLineBatcher* LineBatcher, c
 		}
 
 		const FConstraintInstance& Constraint = Template->DefaultInstance;
-		const int32 ParentBoneIndex = Component->FindBoneIndex(Constraint.ConstraintBone2.ToString());
-		if (ParentBoneIndex < 0)
+		FMatrix ParentFrameWorld, ChildFrameWorld;
+		if (!GetConstraintFrames(Component, Constraint, ParentFrameWorld, ChildFrameWorld))
 		{
 			continue;
 		}
-
-		const FMatrix ParentFrameWorld = Constraint.GetRefFrame(1).GetLocalMatrix() * Component->GetBoneWorldMatrix(ParentBoneIndex);
-		const int32 ChildBoneIndex = Component->FindBoneIndex(Constraint.ConstraintBone1.ToString());
-		const FMatrix ChildFrameWorld = ChildBoneIndex >= 0
-			? Constraint.GetRefFrame(0).GetLocalMatrix() * Component->GetBoneWorldMatrix(ChildBoneIndex)
-			: ParentFrameWorld;
 		DrawConstraintLimit(LineBatcher, Constraint, ParentFrameWorld, ChildFrameWorld,
 			ConstraintIndex == SelectedConstraint ? DrawSize * SelectedConstraintSizeScale : DrawSize);
 	}
+}
+
+float FPhysicsDebugDraw::GetConstraintDrawSize(const USkeletalMeshComponent* Component, float ConstraintDrawSize) const
+{
+	const USkeletalMesh* Mesh = Component ? Component->GetSkeletalMesh() : nullptr;
+	if (!Mesh || Mesh->GetRenderData().LODRenderData.IsEmpty())
+	{
+		return 0.0f;
+	}
+
+	const FBox& BindBox = Mesh->GetRenderData().LODRenderData[0].BindAABB;
+	const FVector ComponentScale = FTransform::FromMatrix(Component->GetWorldMatrix()).Scale;
+	const float MaxScale = std::max({ std::abs(ComponentScale.X), std::abs(ComponentScale.Y), std::abs(ComponentScale.Z) });
+	return (BindBox.Max - BindBox.Min).Size() * MaxScale * ConstraintSizeRatio * ConstraintDrawSize;
+}
+
+bool FPhysicsDebugDraw::GetConstraintFrames(const USkeletalMeshComponent* Component, const FConstraintInstance& Constraint,
+	FMatrix& OutParentFrameWorld, FMatrix& OutChildFrameWorld) const
+{
+	const int32 ParentBoneIndex = Component->FindBoneIndex(Constraint.ConstraintBone2.ToString());
+	if (ParentBoneIndex < 0)
+	{
+		return false;
+	}
+
+	OutParentFrameWorld = Constraint.GetRefFrame(1).GetLocalMatrix() * Component->GetBoneWorldMatrix(ParentBoneIndex);
+	const int32 ChildBoneIndex = Component->FindBoneIndex(Constraint.ConstraintBone1.ToString());
+	OutChildFrameWorld = ChildBoneIndex >= 0
+		? Constraint.GetRefFrame(0).GetLocalMatrix() * Component->GetBoneWorldMatrix(ChildBoneIndex)
+		: OutParentFrameWorld;
+	return true;
 }
 
 const FKAggregateGeom* FPhysicsDebugDraw::FindStaticMeshGeom(const UStaticMeshComponent* Component) const

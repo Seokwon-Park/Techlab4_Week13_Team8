@@ -41,8 +41,12 @@ protected:
 	bool InitializeResources() override;
 	void ShutdownResources() override;
 	void OnBoneSelected() override;
+	void TickAfterWorld(float DeltaTime) override;
 
 private:
+	// 레이에 맞은 Body·Constraint 중 가장 가까운 것. Constraint가 맞으면 Body보다 우선한다
+	bool PickPhysics(const struct FRay& Ray, EPhysicsAssetSelection& OutType, int32& OutIndex) const;
+
 	UPhysicsAsset* PhysicsAsset = nullptr;
 	EPhysicsAssetSelection SelectionType = EPhysicsAssetSelection::None;
 	int32 SelectionIndex = INDEX_NONE;

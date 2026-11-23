@@ -7,6 +7,7 @@
 #include "Physics/PhysicsDebugDraw.h"
 #include "Render/SkeletalMesh.h"
 #include "Render/LineBatcher.h"
+#include "Collision/Ray.h"
 
 bool FPhysicsAssetEditor::InitializeResources()
 {
@@ -114,4 +115,109 @@ void FPhysicsAssetEditor::OnRenderLine(FLineBatcher& LineBatcher)
 	{
 		DebugDraw.DrawPhysicsAssetConstraints(&LineBatcher, MeshComponent, *PhysicsAsset, GetSelectedConstraintIndex(), ConstraintDrawSize);
 	}
+}
+
+void FPhysicsAssetEditor::TickAfterWorld(float DeltaTime)
+{
+	const bool bClicked = CanProcessViewportInput() && MeshComponent && PhysicsAsset &&
+		PointerInput.bHovered && PointerInput.bMousePressed && !PointerInput.bCancel &&
+		!CameraInput.bCaptured && ViewportWidth > 0 && ViewportHeight > 0;
+	if (bClicked)
+	{
+		const FVector2 MousePosition(PointerInput.MouseUV.X * ViewportWidth, PointerInput.MouseUV.Y * ViewportHeight);
+		EPhysicsAssetSelection HitType = EPhysicsAssetSelection::None;
+		int32 HitIndex = INDEX_NONE;
+		if (PickPhysics(ViewportClient->DeprojectScreenToWorld(MousePosition), HitType, HitIndex))
+		{
+			HitType == EPhysicsAssetSelection::Body ? SelectBody(HitIndex) : SelectConstraint(HitIndex);
+			return;
+		}
+	}
+
+	// 아무것도 맞지 않으면 본을 고른다
+	UpdateBonePicking();
+}
+
+bool FPhysicsAssetEditor::PickPhysics(const FRay& Ray, EPhysicsAssetSelection& OutType, int32& OutIndex) const
+{
+	FPhysicsDebugDraw DebugDraw;
+	float NearestT = FLT_MAX;
+
+	if (bShowConstraints)
+	{
+		const float Radius = DebugDraw.GetConstraintDrawSize(MeshComponent, ConstraintDrawSize);
+		for (int32 i = 0; i < PhysicsAsset->ConstraintSetup.Num(); ++i)
+		{
+			FMatrix ParentFrameWorld, ChildFrameWorld;
+			float T = 0.0f;
+			if (PhysicsAsset->ConstraintSetup[i] &&
+				DebugDraw.GetConstraintFrames(MeshComponent, PhysicsAsset->ConstraintSetup[i]->DefaultInstance, ParentFrameWorld, ChildFrameWorld) &&
+				RayIntersectsSphere(Ray, ParentFrameWorld.TransformPosition(FVector::ZeroVector), Radius, T) && T < NearestT)
+			{
+				NearestT = T;
+				OutType = EPhysicsAssetSelection::Constraint;
+				OutIndex = i;
+			}
+		}
+		// 관절 구는 Body 캡슐 안쪽에 묻히므로 맞았으면 Body보다 우선한다
+		if (OutType == EPhysicsAssetSelection::Constraint)
+		{
+			return true;
+		}
+	}
+
+	if (!bShowBodies)
+	{
+		return false;
+	}
+
+	for (int32 BodyIndex = 0; BodyIndex < PhysicsAsset->SkeletalBodySetups.Num(); ++BodyIndex)
+	{
+		const USkeletalBodySetup* BodySetup = PhysicsAsset->SkeletalBodySetups[BodyIndex];
+		FTransform BoneWorld;
+		if (!BodySetup || !DebugDraw.GetBoneWorldTransform(MeshComponent, BodySetup->BoneName.ToString(), BoneWorld))
+		{
+			continue;
+		}
+
+		const FMatrix BodyMatrix = BoneWorld.GetLocalMatrix();
+		const FVector& Scale = BoneWorld.Scale;
+		const auto Consider = [&](bool bHit, float T)
+		{
+			if (bHit && T < NearestT)
+			{
+				NearestT = T;
+				OutType = EPhysicsAssetSelection::Body;
+				OutIndex = BodyIndex;
+			}
+		};
+
+		for (const FKSphereElem& Elem : BodySetup->AggGeom.SphereElems)
+		{
+			const float Radius = Elem.Radius * std::max({ std::abs(Scale.X), std::abs(Scale.Y), std::abs(Scale.Z) });
+			float T = 0.0f;
+			Consider(RayIntersectsSphere(Ray, BodyMatrix.TransformPosition(Elem.Center), Radius, T), T);
+		}
+
+		for (const FKSphylElem& Elem : BodySetup->AggGeom.SphylElems)
+		{
+			const FMatrix ElemWorld = DebugDraw.MakeElemMatrix(Elem.Center, Elem.Rotation) * BodyMatrix;
+			const FVector Center = ElemWorld.TransformPosition(FVector::ZeroVector);
+			const FVector Up = FVector(ElemWorld.M[2][0], ElemWorld.M[2][1], ElemWorld.M[2][2]).GetSafeNormal();
+			const float Radius = Elem.Radius * std::max(std::abs(Scale.X), std::abs(Scale.Y));
+			const float HalfLength = Elem.Length * 0.5f * std::abs(Scale.Z);
+			float T = 0.0f;
+			Consider(RayIntersectsCapsule(Ray, Center - Up * HalfLength, Center + Up * HalfLength, Radius, T), T);
+		}
+
+		for (const FKBoxElem& Elem : BodySetup->AggGeom.BoxElems)
+		{
+			const FMatrix ElemWorld = DebugDraw.MakeElemMatrix(Elem.Center, Elem.Rotation) * BodyMatrix;
+			const FVector HalfExtent(Elem.X * 0.5f, Elem.Y * 0.5f, Elem.Z * 0.5f);
+			float T = 0.0f;
+			Consider(RayIntersectsAABB(ToLocalRay(Ray, ElemWorld), HalfExtent * -1.0f, HalfExtent, T), T);
+		}
+	}
+
+	return OutType != EPhysicsAssetSelection::None;
 }

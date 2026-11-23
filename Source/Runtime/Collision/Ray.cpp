@@ -226,3 +226,70 @@ bool RayIntersectsPlane(const FRay& Ray, const FVector& PlanePoint, const FVecto
 
     return OutT >= 0.0f;
 }
+
+bool RayIntersectsSphere(const FRay& Ray, const FVector& Center, float Radius, float& OutT)
+{
+	const FVector OC = Ray.Origin - Center;
+	const float B = OC.Dot(Ray.Direction);
+	const float C = OC.Dot(OC) - Radius * Radius;
+	const float H = B * B - C;
+	if (H < 0.0f)
+	{
+		return false;
+	}
+
+	const float SqrtH = std::sqrt(H);
+	float T = -B - SqrtH;
+	if (T < 0.0f)
+	{
+		T = -B + SqrtH;   // 레이 시작점이 구 안
+	}
+	if (T < 0.0f)
+	{
+		return false;
+	}
+	OutT = T;
+	return true;
+}
+
+bool RayIntersectsCapsule(const FRay& Ray, const FVector& A, const FVector& B, float Radius, float& OutT)
+{
+	const FVector BA = B - A;
+	const FVector OA = Ray.Origin - A;
+	const float BABA = BA.Dot(BA);
+	const float BARD = BA.Dot(Ray.Direction);
+	const float BAOA = BA.Dot(OA);
+	const float RDOA = Ray.Direction.Dot(OA);
+	const float OAOA = OA.Dot(OA);
+
+	// 옆면(무한 원기둥)과 교차한 뒤 선분 범위 안인지 본다
+	const float K2 = BABA - BARD * BARD;
+	if (K2 > SMALL_NUMBER)
+	{
+		const float K1 = BABA * RDOA - BAOA * BARD;
+		const float K0 = BABA * OAOA - BAOA * BAOA - Radius * Radius * BABA;
+		const float H = K1 * K1 - K2 * K0;
+		if (H < 0.0f)
+		{
+			return false;
+		}
+		const float T = (-K1 - std::sqrt(H)) / K2;
+		const float Y = BAOA + T * BARD;
+		if (Y > 0.0f && Y < BABA && T >= 0.0f)
+		{
+			OutT = T;
+			return true;
+		}
+	}
+
+	// 양 끝 반구
+	float TA = 0.0f, TB = 0.0f;
+	const bool bHitA = RayIntersectsSphere(Ray, A, Radius, TA);
+	const bool bHitB = RayIntersectsSphere(Ray, B, Radius, TB);
+	if (!bHitA && !bHitB)
+	{
+		return false;
+	}
+	OutT = bHitA && bHitB ? std::min(TA, TB) : (bHitA ? TA : TB);
+	return true;
+}

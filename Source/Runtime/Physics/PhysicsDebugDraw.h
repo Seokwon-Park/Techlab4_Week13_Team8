@@ -33,6 +33,12 @@ public:
 	void DrawPhysicsAssetConstraints(FLineBatcher* LineBatcher, const USkeletalMeshComponent* Component,
 		const UPhysicsAsset& PhysicsAsset, int32 SelectedConstraint = INDEX_NONE, float ConstraintDrawSize = 1.0f);
 
+	float GetConstraintDrawSize(const USkeletalMeshComponent* Component, float ConstraintDrawSize) const;
+	bool GetConstraintFrames(const USkeletalMeshComponent* Component, const FConstraintInstance& Constraint,
+		FMatrix& OutParentFrameWorld, FMatrix& OutChildFrameWorld) const;
+	bool GetBoneWorldTransform(const USkeletalMeshComponent* Component, const FString& BoneName, FTransform& OutBoneWorld) const;
+	FMatrix MakeElemMatrix(const FVector& Center, const FRotator& Rotation) const;
+
 private:
 	// 바디 기본색(하늘색)과 선택된 액터의 강조색(주황)
 	const FVector4 BodyColor = FVector4(0.3f, 0.8f, 1.0f, 1.0f);
@@ -53,10 +59,7 @@ private:
 	void DrawSphylElem(FLineBatcher* LineBatcher, const FKSphylElem& Elem, const FTransform& BodyWorld, const FVector4& Color) const;
 	void DrawConvexElem(FLineBatcher* LineBatcher, const FKConvexElem& Elem, const FTransform& BodyWorld, const FVector4& Color) const;
 	
-	// 본 이름 → 본 월드 트랜스폼 (본 컴포넌트 공간 × 컴포넌트 월드). 본이 없으면 false
-	bool			GetBoneWorldTransform(const USkeletalMeshComponent* Component, const FString& BoneName, FTransform& OutBoneWorld) const;
 	bool			ShouldDrawComponent(const UPrimitiveComponent* Component, const UWorld* World);
-	FMatrix			MakeElemMatrix(const FVector& Center, const FRotator& Rotation) const;
 	const FVector4&	PickBodyColor(const UPrimitiveComponent* Component, const AActor* Selected);
 };
 
