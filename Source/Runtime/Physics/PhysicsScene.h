@@ -1,9 +1,11 @@
 #pragma once
 
 #include "Core/Delegate/Delegate.h"
+#include <memory>
 
 class AActor;
 class FCollisionQueryFilterCallback;
+class FPhysXSimEventCallback;
 class UPrimitiveComponent;
 struct FHitResult;
 struct FRay;
@@ -62,7 +64,9 @@ public:
 
 private:
 	friend class FCollisionQueryFilterCallback;
+	friend class FPhysXSimEventCallback;
 
+	std::unique_ptr<FPhysXSimEventCallback> SimulationEvents; // PhysX 이벤트 콜백
 	physx::PxScene* Scene = nullptr;
 	double AccumulatedSeconds = 0.0;
 

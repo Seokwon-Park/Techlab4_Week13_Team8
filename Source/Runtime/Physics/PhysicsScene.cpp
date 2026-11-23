@@ -16,7 +16,7 @@
 #include <PxPhysics.h>
 #include <PxScene.h>
 #include <PxSceneDesc.h>
-#include <extensions/PxDefaultSimulationFilterShader.h>
+#include "Physics/PhysXSimEventCallback.h"
 
 FPhysicsScene::FPhysicsScene()
 {
@@ -32,7 +32,12 @@ FPhysicsScene::FPhysicsScene()
 	physx::PxSceneDesc Desc(Physics->getTolerancesScale());
 	Desc.gravity = physx::PxVec3(0.0f, 0.0f, Settings.DefaultGravityZ);
 	Desc.cpuDispatcher = Dispatcher;
-	Desc.filterShader = physx::PxDefaultSimulationFilterShader;
+
+	// 네이티브 씬 생성 전 이벤트 필터와 콜백 등록
+	SimulationEvents = std::make_unique<FPhysXSimEventCallback>(*this);
+	Desc.filterShader = &FPhysXSimEventCallback::FilterShader;
+	Desc.simulationEventCallback = SimulationEvents.get();
+
 	if (Settings.bEnablePCM)
 	{
 		Desc.flags |= physx::PxSceneFlag::eENABLE_PCM;
@@ -95,6 +100,8 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 		AccumulatedSeconds -= FixedStepSeconds;
 		OnPostStep.Broadcast(StepDelta);
 	}
+	// 프레임의 물리 스텝 완료 후 게임 이벤트 발행
+	SimulationEvents->DispatchPending();
 }
 
 UPrimitiveComponent* FPhysicsScene::FindHitComponent(const physx::PxRigidActor* Actor) const
