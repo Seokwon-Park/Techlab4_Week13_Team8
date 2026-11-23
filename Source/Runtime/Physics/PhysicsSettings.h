@@ -14,6 +14,9 @@ struct FPhysicsSettings : public FPhysicsSettingsCore
     // 프로젝트 전체 CCD 비활성화 여부
     bool bDisableCCD = false;
 
+    // 디버그 빌드의 시작 시 PVD 연결 여부
+    bool bEnablePVD = false;
+
     // 프로젝트 물리 설정의 읽기 전용 접근
     static const FPhysicsSettings& Get();
 };
