@@ -361,6 +361,35 @@ void FLineBatcher::AddTwistArc(const FVector& Center, const FVector& Axis, const
 }
 
 
+void FLineBatcher::AddCylinder(const FVector& Start, const FVector& End, float Radius, const FVector4& Color, int32 Segments)
+{
+	const FVector Axis = (End - Start).GetSafeNormal();
+	if (Radius <= 0.0f || Segments < 3 || Axis.SizeSquared() <= 0.0f)
+	{
+		return;
+	}
+
+	const FVector Helper = std::abs(Axis.Z) < 0.99f ? FVector(0, 0, 1) : FVector(1, 0, 0);
+	const FVector U = Helper.Cross(Axis).GetSafeNormal();
+	const FVector V = Axis.Cross(U);
+	auto RimOffset = [&](int32 i)
+	{
+		const float T = 2.0f * PI * i / Segments;
+		return (U * std::cos(T) + V * std::sin(T)) * Radius;
+	};
+
+	FVector Prev = RimOffset(0);
+	for (int32 i = 1; i <= Segments; ++i)
+	{
+		const FVector Cur = RimOffset(i);
+		AddTriangle(Start + Prev, End + Prev, End + Cur, Color);
+		AddTriangle(Start + Prev, End + Cur, Start + Cur, Color);
+		AddTriangle(Start, Start + Cur, Start + Prev, Color);
+		AddTriangle(End, End + Prev, End + Cur, Color);
+		Prev = Cur;
+	}
+}
+
 void FLineBatcher::AddWireArc(const FVector& Center, const FVector& AxisA, const FVector& AxisB,
 	float Radius, float StartRadian, float EndRadian, const FVector4& Color, int32 Segments)
 {

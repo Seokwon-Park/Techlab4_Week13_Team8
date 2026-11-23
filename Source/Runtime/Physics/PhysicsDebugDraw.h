@@ -26,7 +26,7 @@ public:
 	// Shape 컴포넌트(Box/Sphere/Capsule)는 DrawCollisionShapes가 그리므로 제외한다
 	void DrawPhysicsBodies(UWorld* World, FLineBatcher* LineBatcher, const AActor* Selected);
 	void DrawConstraintLimit(FLineBatcher* LineBatcher, const FConstraintInstance& Constraint,
-		const FMatrix& JointWorld, float DrawSize) const;
+		const FMatrix& ParentFrameWorld, const FMatrix& ChildFrameWorld, float DrawSize) const;
 	void DrawConstraintLimits(UWorld* World, FLineBatcher* LineBatcher);
 	void DrawPhysicsAssetBodies(FLineBatcher* LineBatcher, const USkeletalMeshComponent* Component,
 		const UPhysicsAsset& PhysicsAsset, bool bSelected, int32 SelectedBody = INDEX_NONE);

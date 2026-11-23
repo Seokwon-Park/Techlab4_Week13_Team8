@@ -6,16 +6,13 @@ namespace NodeEditor = ax::NodeEditor;
 
 namespace
 {
-	// UE Graph 패널 배색: Body 초록, Constraint 노랑
 	const ImVec4 BodyNodeColor(0.25f, 0.45f, 0.20f, 1.0f);
 	const ImVec4 ConstraintNodeColor(0.45f, 0.42f, 0.20f, 1.0f);
 	const ImVec4 LinkColor(0.85f, 0.85f, 0.85f, 1.0f);
 
-	// 노드 사이 빈 칸 (노드 편집기 좌표). 노드 크기는 글자로 계산한다
 	constexpr float ColumnGap = 60.0f;
 	constexpr float RowGap = 20.0f;
 
-	// 노드 하나의 크기 어림: 핀 PinCount개("o")와 글자 줄들, 노드 안쪽 여백
 	ImVec2 EstimateNodeSize(std::initializer_list<FString> Lines, int32 PinCount)
 	{
 		float TextWidth = 0.0f;
@@ -25,13 +22,13 @@ namespace
 		}
 		const ImGuiStyle& Style = ImGui::GetStyle();
 		const float PinWidth = ImGui::CalcTextSize("o").x + Style.ItemSpacing.x;
-		const ImVec4& Padding = NodeEditor::GetStyle().NodePadding;   // 왼쪽, 위, 오른쪽, 아래
+		const ImVec4& Padding = NodeEditor::GetStyle().NodePadding;
 		const float TextHeight = ImGui::GetTextLineHeightWithSpacing() * static_cast<float>(Lines.size()) - Style.ItemSpacing.y;
 		return ImVec2(TextWidth + PinWidth * PinCount + Padding.x + Padding.z,
 			TextHeight + Padding.y + Padding.w);
 	}
 
-	// 노드·핀·링크 ID. 루트 Body는 고정, Constraint마다 10개 칸을 쓴다
+	// 노드·핀·링크 ID: 루트는 고정, Constraint마다 10칸
 	constexpr int32 RootNodeId = 1;
 	constexpr int32 RootOutputPinId = 2;
 	constexpr int32 ConstraintIdBase = 100;
@@ -96,7 +93,6 @@ void FPhysicsAssetGraphPanel::DrawContent()
 	Nodes.Reset();
 	const FName RootBoneName = PhysicsAsset->SkeletalBodySetups[RootBody]->BoneName;
 
-	// 루트에 붙은 Constraint와 반대편 Body
 	struct FRow { int32 ConstraintIndex; int32 OtherBody; };
 	TArray<FRow> Rows;
 	for (int32 ConstraintIndex = 0; ConstraintIndex < PhysicsAsset->ConstraintSetup.Num(); ++ConstraintIndex)
@@ -111,7 +107,7 @@ void FPhysicsAssetGraphPanel::DrawContent()
 		Rows.Add({ ConstraintIndex, PhysicsAsset->FindBodyIndex(OtherBoneName) });
 	}
 
-	// 열 위치와 줄 간격은 노드 글자 크기로 정한다 (이름이 길면 노드가 넓어져 다음 열과 겹치므로)
+	// 긴 이름의 노드가 다음 열과 겹치지 않도록 글자 크기로 간격을 정한다
 	const ImVec2 RootSize = EstimateNodeSize({ "Body", GetBodyName(RootBody), GetShapesLabel(RootBody) }, 1);
 	float ConstraintColumnWidth = 0.0f;
 	float RowHeight = RootSize.y;
@@ -129,10 +125,8 @@ void FPhysicsAssetGraphPanel::DrawContent()
 	const float OtherBodyColumnX = ConstraintColumnX + ConstraintColumnWidth + ColumnGap;
 	const float RowSpacing = RowHeight + RowGap;
 
-	// 1열: 루트 Body
 	DrawBodyNode(RootNodeId, RootBody, 0, RootOutputPinId, ImVec2(0.0f, 0.0f));
 
-	// 2열: Constraint, 3열: 반대편 Body. 루트 기준으로 세로 가운데 정렬
 	for (int32 RowIndex = 0; RowIndex < Rows.Num(); ++RowIndex)
 	{
 		const int32 ConstraintIndex = Rows[RowIndex].ConstraintIndex;
@@ -167,7 +161,6 @@ void FPhysicsAssetGraphPanel::DrawContent()
 	PullGraphSelectionToEditor();
 	NodeEditor::SetCurrentEditor(PreviousContext);
 
-	// 더블클릭: 그 Body를 루트로 다시 그린다 (UE HandleNodeDoubleClicked)
 	if (DoubleClickedNode)
 	{
 		const FGraphNode* Node = FindNode(static_cast<int32>(DoubleClickedNode.Get()));
@@ -187,7 +180,6 @@ void FPhysicsAssetGraphPanel::SyncRootWithEditorSelection()
 		return;
 	}
 
-	// 그래프 밖(트리·뷰포트)에서 선택이 바뀌었다
 	SyncedType = Type;
 	SyncedIndex = Index;
 	bPushSelection = true;
@@ -198,7 +190,6 @@ void FPhysicsAssetGraphPanel::SyncRootWithEditorSelection()
 	}
 	else if (Type == EPhysicsAssetSelection::Constraint && !IsConstraintInGraph(Index))
 	{
-		// 지금 그래프에 없는 Constraint면 자식 Body(Bone1)를 루트로. 없으면 부모 Body
 		const UPhysicsAsset* PhysicsAsset = Editor.GetPhysicsAsset();
 		const FConstraintInstance& Constraint = PhysicsAsset->ConstraintSetup[Index]->DefaultInstance;
 		int32 Body = PhysicsAsset->FindBodyIndex(Constraint.ConstraintBone1);
@@ -322,7 +313,7 @@ void FPhysicsAssetGraphPanel::PullGraphSelectionToEditor()
 	}
 	SyncedGraphNodeId = NodeId;
 
-	// 클릭: 에디터 선택만 바꾸고 루트는 유지한다 (UE HandleSelectionChanged)
+	// 클릭은 선택만 바꾸고 루트는 유지한다
 	const FGraphNode* Node = FindNode(NodeId);
 	if (!Node)
 	{
@@ -354,7 +345,6 @@ const FPhysicsAssetGraphPanel::FGraphNode* FPhysicsAssetGraphPanel::FindNode(int
 
 int32 FPhysicsAssetGraphPanel::FindNodeId(EPhysicsAssetSelection Type, int32 Index) const
 {
-	// 같은 Body가 루트와 반대편에 둘 다 있으면 먼저 그린 루트를 고른다
 	for (const FGraphNode& Node : Nodes)
 	{
 		if (Node.Type == Type && Node.Index == Index)
@@ -383,7 +373,6 @@ FString FPhysicsAssetGraphPanel::GetShapesLabel(int32 BodyIndex) const
 
 FString FPhysicsAssetGraphPanel::GetConstraintLabel(int32 ConstraintIndex) const
 {
-	// UE Graph 표기: 자식 : 부모 (Bone1 : Bone2)
 	const FConstraintInstance& Constraint = Editor.GetPhysicsAsset()->ConstraintSetup[ConstraintIndex]->DefaultInstance;
 	return GetBoneDisplayName(Constraint.ConstraintBone1) + " : " + GetBoneDisplayName(Constraint.ConstraintBone2);
 }

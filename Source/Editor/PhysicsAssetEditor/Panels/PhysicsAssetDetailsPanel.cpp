@@ -4,7 +4,7 @@
 
 namespace
 {
-	// 본 로컬 단위가 메시마다 달라서(cm, m) 드래그 속도를 값 크기에 맞춘다
+	// 본 로컬 단위가 메시마다 달라(cm, m) 드래그 속도를 값 크기에 맞춘다
 	float GetDragSpeed(float Magnitude)
 	{
 		return std::max(std::abs(Magnitude) * 0.01f, 0.0001f);
@@ -38,6 +38,22 @@ namespace
 		return ImGui::DragFloat(Label, &Value, GetDragSpeed(Value), 0.0f, FLT_MAX, "%.4g", ImGuiSliderFlags_AlwaysClamp);
 	}
 
+	void DrawConstraintFrame(const char* Label, const FConstraintInstance& Constraint, int32 Frame,
+		FVector& Pos, FVector& PriAxis, FVector& SecAxis)
+	{
+		ImGui::PushID(Label);
+		ImGui::TextUnformatted(Label);
+		DragVector("Position", Pos);
+		FRotator Rotation = Constraint.GetRefFrame(Frame).Rotation.ToFRotator();
+		if (DragRotator("Rotation", Rotation))
+		{
+			const FQuat Quat = Rotation.Quaternion();
+			PriAxis = Quat.RotateVector(FVector(1, 0, 0));
+			SecAxis = Quat.RotateVector(FVector(0, 1, 0));
+		}
+		ImGui::PopID();
+	}
+
 	void DrawAngularLimit(const char* Label, EAngularConstraintMotion& Motion, float& LimitDegrees)
 	{
 		static const char* MotionNames[] = { "Free", "Limited", "Locked" };   // EAngularConstraintMotion 순서
@@ -49,7 +65,6 @@ namespace
 		{
 			Motion = static_cast<EAngularConstraintMotion>(MotionIndex);
 		}
-		// 각도는 Limited일 때만 쓰인다
 		ImGui::BeginDisabled(Motion != ACM_Limited);
 		ImGui::SliderFloat("Limit", &LimitDegrees, 0.0f, 180.0f, "%.1f deg");
 		ImGui::EndDisabled();
@@ -98,6 +113,7 @@ void FPhysicsAssetDetailsPanel::DrawBody(USkeletalBodySetup& BodySetup)
 		FKSphereElem& Elem = Geom.SphereElems[i];
 		ImGui::PushID(i);
 		ImGui::SeparatorText("Sphere");
+		ImGui::Checkbox("Contribute To Mass", &Elem.bContributeToMass);
 		DragVector("Center", Elem.Center);
 		DragSize("Radius", Elem.Radius);
 		ImGui::PopID();
@@ -108,6 +124,7 @@ void FPhysicsAssetDetailsPanel::DrawBody(USkeletalBodySetup& BodySetup)
 		FKBoxElem& Elem = Geom.BoxElems[i];
 		ImGui::PushID(1000 + i);
 		ImGui::SeparatorText("Box");
+		ImGui::Checkbox("Contribute To Mass", &Elem.bContributeToMass);
 		DragVector("Center", Elem.Center);
 		DragRotator("Rotation", Elem.Rotation);
 		DragSize("X", Elem.X);
@@ -121,6 +138,7 @@ void FPhysicsAssetDetailsPanel::DrawBody(USkeletalBodySetup& BodySetup)
 		FKSphylElem& Elem = Geom.SphylElems[i];
 		ImGui::PushID(2000 + i);
 		ImGui::SeparatorText("Capsule");
+		ImGui::Checkbox("Contribute To Mass", &Elem.bContributeToMass);
 		DragVector("Center", Elem.Center);
 		DragRotator("Rotation", Elem.Rotation);
 		DragSize("Radius", Elem.Radius);
@@ -130,8 +148,11 @@ void FPhysicsAssetDetailsPanel::DrawBody(USkeletalBodySetup& BodySetup)
 
 	for (int32 i = 0; i < Geom.ConvexElems.Num(); ++i)
 	{
+		ImGui::PushID(3000 + i);
 		ImGui::SeparatorText("Convex");
+		ImGui::Checkbox("Contribute To Mass", &Geom.ConvexElems[i].bContributeToMass);
 		ImGui::Text("Vertices: %d", Geom.ConvexElems[i].VertexData.Num());
+		ImGui::PopID();
 	}
 
 	ImGui::SeparatorText("Physics");
@@ -151,6 +172,11 @@ void FPhysicsAssetDetailsPanel::DrawConstraint(UPhysicsConstraintTemplate& Templ
 	ImGui::Text("Bone 1 (Child): %s", Constraint.ConstraintBone1.ToString().c_str());
 	ImGui::Text("Bone 2 (Parent): %s", Constraint.ConstraintBone2.ToString().c_str());
 
+	// Frame1 = 자식 본 공간, Frame2 = 부모 본 공간
+	ImGui::SeparatorText("Constraint Transforms");
+	DrawConstraintFrame("Child", Constraint, 0, Constraint.Pos1, Constraint.PriAxis1, Constraint.SecAxis1);
+	DrawConstraintFrame("Parent", Constraint, 1, Constraint.Pos2, Constraint.PriAxis2, Constraint.SecAxis2);
+
 	DrawAngularLimit("Swing 1", Profile.ConeLimit.Swing1Motion, Profile.ConeLimit.Swing1LimitDegrees);
 	DrawAngularLimit("Swing 2", Profile.ConeLimit.Swing2Motion, Profile.ConeLimit.Swing2LimitDegrees);
 	DrawAngularLimit("Twist", Profile.TwistLimit.TwistMotion, Profile.TwistLimit.TwistLimitDegrees);
@@ -158,7 +184,6 @@ void FPhysicsAssetDetailsPanel::DrawConstraint(UPhysicsConstraintTemplate& Templ
 	ImGui::SeparatorText("Collision");
 	if (ImGui::Checkbox("Disable Collision", &Profile.bDisableCollision))
 	{
-		// 두 바디 사이 충돌 끄기 테이블도 같이 맞춘다
 		UPhysicsAsset* PhysicsAsset = Editor.GetPhysicsAsset();
 		const int32 BodyA = PhysicsAsset->FindBodyIndex(Constraint.ConstraintBone1);
 		const int32 BodyB = PhysicsAsset->FindBodyIndex(Constraint.ConstraintBone2);

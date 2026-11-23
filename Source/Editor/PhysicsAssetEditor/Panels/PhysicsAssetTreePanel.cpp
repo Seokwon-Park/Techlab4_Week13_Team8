@@ -5,7 +5,6 @@
 
 namespace
 {
-	// 바디 행 글자색. 뷰포트 바디 색(하늘색)과 맞춘다
 	const ImVec4 BodyTextColor(0.3f, 0.8f, 1.0f, 1.0f);
 
 	FName GetBoneName(const FPhysicsAssetEditor& Editor, int32 BoneIndex)
@@ -83,7 +82,7 @@ void FPhysicsAssetTreePanel::DrawBone(int32 BoneIndex)
 
 	if (!bShowAllBones)
 	{
-		// 바디만 보기: 본 행 없이 바디 행만. 바디가 없는 본은 자식만 같은 깊이로 이어 그린다
+		// 바디가 없는 본은 행 없이 자식만 같은 깊이로 그린다
 		if (BodyIndex != INDEX_NONE)
 		{
 			DrawBody(BoneIndex, BodyIndex, true);
@@ -99,7 +98,6 @@ void FPhysicsAssetTreePanel::DrawBone(int32 BoneIndex)
 		return;
 	}
 
-	// 전체 보기: 본 → (바디 → 조인트), 자식 본은 본 아래
 	ImGuiTreeNodeFlags Flags = BranchFlags;
 	if (BodyIndex == INDEX_NONE && BoneItems[BoneIndex].ChildBoneIndices.IsEmpty())
 	{
@@ -185,7 +183,6 @@ void FPhysicsAssetTreePanel::DrawConstraints(int32 BoneIndex)
 			Flags |= ImGuiTreeNodeFlags_Selected;
 		}
 		ImGui::PushID(ConstraintIndex);
-		// UE 표기: [ 부모 -> 자식 ] Constraint
 		ImGui::TreeNodeEx("Constraint", Flags, "[ %s -> %s ] Constraint",
 			GetBoneDisplayName(Editor, Constraint.ConstraintBone2), GetBoneDisplayName(Editor, Constraint.ConstraintBone1));
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Left))

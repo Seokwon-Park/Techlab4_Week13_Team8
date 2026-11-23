@@ -42,6 +42,7 @@ public:
 		float Radius, float StartRadian, float EndRadian, const FVector4& Color, int32 Segments = 24);
 	void AddTwistArc(const FVector& Center, const FVector& Axis, const FVector& Ref,
 		float LimitRadian, float Radius, const FVector4& Color, int32 Segments = 24, float FillAlpha = 0.0f);
+	void AddCylinder(const FVector& Start, const FVector& End, float Radius, const FVector4& Color, int32 Segments = 8);
 
 	
 

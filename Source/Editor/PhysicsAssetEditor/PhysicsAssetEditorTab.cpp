@@ -28,7 +28,6 @@ void FPhysicsAssetEditorTab::BuildDefaultLayout(ImGuiID InDockSpaceId, const ImV
 {
 	ImGui::DockBuilderAddNode(InDockSpaceId, ImGuiDockNodeFlags_DockSpace);
 	ImGui::DockBuilderSetNodeSize(InDockSpaceId, Size);
-	// UE PhAT 배치: 왼쪽 위 Skeleton Tree, 왼쪽 아래 Graph, 가운데 뷰포트, 오른쪽 위 Settings, 오른쪽 아래 Details
 	ImGuiID ViewportId = InDockSpaceId;
 	ImGuiID TreeId = ImGui::DockBuilderSplitNode(ViewportId, ImGuiDir_Left, 0.20f, nullptr, &ViewportId);
 	const ImGuiID GraphId = ImGui::DockBuilderSplitNode(TreeId, ImGuiDir_Down, 0.35f, nullptr, &TreeId);

@@ -15,6 +15,20 @@
 
 namespace
 {
+	FVector GetMatrixOrigin(const FMatrix& M) { return FVector(M.M[3][0], M.M[3][1], M.M[3][2]); }
+	FVector GetMatrixAxis(const FMatrix& M, int32 Row) { return FVector(M.M[Row][0], M.M[Row][1], M.M[Row][2]).GetSafeNormal(); }
+
+	constexpr float JointThicknessRatio = 0.025f;
+
+	void DrawArrow(FLineBatcher* LineBatcher, const FVector& Origin, const FVector& Direction, const FVector& Side,
+		float Length, const FVector4& Color)
+	{
+		const FVector Tip = Origin + Direction * Length;
+		LineBatcher->AddCylinder(Origin, Tip, Length * JointThicknessRatio, Color);
+		const FVector HeadApex = Origin + Direction * (Length * 1.05f);
+		LineBatcher->AddSwingCone(HeadApex, Direction * -1.0f, Side, PI * 0.25f, PI * 0.25f, Length * 0.1f, Color, 8, 1.0f);
+	}
+
 	float GetLimitRadian(float LimitDegrees, EAngularConstraintMotion Motion)
 	{
 		switch (Motion)
@@ -169,8 +183,12 @@ void FPhysicsDebugDraw::DrawPhysicsAssetConstraints(FLineBatcher* LineBatcher, c
 			continue;
 		}
 
-		const FMatrix JointWorld = Constraint.GetRefFrame(1).GetLocalMatrix() * Component->GetBoneWorldMatrix(ParentBoneIndex);
-		DrawConstraintLimit(LineBatcher, Constraint, JointWorld,
+		const FMatrix ParentFrameWorld = Constraint.GetRefFrame(1).GetLocalMatrix() * Component->GetBoneWorldMatrix(ParentBoneIndex);
+		const int32 ChildBoneIndex = Component->FindBoneIndex(Constraint.ConstraintBone1.ToString());
+		const FMatrix ChildFrameWorld = ChildBoneIndex >= 0
+			? Constraint.GetRefFrame(0).GetLocalMatrix() * Component->GetBoneWorldMatrix(ChildBoneIndex)
+			: ParentFrameWorld;
+		DrawConstraintLimit(LineBatcher, Constraint, ParentFrameWorld, ChildFrameWorld,
 			ConstraintIndex == SelectedConstraint ? DrawSize * SelectedConstraintSizeScale : DrawSize);
 	}
 }
@@ -261,16 +279,19 @@ void FPhysicsDebugDraw::DrawConvexElem(FLineBatcher* LineBatcher, const FKConvex
 }
 
 void FPhysicsDebugDraw::DrawConstraintLimit(FLineBatcher* LineBatcher, const FConstraintInstance& Constraint,
-	const FMatrix& JointWorld, float DrawSize) const
+	const FMatrix& ParentFrameWorld, const FMatrix& ChildFrameWorld, float DrawSize) const
 {
 	if (!LineBatcher)
 	{
 		return;
 	}
 
-	const FVector Origin(JointWorld.M[3][0], JointWorld.M[3][1], JointWorld.M[3][2]);
-	const FVector AxisX = FVector(JointWorld.M[0][0], JointWorld.M[0][1], JointWorld.M[0][2]).GetSafeNormal();
-	const FVector AxisY = FVector(JointWorld.M[1][0], JointWorld.M[1][1], JointWorld.M[1][2]).GetSafeNormal();
+	const FVector Origin = GetMatrixOrigin(ParentFrameWorld);
+	const FVector AxisX = GetMatrixAxis(ParentFrameWorld, 0);
+	const FVector AxisY = GetMatrixAxis(ParentFrameWorld, 1);
+	const FVector ChildOrigin = GetMatrixOrigin(ChildFrameWorld);
+	const FVector ChildAxisX = GetMatrixAxis(ChildFrameWorld, 0);
+	const FVector ChildAxisY = GetMatrixAxis(ChildFrameWorld, 1);
 
 	const FConeConstraint& Cone = Constraint.ProfileInstance.ConeLimit;
 	const FTwistConstraint& Twist = Constraint.ProfileInstance.TwistLimit;
@@ -292,12 +313,29 @@ void FPhysicsDebugDraw::DrawConstraintLimit(FLineBatcher* LineBatcher, const FCo
 		{
 			LineBatcher->AddSwingCone(Origin, AxisX, AxisY, Swing1Radian, Swing2Radian, DrawSize, SwingColor, 24, ConstraintFillAlpha);
 		}
+
+		DrawArrow(LineBatcher, Origin, ChildAxisX, ChildAxisY, DrawSize, SwingColor);
 	}
 
 	// Twist: Locked면 안 그림, Free면 원 전체(PI), Limited면 ±각도 부채꼴
 	if (Twist.TwistMotion != ACM_Locked)
 	{
 		LineBatcher->AddTwistArc(Origin, AxisX, AxisY, TwistRadian, DrawSize, TwistColor, 24, ConstraintFillAlpha);
+
+		const FVector TwistIndicator = (ChildAxisY - AxisX * ChildAxisY.Dot(AxisX)).GetSafeNormal();
+		if (TwistIndicator.SizeSquared() > 0.0f)
+		{
+			DrawArrow(LineBatcher, Origin, TwistIndicator, AxisX, DrawSize, TwistColor);
+		}
+	}
+
+	const float AxisLength = DrawSize * 0.1f;
+	const float AxisThickness = DrawSize * JointThicknessRatio;
+	const FVector4 AxisColors[3] = { FVector4(1, 0, 0, 1), FVector4(0, 1, 0, 1), FVector4(0, 0, 1, 1) };
+	for (int32 Axis = 0; Axis < 3; ++Axis)
+	{
+		LineBatcher->AddCylinder(ChildOrigin, ChildOrigin + GetMatrixAxis(ChildFrameWorld, Axis) * AxisLength, AxisThickness, AxisColors[Axis]);
+		LineBatcher->AddCylinder(Origin, Origin + GetMatrixAxis(ParentFrameWorld, Axis) * AxisLength, AxisThickness, AxisColors[Axis]);
 	}
 }
 

@@ -6,11 +6,10 @@ class UPhysicsAsset;
 
 enum class EPhysicsAssetSelection : uint8 { None, Body, Constraint };
 
-// UE Physics Asset Editor(PhAT). USkeletalMesh::PhysicsAsset을 편집한다
 class FPhysicsAssetEditor : public FSkeletalPreviewEditor
 {
 public:
-	// 메시 경로 뒤에 접미사를 붙여 SkeletalMesh 에디터와 다른 문서로 구분한다
+	// SkeletalMesh 에디터와 같은 메시 경로라 접미사로 구분한다
 	static FString MakeDocumentKey(const FString& MeshPath) { return MeshPath + ".physicsasset"; }
 
 	FPhysicsAssetEditor(UEditorEngine& InEditorEngine, FEditorManager& InEditorManager,
@@ -26,7 +25,6 @@ public:
 
 	UPhysicsAsset* GetPhysicsAsset() const { return PhysicsAsset; }
 
-	// 바디와 조인트는 따로 선택한다 (UE PhAT와 같음). 고르면 해당 본도 선택된다
 	void SelectBody(int32 BodyIndex);
 	void SelectConstraint(int32 ConstraintIndex);
 	EPhysicsAssetSelection GetSelectionType() const { return SelectionType; }
@@ -36,7 +34,6 @@ public:
 
 	bool bShowBodies = true;
 	bool bShowConstraints = true;
-	// UE 에디터 옵션 ConstraintDrawSize. 조인트 길이 배율 (툴바 슬라이더 0~4)
 	float ConstraintDrawSize = 1.0f;
 
 protected:
