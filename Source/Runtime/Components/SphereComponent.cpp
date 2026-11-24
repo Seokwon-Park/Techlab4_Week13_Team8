@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "SphereComponent.h"
+#include "Physics/AggregateGeom.h"
 #include "Physics/Collision.h"
 #include "Render/LineBatcher.h"
 
@@ -23,4 +24,18 @@ void USphereComponent::DrawDebug(FLineBatcher* LineBatcher, const FVector4& Colo
 	AddWireArc(LineBatcher, C, FVector(1, 0, 0), FVector(0, 1, 0), R, 0, TwoPi, Color);
 	AddWireArc(LineBatcher, C, FVector(1, 0, 0), FVector(0, 0, 1), R, 0, TwoPi, Color);
 	AddWireArc(LineBatcher, C, FVector(0, 1, 0), FVector(0, 0, 1), R, 0, TwoPi, Color);
+}
+
+void USphereComponent::PostEditChangeProperty(const FProperty& Property)
+{
+	Super::PostEditChangeProperty(Property);
+	if (Property.Name == "SphereRadius")
+		RecreatePhysicsState();
+}
+
+void USphereComponent::UpdateBodySetup(FKAggregateGeom& AggGeom) const
+{
+	FKSphereElem Elem;
+	Elem.Radius = SphereRadius;
+	AggGeom.SphereElems.Add(Elem);
 }

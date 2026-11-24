@@ -126,6 +126,8 @@ public:
 	void SyncComponentToRBPhysics();
 	// UE UPrimitiveComponent::GetBodyInstance. 이름이 없으면 컴포넌트를 대표하는 바디 (스켈레탈은 루트 바디)
 	virtual FBodyInstance* GetBodyInstance(FName BoneName = NAME_None) const { return const_cast<FBodyInstance*>(&BodyInstance); }
+	// PhysX 씬 쿼리에 잡히는 바디가 하나라도 있는지
+	virtual bool HasValidPhysicsBody() const { return BodyInstance.IsValidBodyInstance(); }
 	// UE UPrimitiveComponent::GetComponentTransformFromBodyInstance. 바디 월드 포즈 -> 컴포넌트 월드 Transform
 	virtual FTransform GetComponentTransformFromBodyInstance(FBodyInstance* UseBI);
 

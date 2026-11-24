@@ -32,14 +32,10 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
         return false;
     }
 
-    // 강체 자세와 양의 균일 스케일 확인
+    // 강체 자세와 양의 스케일 확인. PhysX에는 미러가 없어 음수 스케일은 받지 않는다
     const physx::PxTransform WorldPose = U2PTransform(InWorldTransform);
-    const physx::PxVec3 Scale = U2PVector(InWorldTransform.Scale);
-    const float ShapeScale = Scale.x;
-    const float ScaleTolerance = ShapeScale * 1e-4f;
-    if (!WorldPose.isValid() || !Scale.isFinite() || Scale.minElement() <= 0.0f ||
-        !FMath::IsNearlyEqual(ShapeScale, Scale.y, ScaleTolerance) ||
-        !FMath::IsNearlyEqual(ShapeScale, Scale.z, ScaleTolerance))
+    const FVector& Scale = InWorldTransform.Scale;
+    if (!WorldPose.isValid() || !U2PVector(Scale).isFinite() || U2PVector(Scale).minElement() <= 0.0f)
     {
         return false;
     }
@@ -115,31 +111,35 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
             return true;
         };
 
+    // 비균일 스케일은 회전 없는 Box만 정확하다. 나머지는 PhysicsDebugDraw와 같은 규칙으로 근사해
+    // 그려지는 와이어프레임과 충돌 크기를 맞춘다
+    const float SphereScale = std::max({ Scale.X, Scale.Y, Scale.Z });
     for (const FKSphereElem& Elem : Geom.SphereElems)
     {
-        const physx::PxSphereGeometry Geometry(Elem.Radius * ShapeScale);
-        const physx::PxTransform LocalPose(U2PVector(Elem.Center * ShapeScale));
+        const physx::PxSphereGeometry Geometry(Elem.Radius * SphereScale);
+        const physx::PxTransform LocalPose(U2PVector(Elem.Center * Scale));
         if (!AttachShape(Geometry, LocalPose, Elem))
         {
             return false;
         }
     }
 
-    const float HalfScale = 0.5f * ShapeScale;
+    // 요소가 회전해 있으면 shear를 버리고 박스 로컬 축에 그대로 곱한다
     for (const FKBoxElem& Elem : Geom.BoxElems)
     {
-        const physx::PxBoxGeometry Geometry(Elem.X * HalfScale, Elem.Y * HalfScale, Elem.Z * HalfScale);
-        const physx::PxTransform LocalPose(U2PVector(Elem.Center * ShapeScale), U2PQuat(Elem.Rotation.Quaternion()));
+        const physx::PxBoxGeometry Geometry(0.5f * Elem.X * Scale.X, 0.5f * Elem.Y * Scale.Y, 0.5f * Elem.Z * Scale.Z);
+        const physx::PxTransform LocalPose(U2PVector(Elem.Center * Scale), U2PQuat(Elem.Rotation.Quaternion()));
         if (!AttachShape(Geometry, LocalPose, Elem))
         {
             return false;
         }
     }
 
+    const float SphylRadiusScale = std::max(Scale.X, Scale.Y);
     for (const FKSphylElem& Elem : Geom.SphylElems)
     {
-        const physx::PxCapsuleGeometry Geometry(Elem.Radius * ShapeScale, Elem.Length * HalfScale);
-        const physx::PxTransform LocalPose = U2PSphylLocalPose(Elem.Center * ShapeScale, Elem.Rotation);
+        const physx::PxCapsuleGeometry Geometry(Elem.Radius * SphylRadiusScale, 0.5f * Elem.Length * Scale.Z);
+        const physx::PxTransform LocalPose = U2PSphylLocalPose(Elem.Center * Scale, Elem.Rotation);
         if (!AttachShape(Geometry, LocalPose, Elem))
         {
             return false;
@@ -179,6 +179,18 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
         DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_CCD, !bKinematic && bUseCCD);
     }
 
+    // 질량 계산은 시뮬레이션 Shape만 보므로 질량을 정한 뒤에 끈다
+    if (CollisionEnabled == ECollisionEnabled::QueryOnly)
+    {
+        TArray<physx::PxShape*> Shapes;
+        Shapes.SetNum(static_cast<int32>(NewActor->getNbShapes()));
+        NewActor->getShapes(Shapes.GetData(), Shapes.Num());
+        for (physx::PxShape* Shape : Shapes)
+        {
+            Shape->setFlag(physx::PxShapeFlag::eSIMULATION_SHAPE, false);
+        }
+    }
+
     // 씬 등록과 바디 역참조 설정의 쓰기 잠금
     const physx::PxSceneWriteLock WriteLock(*NativeScene);
     NativeScene->addActor(*NewActor);
@@ -190,6 +202,7 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
     Actor = NewActor.release();
     Scene = &InScene;
     OwnerComponent = InOwnerComponent;
+    Scale3D = InWorldTransform.Scale;
     Actor->userData = this;
     return true;
 }
