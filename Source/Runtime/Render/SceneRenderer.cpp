@@ -594,6 +594,37 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 						RenderCommand::Draw(3);
 					})) return false;
 
+				FRenderGraphTextureRef RecombineNear = NearLayer;
+				FRenderGraphTextureRef RecombineFar = FarLayer;
+				FPipelineState* PostfilterPipeline = FRenderResourceManager::GetPSO(EPSOType::DepthOfFieldPostfilter);
+				if (PostfilterPipeline && PostfilterPipeline->Shader &&
+					PostfilterPipeline->Shader->Name == "Resources/Shader/DepthOfFieldPostfilter.hlsl")
+				{
+					const FRenderGraphTextureRef NearFiltered = Graph.CreateTexture(GatherDesc, "DOF.NearFiltered");
+					const FRenderGraphTextureRef FarFiltered = Graph.CreateTexture(GatherDesc, "DOF.FarFiltered");
+					if (!NearFiltered || !FarFiltered) return false;
+
+					FRenderGraphRasterPassDesc PostfilterPass{};
+					PostfilterPass.Name = "DOF.Postfilter";
+					PostfilterPass.ReadTextures = { NearLayer, FarLayer };
+					PostfilterPass.ColorAttachments = {
+						{ NearFiltered, ERenderGraphLoadAction::Load },
+						{ FarFiltered, ERenderGraphLoadAction::Load }
+					};
+					if (!Graph.AddRasterPass(std::move(PostfilterPass), [this, PostfilterPipeline]
+						{
+							if (!bCorePassSucceeded) return;
+
+							RenderCommand::BindPipelineState(*PostfilterPipeline);
+							RenderCommand::BindSamplerState(0, ESamplerState::LinearClamp, EShaderBindFlagBits::Pixel);
+							RenderCommand::BindVertexBuffer(nullptr);
+							RenderCommand::Draw(3);
+						})) return false;
+
+					RecombineNear = NearFiltered;
+					RecombineFar = FarFiltered;
+				}
+
 				FPipelineState* RecombinePipeline = FRenderResourceManager::GetPSO(EPSOType::DepthOfFieldRecombine);
 				if (RecombinePipeline && RecombinePipeline->Shader &&
 					RecombinePipeline->Shader->Name == "Resources/Shader/DepthOfFieldRecombine.hlsl")
@@ -602,7 +633,7 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 					if (!RecombinedHDR) return false;
 
 					FRenderGraphRasterPassDesc RecombinePass = MakeViewportPass("DOF.Recombine", RecombinedHDR);
-					RecombinePass.ReadTextures = { LightingHDR, CoC, NearLayer, FarLayer };
+					RecombinePass.ReadTextures = { LightingHDR, CoC, RecombineNear, RecombineFar };
 					if (!Graph.AddRasterPass(std::move(RecombinePass), [this, RecombinePipeline]
 						{
 							if (!bCorePassSucceeded) return;

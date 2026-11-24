@@ -30,12 +30,6 @@ namespace
 		return Out;
 	}
 
-	// 컴포넌트 공간 바인드 AABB -> 본 로컬 AABB
-	FBox ToBoneLocal(const FBox& CompBox, const FMatrix& InverseBindPose)
-	{
-		return TransformBox(CompBox, InverseBindPose);
-	}
-
 	// 본 로컬 AABB -> 컴포넌트 공간 바인드 AABB (ToBoneLocal의 반대)
 	FBox ToComponent(const FBox& LocalBox, const FMatrix& InverseBindPose)
 	{
@@ -58,6 +52,19 @@ namespace
 		return A.Min.X <= B.Max.X && B.Min.X <= A.Max.X
 			&& A.Min.Y <= B.Max.Y && B.Min.Y <= A.Max.Y
 			&& A.Min.Z <= B.Max.Z && B.Min.Z <= A.Max.Z;
+	}
+
+	// 박스의 가장 긴 축을 캡슐 축으로 두고, 나머지 두 축 중 큰 반크기를 반지름으로 쓴다
+	void AddSphylFromLocalBox(UBodySetup* BodySetup, const FBox& Local)
+	{
+		const FVector Ext = (Local.Max - Local.Min) * 0.5f;
+		const int32 Axis = (Ext.X >= Ext.Y && Ext.X >= Ext.Z) ? 0 : (Ext.Y >= Ext.Z ? 1 : 2);
+		FKSphylElem E;
+		E.Center = (Local.Max + Local.Min) * 0.5f;
+		E.Rotation = RotationZTo(Axis);
+		E.Radius = std::max(Ext[(Axis + 1) % 3], Ext[(Axis + 2) % 3]);
+		E.Length = std::max(0.f, Ext[Axis] * 2.f - E.Radius * 2.f);
+		BodySetup->AggGeom.SphylElems.Add(E);
 	}
 
 	void AddDefaultConstraint(UPhysicsAsset* PhysAsset, const TArray<FBoneInfo>& Bones, int32 Child, int32 Parent, const FPhysAssetCreateParams& Params)
@@ -88,28 +95,65 @@ void FPhysicsAssetUtils::InitConstraintFromBones(FConstraintInstance& CI, const 
 	CI.ProfileInstance.ConeLimit.Swing2Motion = Params.AngularConstraintMode;
 }
 
-bool FPhysicsAssetUtils::CreateCollisionFromBone(UBodySetup* BodySetup, USkeletalMesh* SkelMesh, int32 BoneIndex)
+bool FPhysicsAssetUtils::CreateCollisionFromBone(UBodySetup* BodySetup, USkeletalMesh* SkelMesh, int32 BoneIndex, EPhysAssetFitVertWeight VertWeight)
 {
 	FBox Local;
-	if (!BodySetup || !SkelMesh || !GetBoneLocalBox(SkelMesh, BoneIndex, Local)) return false;
-
-	const FVector Ext = (Local.Max - Local.Min) * 0.5f;   // half size
-	const int32 Axis = (Ext.X >= Ext.Y && Ext.X >= Ext.Z) ? 0 : (Ext.Y >= Ext.Z ? 1 : 2);
-	FKSphylElem E;
-	E.Center = (Local.Max + Local.Min) * 0.5f;
-	E.Rotation = RotationZTo(Axis);
-	E.Radius = std::max(Ext[(Axis + 1) % 3], Ext[(Axis + 2) % 3]);
-	E.Length = std::max(0.f, Ext[Axis] * 2.f - E.Radius * 2.f);
-	BodySetup->AggGeom.SphylElems.Add(E);
+	if (!BodySetup || !SkelMesh || !GetBoneLocalBox(SkelMesh, BoneIndex, Local, VertWeight)) return false;
+	AddSphylFromLocalBox(BodySetup, Local);
 	return true;
 }
 
-bool FPhysicsAssetUtils::GetBoneLocalBox(const USkeletalMesh* SkelMesh, int32 BoneIndex, FBox& OutLocalBox)
+// 렌더용 BoneBounds는 가중치가 있는 모든 본에 정점을 넣고 컴포넌트 공간 AABB라서, 본 로컬로 다시 감싸면 기울어진 본이 부푼다.
+// 그래서 정점마다 본 로컬로 먼저 옮긴 뒤 감싼다
+TArray<FBox> FPhysicsAssetUtils::CalcBoneLocalBoxes(const USkeletalMesh* SkelMesh, EPhysAssetFitVertWeight VertWeight)
 {
 	const TArray<FBoneInfo>& Bones = SkelMesh->GetRefSkeleton();
 	const FSkeletalMeshLODRenderData& LOD = SkelMesh->GetRenderData().LODRenderData[0];
-	if (BoneIndex < 0 || BoneIndex >= Bones.Num() || !IsValidBox(LOD.BoneBounds[BoneIndex])) return false;
-	OutLocalBox = ToBoneLocal(LOD.BoneBounds[BoneIndex], Bones[BoneIndex].InverseBindPose);
+	TArray<FBox> Boxes;
+	Boxes.Init(FBox{ FVector(FLT_MAX, FLT_MAX, FLT_MAX), FVector(-FLT_MAX, -FLT_MAX, -FLT_MAX) }, Bones.Num());
+
+	const auto AddVertex = [&](int32 BoneIndex, const FVector& Position)
+	{
+		if (BoneIndex < 0 || BoneIndex >= Bones.Num()) return;
+		const FVector Local = Bones[BoneIndex].InverseBindPose.TransformPosition(Position);
+		FBox& Box = Boxes[BoneIndex];
+		for (int32 a = 0; a < 3; ++a)
+		{
+			Box.Min[a] = std::min(Box.Min[a], Local[a]);
+			Box.Max[a] = std::max(Box.Max[a], Local[a]);
+		}
+	};
+
+	const int32 NumVertices = std::min(LOD.BindVertices.Num(), LOD.SkinWeights.Num());
+	for (int32 v = 0; v < NumVertices; ++v)
+	{
+		const FVector& Position = LOD.BindVertices[v].Position;
+		const FSkinWeight& Weight = LOD.SkinWeights[v];
+		if (VertWeight == EVW_AnyWeight)
+		{
+			for (int32 k = 0; k < MaxBoneInfluences; ++k)
+			{
+				if (Weight.Weight[k] > 0.0f) AddVertex(Weight.BoneIndex[k], Position);
+			}
+			continue;
+		}
+
+		int32 Dominant = 0;
+		for (int32 k = 1; k < MaxBoneInfluences; ++k)
+		{
+			if (Weight.Weight[k] > Weight.Weight[Dominant]) Dominant = k;
+		}
+		if (Weight.Weight[Dominant] > 0.0f) AddVertex(Weight.BoneIndex[Dominant], Position);
+	}
+	return Boxes;
+}
+
+bool FPhysicsAssetUtils::GetBoneLocalBox(const USkeletalMesh* SkelMesh, int32 BoneIndex, FBox& OutLocalBox, EPhysAssetFitVertWeight VertWeight)
+{
+	if (!SkelMesh || BoneIndex < 0 || BoneIndex >= SkelMesh->GetRefSkeleton().Num()) return false;
+	const TArray<FBox> Boxes = CalcBoneLocalBoxes(SkelMesh, VertWeight);
+	if (!IsValidBox(Boxes[BoneIndex])) return false;
+	OutLocalBox = Boxes[BoneIndex];
 	return true;
 }
 
@@ -122,7 +166,7 @@ bool FPhysicsAssetUtils::CreateFromSkeletalMesh(UPhysicsAsset* PhysicsAsset, USk
 	}
 
 	const TArray<FBoneInfo>& Bones = SkelMesh->GetRefSkeleton();
-	const FSkeletalMeshLODRenderData& LOD = SkelMesh->GetRenderData().LODRenderData[0];
+	const TArray<FBox> LocalBoxes = CalcBoneLocalBoxes(SkelMesh, Params.VertWeight);
 	TArray<int32> BodyOfBone;
 	BodyOfBone.Init(INDEX_NONE, Bones.Num());
 	TArray<FBox> BodyCompBox;   // 바디 번호 순서. 3단계 겹침 검사용 (컴포넌트 공간)
@@ -132,8 +176,8 @@ bool FPhysicsAssetUtils::CreateFromSkeletalMesh(UPhysicsAsset* PhysicsAsset, USk
 	{
 		// UE CreateFromSkeletalMeshInternal: 정점이 없는 본은 크기가 0이라 MinBoneSize를 못 넘어 바디가 생기지 않는다.
 		// (예: root 본. 선분으로 대신 만들면 발끝~골반을 덮는 캡슐이 바닥에 박혀 래그돌이 튀어 오른다)
-		FBox Local;
-		if (!GetBoneLocalBox(SkelMesh, b, Local)) continue;
+		const FBox& Local = LocalBoxes[b];
+		if (!IsValidBox(Local)) continue;
 
 		const FVector Ext = (Local.Max - Local.Min) * 0.5f;   // half size
 		const int32 Axis = (Ext.X >= Ext.Y && Ext.X >= Ext.Z) ? 0 : (Ext.Y >= Ext.Z ? 1 : 2);
@@ -144,7 +188,7 @@ bool FPhysicsAssetUtils::CreateFromSkeletalMesh(UPhysicsAsset* PhysicsAsset, USk
 		if (Ext[Axis] * 2.f * BoneScale < Params.MinBoneSize) continue;
 
 		const int32 BodyIndex = CreateNewBody(PhysicsAsset, FName(Bones[b].Name), Params);
-		CreateCollisionFromBone(PhysicsAsset->SkeletalBodySetups[BodyIndex], SkelMesh, b);
+		AddSphylFromLocalBox(PhysicsAsset->SkeletalBodySetups[BodyIndex], Local);
 		BodyOfBone[b] = BodyIndex;
 
 		// 캡슐을 만든 박스 그대로 보관 (3단계 겹침 검사용)

@@ -102,6 +102,8 @@ public:
 	// 카메라 전방 벡터
 	FVector GetViewForward() const;
 	void FocusOnBounds(const FBoxSphereBounds& Bounds);
+	void SetNearClip(float InNearClip) { NearClip = InNearClip; }
+	void SetFarClip(float InFarClip) { FarClip = InFarClip; }
 	// 경계가 화면에 꽉 차도록 카메라를 Duration초 동안 부드럽게 옮긴다. 보는 방향은 그대로다.
 	// 옮기는 도중에 사용자가 카메라를 조작(우클릭, 휠)하면 그 자리에서 멈춘다. UE의 F(Focus Selected)와 같다.
 	void StartFocusOnBounds(const FBoxSphereBounds& Bounds, float Duration = 0.25f);
