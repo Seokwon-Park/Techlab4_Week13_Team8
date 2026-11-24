@@ -505,18 +505,18 @@ void USkeletalMeshComponent::RefreshClothSolver()
 	const FSkeletalMeshLODRenderData& LOD = Mesh->GetRenderData().LODRenderData[0];
 	const float GravityZ = World->IsWorldGravityOverridden()
 		? World->GetWorldGravityZ() : FPhysicsSettings::Get().DefaultGravityZ;
-	TArray<TUniquePtr<nv::cloth::Cloth>> NewCloths;
+	TArray<FClothInstance> NewCloths;
 	NewCloths.Reserve(Bindings.Num());
 
 	for (const FClothSectionBinding& Binding : Bindings)
 	{
-		TUniquePtr<nv::cloth::Cloth> Cloth = CreateClothInstance(*Factory, LOD, Binding, GravityZ);
-		if (!Cloth)
+		FClothInstance Instance = CreateClothInstance(*Factory, LOD, Binding, GravityZ);
+		if (!Instance.Cloth)
 		{
 			HTR_LOG(Warning, "Failed to create cloth for section {}", Binding.SectionIndex);
 			return;
 		}
-		NewCloths.Add(std::move(Cloth));
+		NewCloths.Add(std::move(Instance));
 	}
 
 	TUniquePtr<nv::cloth::Solver> NewSolver(Factory->createSolver());
@@ -527,9 +527,9 @@ void USkeletalMeshComponent::RefreshClothSolver()
 	}
 
 	// 준비된 Cloth의 등록과 틱 실행 연결
-	for (const auto& Cloth : NewCloths)
+	for (const FClothInstance& Instance : NewCloths)
 	{
-		NewSolver->addCloth(Cloth.get());
+		NewSolver->addCloth(Instance.Cloth.get());
 	}
 
 	ClothInstances = std::move(NewCloths);
@@ -538,12 +538,14 @@ void USkeletalMeshComponent::RefreshClothSolver()
 	ClothTickFunction.RegisterTickFunction(World->GetTickTaskManager());
 }
 // 바인딩과 렌더 섹션으로부터 Cloth 인스턴스 생성
-TUniquePtr<nv::cloth::Cloth> USkeletalMeshComponent::CreateClothInstance(
+USkeletalMeshComponent::FClothInstance USkeletalMeshComponent::CreateClothInstance(
 	nv::cloth::Factory& Factory, const FSkeletalMeshLODRenderData& LOD,
 	const FClothSectionBinding& Binding, float GravityZ) const
 {
 	const FSkeletalMeshSection& Section = LOD.Sections[Binding.SectionIndex];
-	const FVector Scale = GetWorldScale3D();
+	FClothInstance Instance;
+	Instance.SimulationScale = GetWorldScale3D();
+	const FVector & Scale = Instance.SimulationScale;
 	if (Scale.X <= 0.0f || Scale.Y <= 0.0f || Scale.Z <= 0.0f)
 	{
 		return {};
@@ -565,6 +567,7 @@ TUniquePtr<nv::cloth::Cloth> USkeletalMeshComponent::CreateClothInstance(
 		{
 			Particle = Positions.Num();
 			Positions.Add(U2PVector(LOD.BindVertices[RenderVertex].Position * Scale));
+			Instance.ParticleToRenderVertex.Add(RenderVertex);
 		}
 		Indices.Add(static_cast<uint32>(Particle));
 	}
@@ -643,20 +646,38 @@ TUniquePtr<nv::cloth::Cloth> USkeletalMeshComponent::CreateClothInstance(
 	Cloth->setPhaseConfig({ Phases.GetData(), Phases.GetData() + Phases.Num() });
 	Cloth->teleportToLocation(U2PVector(GetWorldLocation()), Rotation);
 	Cloth->setGravity(physx::PxVec3(0.0f, 0.0f, GravityZ));
-	return Cloth;
+	Instance.Cloth = std::move(Cloth);
+	return Instance;
 }
 void USkeletalMeshComponent::ReleaseClothSolver()
 {
 	ClothTickFunction.UnRegisterTickFunction();
-	for (const auto& Cloth : ClothInstances)
+	for (const FClothInstance& Instance : ClothInstances)
 	{
-		ClothSolver->removeCloth(Cloth.get());
+		ClothSolver->removeCloth(Instance.Cloth.get());
 	}
 
 	ClothInstances.Empty();
+	ClothVertexPositions.Reset();
 	ClothSolver.reset();
 	ClothSourceMesh = nullptr;
 
+}
+// 시뮬레이션 입자의 메시 로컬 위치 수집
+void USkeletalMeshComponent::UpdateClothVertexPositions()
+{
+	ClothVertexPositions.Reset();
+	for (const FClothInstance& Instance : ClothInstances)
+	{
+		const auto Particles = nv::cloth::readCurrentParticles(*Instance.Cloth);
+		for (uint32 Index = 0; Index < Particles.size(); ++Index)
+		{
+			const physx::PxVec4& Particle = Particles.begin()[Index];
+			const FVector Position = FVector(Particle.x, Particle.y, Particle.z)
+				/ Instance.SimulationScale;
+			ClothVertexPositions.Add({ Instance.ParticleToRenderVertex[Index], Position });
+		}
+	}
 }
 void USkeletalMeshComponent::TickClothing()
 {
@@ -671,6 +692,8 @@ void USkeletalMeshComponent::TickClothing()
 	const int32 StepCount = PhysicsScene->GetLastTickStepCount();
 	const float StepDelta = static_cast<float>(FPhysicsSettings::Get().FixedStepSeconds);
 
+	// 첫 결과 또는 완료된 물리 스텝의 결과 갱신
+	bool bUpdateClothVertices = ClothVertexPositions.IsEmpty();
 	for (int32 StepIndex = 0; StepIndex < StepCount; ++StepIndex)
 	{
 		// 계산 대상이 있는 스텝의 시작
@@ -688,6 +711,17 @@ void USkeletalMeshComponent::TickClothing()
 
 		// 모든 청크 계산 이후의 스텝 완료
 		ClothSolver->endSimulation();
+		bUpdateClothVertices = true;
+	}
+	if (bUpdateClothVertices)
+	{
+		UpdateClothVertexPositions();
+
+		FSkeletalMeshObject* MeshObject = GetMeshObject();
+		if (MeshObject && !MeshObject->GetBoneMatrixBuffer())
+		{
+			SendRenderDynamicData();
+		}
 	}
 }
 void USkeletalMeshComponent::OnCreatePhysicsState()

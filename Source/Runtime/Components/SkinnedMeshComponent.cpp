@@ -144,7 +144,7 @@ void USkinnedMeshComponent::RefreshBoneTransforms()
 
 void USkinnedMeshComponent::SendRenderDynamicData()
 {
-	MeshObject->Update(ComponentSpaceTransforms);
+	MeshObject->Update(ComponentSpaceTransforms,GetClothVertexPositions());
 	if (MeshObject->UpdateBounds())
 		OnTransformDirty();
 	else if (FPrimitiveSceneProxy* Proxy = GetSceneProxy())

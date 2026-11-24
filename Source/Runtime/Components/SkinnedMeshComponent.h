@@ -5,7 +5,7 @@
 #include "SkinnedMeshComponent.generated.h"
 
 class FSkeletalMeshObject;
-
+struct FClothVertexPosition;
 UCLASS()
 class USkinnedMeshComponent : public UMeshComponent
 {
@@ -51,6 +51,10 @@ public:
 
 protected:
 	virtual void RefreshBoneTransforms();
+	virtual const TArray<FClothVertexPosition>* GetClothVertexPositions() const
+	{
+		return nullptr;
+	}
 	void SendRenderDynamicData();
 	virtual void OnSkeletalMeshChanged() {};
 

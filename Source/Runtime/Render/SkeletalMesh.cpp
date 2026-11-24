@@ -156,6 +156,9 @@ bool USkeletalMesh::SetClothSectionBindings(TArray<FClothSectionBinding> Binding
 	TArray<uint8> BoundSections;
 	BoundSections.Init(0, LOD.Sections.Num());
 
+	// 렌더 정점별 Cloth 섹션 번호 초기화
+	TArray<int32> ClothSectionByVertex;
+	ClothSectionByVertex.Init(INDEX_NONE, LOD.BindVertices.Num());
 	for (const FClothSectionBinding& Binding : Bindings)
 	{
 		if (!LOD.Sections.IsValidIndex(Binding.SectionIndex) || BoundSections[Binding.SectionIndex])
@@ -179,10 +182,27 @@ bool USkeletalMesh::SetClothSectionBindings(TArray<FClothSectionBinding> Binding
 				return false;
 			}
 		}
-
+		// Cloth 섹션에서 사용하는 렌더 정점 기록
+		for (const uint32* Vertex = First; Vertex != End; ++Vertex)
+		{
+			ClothSectionByVertex[*Vertex] = Binding.SectionIndex;
+		}
 		BoundSections[Binding.SectionIndex] = 1;
 	}
-
+	// 섹션 사이에서 공유하는 Cloth 렌더 정점 검사
+	for (int32 SectionIndex = 0; SectionIndex < LOD.Sections.Num(); ++SectionIndex)
+	{
+		const FSkeletalMeshSection& Section = LOD.Sections[SectionIndex];
+		const uint32 EndIndex = Section.StartIndex + Section.IndexCount;
+		for (uint32 Index = Section.StartIndex; Index < EndIndex; ++Index)
+		{
+			const int32 ClothSection = ClothSectionByVertex[LOD.Indices[Index]];
+			if (ClothSection != INDEX_NONE && ClothSection != SectionIndex)
+			{
+				return false;
+			}
+		}
+	}
 	ClothSectionBindings = std::move(Bindings);
 	return true;
 }

@@ -2,6 +2,7 @@
 
 #include "SkinnedMeshComponent.h"
 #include "Animation/AnimInstance.h"
+#include "Render/SkeletalMeshObject.h"
 #include "SkeletalMeshComponent.generated.h"
 
 class UAnimInstance;
@@ -9,7 +10,6 @@ class UAnimSequence;
 class UBlendSpace1D;
 class UWorld;
 class FLineBatcher;
-
 // World의 SkeletalMeshComponent마다 root 디버그를 그린다 (DrawCollisionShapes와 같은 방식). PIE의 Show Root에서 호출
 void DrawSkeletalRootDebug(UWorld* World, FLineBatcher* LineBatcher);
 // Settings > Debug Draw (PIE) > Show Root 값. 에디터가 매 프레임 갱신하고, 런타임 액터("root" 라벨 등)가 읽는다
@@ -166,14 +166,31 @@ private:
 	FTransform PendingRootMotion;           // 월드 공간 누적값
 	bool bHasPendingRootMotion = false;
 
+	// 네이티브 Cloth와 렌더 정점 대응 정보의 공동 소유
+	struct FClothInstance
+	{
+		TUniquePtr<nv::cloth::Cloth> Cloth;
+		TArray<uint32> ParticleToRenderVertex;
+		FVector SimulationScale;
+	};
+
 	friend struct FSkeletalMeshComponentClothTickFunction;
 	TUniquePtr<nv::cloth::Solver> ClothSolver;
 	FSkeletalMeshComponentClothTickFunction ClothTickFunction;
-	TArray<TUniquePtr<nv::cloth::Cloth>> ClothInstances;
 	const USkeletalMesh* ClothSourceMesh = nullptr;
 
-	TUniquePtr<nv::cloth::Cloth> CreateClothInstance(nv::cloth::Factory& Factory,
-		const FSkeletalMeshLODRenderData& LOD, const FClothSectionBinding& Binding, float GravityZ) const;
+	TArray<FClothInstance> ClothInstances;
+	TArray<FClothVertexPosition> ClothVertexPositions;
+
+	FClothInstance CreateClothInstance(nv::cloth::Factory& Factory,
+		const FSkeletalMeshLODRenderData& LOD, const FClothSectionBinding& Binding,
+		float GravityZ) const;
+	void UpdateClothVertexPositions();
+	const TArray<FClothVertexPosition>* GetClothVertexPositions() const override
+	{
+		return &ClothVertexPositions;
+	}
+
 	void RefreshClothSolver();
 	void ReleaseClothSolver();
 	void TickClothing();

@@ -4,6 +4,7 @@
 #include "Tasks/Tasks.h"
 #include "Tasks/TaskScheduler.h"
 #include "Render/SkinningStats.h"
+#include <cmath>
 
 // GpuSkinCommon.hlsli가 이 배치를 가정한다
 static_assert(sizeof(FMatrix) == 64);
@@ -139,12 +140,111 @@ FSkeletalMeshObjectCPUSkin::FSkeletalMeshObjectCPUSkin(USkeletalMesh* InMesh)
 	UploadVertices();
 }
 
-void FSkeletalMeshObjectCPUSkin::Update(const TArray<FMatrix>& ComponentSpaceTransforms)
+// 변형된 Cloth 삼각형의 노멀과 UV 탄젠트 재계산
+void FSkeletalMeshObjectCPUSkin::RebuildClothTangentSpace(const TArray<FClothVertexPosition>& ClothPositions)
+{
+	constexpr float UVTolerance = 1.0e-8f;
+	constexpr float VectorToleranceSquared = 1.0e-12f;
+	const FSkeletalMeshLODRenderData& LOD = SkeletalMesh->GetRenderData().LODRenderData[0];
+
+	// 활성 Cloth 정점의 배열 인덱스와 누적 버퍼 준비
+	TArray<int32> RenderVertexToClothIndex;
+	RenderVertexToClothIndex.Init(INDEX_NONE, SkinnedVertices.Num());
+	TArray<FVector> NormalSums;
+	NormalSums.Init(FVector::ZeroVector, ClothPositions.Num());
+	TArray<FVector> TangentSums;
+	TangentSums.Init(FVector::ZeroVector, ClothPositions.Num());
+	for (int32 Index = 0; Index < ClothPositions.Num(); ++Index)
+	{
+		RenderVertexToClothIndex[ClothPositions[Index].RenderVertexIndex] = Index;
+	}
+
+	for (const FSkeletalMeshSection& Section : LOD.Sections)
+	{
+		// 다른 섹션과 정점을 공유하지 않는 활성 Cloth 섹션 확인
+		if (Section.IndexCount == 0
+			|| RenderVertexToClothIndex[LOD.Indices[Section.StartIndex]] == INDEX_NONE)
+		{
+			continue;
+		}
+
+		const uint32 End = Section.StartIndex + Section.IndexCount;
+		for (uint32 Index = Section.StartIndex; Index < End; Index += 3)
+		{
+			const uint32 Corners[] = { LOD.Indices[Index], LOD.Indices[Index + 1], LOD.Indices[Index + 2] };
+			const FVertex& A = SkinnedVertices[Corners[0]];
+			const FVertex& B = SkinnedVertices[Corners[1]];
+			const FVertex& C = SkinnedVertices[Corners[2]];
+			const FVector EdgeAB = B.Position - A.Position;
+			const FVector EdgeAC = C.Position - A.Position;
+			const FVector FaceNormal = EdgeAB.Cross(EdgeAC);
+			if (FaceNormal.SizeSquared() <= VectorToleranceSquared)
+			{
+				continue;
+			}
+
+			// 면적을 반영한 면 노멀과 UV의 U 방향 계산
+			const FVector2 UVAB = B.UV - A.UV;
+			const FVector2 UVAC = C.UV - A.UV;
+			const float Determinant = UVAB.X * UVAC.Y - UVAB.Y * UVAC.X;
+			FVector FaceTangent = FVector::ZeroVector;
+			if (std::abs(Determinant) > UVTolerance)
+			{
+				FaceTangent = (EdgeAB * UVAC.Y - EdgeAC * UVAB.Y) / Determinant;
+			}
+
+			for (const uint32 RenderVertex : Corners)
+			{
+				const int32 ClothIndex = RenderVertexToClothIndex[RenderVertex];
+				NormalSums[ClothIndex] += FaceNormal;
+				TangentSums[ClothIndex] += FaceTangent;
+			}
+		}
+	}
+
+	for (int32 Index = 0; Index < ClothPositions.Num(); ++Index)
+	{
+		const FVector Normal = NormalSums[Index].GetSafeNormal(VectorToleranceSquared);
+		if (Normal.SizeSquared() <= VectorToleranceSquared)
+		{
+			continue;
+		}
+
+		// 새 노멀에 탄젠트를 직교화하고 원본 UV의 좌우 부호 유지
+		FVertex& Vertex = SkinnedVertices[ClothPositions[Index].RenderVertexIndex];
+		FVector Tangent = TangentSums[Index] - Normal * Normal.Dot(TangentSums[Index]);
+		if (Tangent.SizeSquared() <= VectorToleranceSquared)
+		{
+			const FVector PreviousTangent(Vertex.Tangent.X, Vertex.Tangent.Y, Vertex.Tangent.Z);
+			Tangent = PreviousTangent - Normal * Normal.Dot(PreviousTangent);
+			if (Tangent.SizeSquared() <= VectorToleranceSquared)
+			{
+				const FVector Axis = std::abs(Normal.X) < 0.9f
+					? FVector(1.0f, 0.0f, 0.0f) : FVector(0.0f, 1.0f, 0.0f);
+				Tangent = Axis - Normal * Normal.Dot(Axis);
+			}
+		}
+
+		Vertex.Normal = Normal;
+		Vertex.Tangent = FVector4(Tangent.GetSafeNormal(VectorToleranceSquared), Vertex.Tangent.W);
+	}
+}
+
+void FSkeletalMeshObjectCPUSkin::Update(const TArray<FMatrix>& ComponentSpaceTransforms, const TArray<FClothVertexPosition>* ClothPositions)
 {
 	UpdateRefToLocalMatrices(ComponentSpaceTransforms);
 	{
 		SCOPE_CYCLE_COUNTER(SkinningStats::STAT_CpuSkinning);
 		SkinVerticesCPU(SkinnedVertices, SkinnedBounds);
+	}
+	if (ClothPositions && !ClothPositions->IsEmpty())
+	{
+		for (const FClothVertexPosition& Vertex : *ClothPositions)
+		{
+			SkinnedVertices[Vertex.RenderVertexIndex].Position = Vertex.Position;
+			SkinnedBounds.Expand(FBox{ Vertex.Position, Vertex.Position });
+		}
+		RebuildClothTangentSpace(*ClothPositions);
 	}
 	UploadVertices();
 }
@@ -179,7 +279,7 @@ bool FSkeletalMeshObjectGPUSkin::IsValid() const
 		&& LOD.GpuSkinVertexBuffer && LOD.GpuSkinVertexBuffer->GetBuffer();
 }
 
-void FSkeletalMeshObjectGPUSkin::Update(const TArray<FMatrix>& ComponentSpaceTransforms)
+void FSkeletalMeshObjectGPUSkin::Update(const TArray<FMatrix>& ComponentSpaceTransforms, const TArray<FClothVertexPosition>* /*ClothPositions*/)
 {
 	UpdateRefToLocalMatrices(ComponentSpaceTransforms);
 	UpdateSkinnedBoundsFromBones();
