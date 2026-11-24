@@ -177,8 +177,39 @@ void FSkeletalMeshDetailsPanel::DrawClothBinding()
 	const bool bApply = ImGui::Button("Apply & Save Cloth Binding");
 	ImGui::EndDisabled();
 
-	// 적용된 Cloth의 프리뷰 실행·정지·초기화 버튼
 	USkeletalMeshComponent* PreviewComponent = Editor.GetMeshComponent();
+	// Cloth 프리뷰에 사용할 PhysicsAsset 바디 선택
+	if (PreviewComponent)
+	{
+		FString& CollisionBody = PreviewComponent->ClothCollisionBody;
+		const char* BodyPreview = CollisionBody.empty() ? "None" : CollisionBody.c_str();
+		if (ImGui::BeginCombo("Collision Body", BodyPreview))
+		{
+			if (ImGui::Selectable("None", CollisionBody.empty()))
+			{
+				CollisionBody.clear();
+			}
+			if (const UPhysicsAsset* PhysicsAsset = PreviewComponent->GetPhysicsAsset())
+			{
+				for (const USkeletalBodySetup* Setup : PhysicsAsset->SkeletalBodySetups)
+				{
+					if (!Setup || (Setup->AggGeom.SphereElems.IsEmpty()
+						&& Setup->AggGeom.SphylElems.IsEmpty() && Setup->AggGeom.BoxElems.IsEmpty()))
+					{
+						continue;
+					}
+					const FString BoneName = Setup->BoneName.ToString();
+					if (ImGui::Selectable(BoneName.c_str(), CollisionBody == BoneName))
+					{
+						CollisionBody = BoneName;
+					}
+				}
+			}
+			ImGui::EndCombo();
+		}
+	}
+
+	// 적용된 Cloth의 프리뷰 실행·정지·초기화 버튼
 	const bool bRunning = PreviewComponent && PreviewComponent->HasClothSimulation();
 
 	ImGui::BeginDisabled(!PreviewComponent || Mesh->GetClothSectionBindings().IsEmpty());

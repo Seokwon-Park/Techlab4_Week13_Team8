@@ -35,6 +35,7 @@
 #include <NvClothExt/ClothFabricCooker.h>
 #include <limits>
 #include <algorithm>
+#include <cmath>
 #include "Physics/PhysicsSettings.h"
 #include <NvCloth/Factory.h>
 #include <NvCloth/Solver.h>
@@ -690,6 +691,12 @@ void USkeletalMeshComponent::ReleaseClothSolver()
 	}
 
 	ClothInstances.Empty();
+	// 해제된 Solver의 몸통 충돌 기록과 표시 데이터 초기화
+	ActiveClothCollisionBody.clear();
+	ClothCollisionSpheres.Reset();
+	ClothCollisionCapsuleIndices.Reset();
+	ClothCollisionPlanes.Reset();
+	ClothCollisionConvexMasks.Reset();
 	ClothVertexPositions.Reset();
 	ClothSolver.reset();
 	ClothSourceMesh = nullptr;
@@ -758,6 +765,275 @@ void USkeletalMeshComponent::UpdateClothMotionConstraints()
 				PreviousParticle = physx::PxVec4(Center, PreviousParticle.w);
 			}
 		}
+	}
+}
+
+void USkeletalMeshComponent::BuildClothBodyCollision()
+{
+	// 현재 본 포즈에서 다시 계산할 충돌 배열의 초기화
+	ClothCollisionSpheres.Reset();
+	ClothCollisionCapsuleIndices.Reset();
+	ClothCollisionPlanes.Reset();
+	ClothCollisionConvexMasks.Reset();
+
+	const UPhysicsAsset* Asset = ClothCollisionBody.empty() ? nullptr : GetPhysicsAsset();
+	const int32 BodyIndex = Asset ? Asset->FindBodyIndex(FName(ClothCollisionBody)) : INDEX_NONE;
+	if (BodyIndex == INDEX_NONE)
+	{
+		return;
+	}
+
+	const USkeletalBodySetup& Body = *Asset->SkeletalBodySetups[BodyIndex];
+	const int32 BoneIndex = FindBoneIndex(Body.BoneName.ToString());
+	if (!ComponentSpaceTransforms.IsValidIndex(BoneIndex))
+	{
+		return;
+	}
+
+	// 본 로컬에서 Cloth 공간으로 가는 균일 스케일의 확인
+	const FMatrix& BoneMatrix = ComponentSpaceTransforms[BoneIndex];
+	const FVector& Scale = ClothInstances[0].SimulationScale;
+	const FVector X = BoneMatrix.TransformVector(FVector(1.0f, 0.0f, 0.0f)) * Scale;
+	const FVector Y = BoneMatrix.TransformVector(FVector(0.0f, 1.0f, 0.0f)) * Scale;
+	const FVector Z = BoneMatrix.TransformVector(FVector(0.0f, 0.0f, 1.0f)) * Scale;
+	const float ScaleSquared = X.SizeSquared();
+	const float Tolerance = ScaleSquared * KINDA_SMALL_NUMBER;
+	if (ScaleSquared <= SMALL_NUMBER
+		|| !FMath::IsNearlyEqual(Y.SizeSquared(), ScaleSquared, Tolerance)
+		|| !FMath::IsNearlyEqual(Z.SizeSquared(), ScaleSquared, Tolerance)
+		|| !FMath::IsNearlyZero(X.Dot(Y), Tolerance)
+		|| !FMath::IsNearlyZero(X.Dot(Z), Tolerance)
+		|| !FMath::IsNearlyZero(Y.Dot(Z), Tolerance))
+	{
+		return;
+	}
+
+	const float UniformScale = std::sqrt(ScaleSquared);
+
+	// 독립 구의 중심과 반경 등록
+	for (const FKSphereElem& Sphere : Body.AggGeom.SphereElems)
+	{
+		if (ClothCollisionSpheres.Num() == MaxClothCollisionSpheres)
+		{
+			break;
+		}
+		if (Sphere.Radius > 0.0f)
+		{
+			const FVector Center = BoneMatrix.TransformPosition(Sphere.Center) * Scale;
+			ClothCollisionSpheres.Emplace(Center, Sphere.Radius * UniformScale);
+		}
+	}
+
+	// 캡슐의 양 끝 구와 인덱스 쌍 등록
+	for (const FKSphylElem& Capsule : Body.AggGeom.SphylElems)
+	{
+		if (Capsule.Radius <= 0.0f || Capsule.Length < 0.0f)
+		{
+			continue;
+		}
+
+		const FVector Center = BoneMatrix.TransformPosition(Capsule.Center) * Scale;
+		const float Radius = Capsule.Radius * UniformScale;
+		const float HalfLength = Capsule.Length * UniformScale * 0.5f;
+		if (HalfLength <= KINDA_SMALL_NUMBER)
+		{
+			if (ClothCollisionSpheres.Num() < MaxClothCollisionSpheres)
+			{
+				ClothCollisionSpheres.Emplace(Center, Radius);
+			}
+			continue;
+		}
+		if (ClothCollisionSpheres.Num() + 2 > MaxClothCollisionSpheres)
+		{
+			continue;
+		}
+
+		const FVector LocalAxis = Capsule.Rotation.Quaternion().RotateVector(FVector(0.0f, 0.0f, 1.0f));
+		const FVector Axis = (BoneMatrix.TransformVector(LocalAxis) * Scale).GetSafeNormal();
+		const FVector HalfSegment = Axis * HalfLength;
+		const uint32 StartIndex = static_cast<uint32>(ClothCollisionSpheres.Num());
+		ClothCollisionSpheres.Emplace(Center - HalfSegment, Radius);
+		ClothCollisionSpheres.Emplace(Center + HalfSegment, Radius);
+		ClothCollisionCapsuleIndices.Add(StartIndex);
+		ClothCollisionCapsuleIndices.Add(StartIndex + 1);
+	}
+
+	// 박스의 바깥쪽 평면 여섯 개와 볼록체 마스크 등록
+	for (const FKBoxElem& Box : Body.AggGeom.BoxElems)
+	{
+		if (ClothCollisionPlanes.Num() + ClothBoxPlaneCount > MaxClothCollisionPlanes)
+		{
+			break;
+		}
+		if (Box.X <= 0.0f || Box.Y <= 0.0f || Box.Z <= 0.0f)
+		{
+			continue;
+		}
+
+		const FVector Center = BoneMatrix.TransformPosition(Box.Center) * Scale;
+		const FVector HalfExtent = FVector(Box.X, Box.Y, Box.Z) * (UniformScale * 0.5f);
+		const FQuat Rotation = Box.Rotation.Quaternion();
+		const uint32 FirstPlane = static_cast<uint32>(ClothCollisionPlanes.Num());
+		for (int32 AxisIndex = 0; AxisIndex < 3; ++AxisIndex)
+		{
+			FVector LocalAxis = FVector::ZeroVector;
+			LocalAxis[AxisIndex] = 1.0f;
+			const FVector BoneAxis = Rotation.RotateVector(LocalAxis);
+			const FVector Normal = (BoneMatrix.TransformVector(BoneAxis) * Scale).GetSafeNormal();
+			const float CenterProjection = Normal.Dot(Center);
+			const float Extent = HalfExtent[AxisIndex];
+			ClothCollisionPlanes.Emplace(Normal, -CenterProjection - Extent);
+			ClothCollisionPlanes.Emplace(-Normal, CenterProjection - Extent);
+		}
+
+		const uint32 BoxMask = (1u << ClothBoxPlaneCount) - 1u;
+		ClothCollisionConvexMasks.Add(BoxMask << FirstPlane);
+	}
+}
+
+void USkeletalMeshComponent::UploadClothBodyCollision()
+{
+	// 엔진 배열에서 NvCloth 입력 배열로 변환
+	physx::PxVec4 Spheres[MaxClothCollisionSpheres];
+	physx::PxVec4 Planes[MaxClothCollisionPlanes];
+	for (int32 Index = 0; Index < ClothCollisionSpheres.Num(); ++Index)
+	{
+		const FVector4& Sphere = ClothCollisionSpheres[Index];
+		Spheres[Index] = physx::PxVec4(Sphere.X, Sphere.Y, Sphere.Z, Sphere.W);
+	}
+	for (int32 Index = 0; Index < ClothCollisionPlanes.Num(); ++Index)
+	{
+		const FVector4& Plane = ClothCollisionPlanes[Index];
+		Planes[Index] = physx::PxVec4(Plane.X, Plane.Y, Plane.Z, Plane.W);
+	}
+
+	const uint32 SphereCount = static_cast<uint32>(ClothCollisionSpheres.Num());
+	const uint32 PlaneCount = static_cast<uint32>(ClothCollisionPlanes.Num());
+	const uint32 CapsuleCount = static_cast<uint32>(ClothCollisionCapsuleIndices.Num() / 2);
+	const uint32 ConvexCount = static_cast<uint32>(ClothCollisionConvexMasks.Num());
+	const bool bBodyChanged = ActiveClothCollisionBody != ClothCollisionBody;
+
+	for (FClothInstance& Instance : ClothInstances)
+	{
+		nv::cloth::Cloth& Cloth = *Instance.Cloth;
+		const bool bRebuild = bBodyChanged
+			|| Cloth.getNumSpheres() != SphereCount || Cloth.getNumCapsules() != CapsuleCount
+			|| Cloth.getNumPlanes() != PlaneCount || Cloth.getNumConvexes() != ConvexCount;
+
+		if (bRebuild)
+		{
+			// 구와 평면을 참조하는 인덱스와 마스크의 우선 해제
+			if (Cloth.getNumCapsules() > 0)
+			{
+				Cloth.setCapsules({}, 0, Cloth.getNumCapsules());
+			}
+			if (Cloth.getNumConvexes() > 0)
+			{
+				Cloth.setConvexes({}, 0, Cloth.getNumConvexes());
+			}
+			if (Cloth.getNumSpheres() > 0)
+			{
+				Cloth.setSpheres({}, 0, Cloth.getNumSpheres());
+			}
+			if (Cloth.getNumPlanes() > 0)
+			{
+				Cloth.setPlanes({}, 0, Cloth.getNumPlanes());
+			}
+		}
+
+		// 현재 본 포즈의 구와 평면 갱신
+		if (SphereCount > 0)
+		{
+			Cloth.setSpheres({Spheres, Spheres + SphereCount}, 0, Cloth.getNumSpheres());
+		}
+		if (PlaneCount > 0)
+		{
+			Cloth.setPlanes({Planes, Planes + PlaneCount}, 0, Cloth.getNumPlanes());
+		}
+
+		// 구와 평면 등록 이후의 형상 연결
+		if (bRebuild && CapsuleCount > 0)
+		{
+			const uint32* Indices = ClothCollisionCapsuleIndices.GetData();
+			Cloth.setCapsules({Indices, Indices + ClothCollisionCapsuleIndices.Num()}, 0, 0);
+		}
+		if (bRebuild && ConvexCount > 0)
+		{
+			const uint32* Masks = ClothCollisionConvexMasks.GetData();
+			Cloth.setConvexes({Masks, Masks + ConvexCount}, 0, 0);
+		}
+	}
+
+	ActiveClothCollisionBody = ClothCollisionBody;
+}
+
+void USkeletalMeshComponent::DrawClothBodyCollision(FLineBatcher& LineBatcher) const
+{
+	if (ClothInstances.IsEmpty())
+	{
+		return;
+	}
+
+	// Cloth 공간에서 뷰포트 월드 공간으로 돌아가는 행렬
+	const FVector& Scale = ClothInstances[0].SimulationScale;
+	FMatrix ClothToComponent = FMatrix::Identity;
+	ClothToComponent.M[0][0] = 1.0f / Scale.X;
+	ClothToComponent.M[1][1] = 1.0f / Scale.Y;
+	ClothToComponent.M[2][2] = 1.0f / Scale.Z;
+	const FMatrix ClothToWorld = ClothToComponent * GetWorldMatrix();
+	const float RadiusScale = ClothToWorld.TransformVector(FVector(1.0f, 0.0f, 0.0f)).Size();
+	const FVector4 Color(0.2f, 1.0f, 0.4f, 1.0f);
+
+	// 독립 구와 인덱스로 연결된 캡슐의 표시
+	int32 CapsuleIndex = 0;
+	for (int32 Index = 0; Index < ClothCollisionSpheres.Num(); ++Index)
+	{
+		const FVector4& Sphere = ClothCollisionSpheres[Index];
+		const FVector A = ClothToWorld.TransformPosition(FVector(Sphere.X, Sphere.Y, Sphere.Z));
+		const float Radius = Sphere.W * RadiusScale;
+		if (CapsuleIndex >= ClothCollisionCapsuleIndices.Num()
+			|| ClothCollisionCapsuleIndices[CapsuleIndex] != static_cast<uint32>(Index))
+		{
+			LineBatcher.AddSphere(A, Radius, Color);
+			continue;
+		}
+
+		Index = static_cast<int32>(ClothCollisionCapsuleIndices[CapsuleIndex + 1]);
+		CapsuleIndex += 2;
+		const FVector4& End = ClothCollisionSpheres[Index];
+		const FVector B = ClothToWorld.TransformPosition(FVector(End.X, End.Y, End.Z));
+		const FVector Segment = B - A;
+		const float Length = Segment.Size();
+		if (Length <= KINDA_SMALL_NUMBER)
+		{
+			LineBatcher.AddSphere(A, Radius, Color);
+			continue;
+		}
+
+		const FVector Up = Segment / Length;
+		const FVector Reference = std::abs(Up.Z) < 0.99f
+			? FVector(0.0f, 0.0f, 1.0f) : FVector(1.0f, 0.0f, 0.0f);
+		const FVector Right = Reference.Cross(Up).GetSafeNormal();
+		LineBatcher.AddCapsule((A + B) * 0.5f, Up, Right, Radius, Length * 0.5f + Radius, Color);
+	}
+
+	// 마주 보는 평면 쌍에서 박스 중심과 반크기 복원
+	for (int32 FirstPlane = 0; FirstPlane < ClothCollisionPlanes.Num(); FirstPlane += ClothBoxPlaneCount)
+	{
+		FMatrix BoxToCloth = FMatrix::Identity;
+		FVector Center = FVector::ZeroVector;
+		FVector HalfExtent = FVector::ZeroVector;
+		for (int32 AxisIndex = 0; AxisIndex < 3; ++AxisIndex)
+		{
+			const FVector4& Positive = ClothCollisionPlanes[FirstPlane + AxisIndex * 2];
+			const FVector4& Negative = ClothCollisionPlanes[FirstPlane + AxisIndex * 2 + 1];
+			const FVector Normal(Positive.X, Positive.Y, Positive.Z);
+			Center += Normal * ((Negative.W - Positive.W) * 0.5f);
+			HalfExtent[AxisIndex] = -(Positive.W + Negative.W) * 0.5f;
+			BoxToCloth.SetAxis(AxisIndex, Normal);
+		}
+		BoxToCloth.SetOrigin(Center);
+		LineBatcher.AddOrientedBox(FBox{-HalfExtent, HalfExtent}, BoxToCloth * ClothToWorld, Color);
 	}
 }
 
@@ -844,6 +1120,9 @@ void USkeletalMeshComponent::AdvanceCloth(int32 StepCount, float StepDelta)
 	if (StepCount > 0 || bUpdateClothVertices)
 	{
 		UpdateClothMotionConstraints();
+		// 현재 본 포즈의 몸통 충돌 형상 변환과 전달
+		BuildClothBodyCollision();
+		UploadClothBodyCollision();
 	}
 	for (int32 StepIndex = 0; StepIndex < StepCount; ++StepIndex)
 	{

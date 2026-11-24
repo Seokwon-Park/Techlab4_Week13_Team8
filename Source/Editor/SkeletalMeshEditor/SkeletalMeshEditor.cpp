@@ -366,6 +366,12 @@ void FSkeletalMeshEditor::PaintClothVertices(const FVector2& Start, const FVecto
 
 void FSkeletalMeshEditor::OnRenderLine(FLineBatcher& LineBatcher)
 {
+	// Cloth Solver에 전달한 충돌 형상의 와이어 표시
+	if (MeshComponent)
+	{
+		MeshComponent->DrawClothBodyCollision(LineBatcher);
+	}
+
 	if (!bClothPaintMode)
 	{
 		FSkeletalPreviewEditor::OnRenderLine(LineBatcher);

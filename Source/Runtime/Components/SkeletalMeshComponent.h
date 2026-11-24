@@ -82,6 +82,13 @@ public:
 	void TickClothPreview(float DeltaTime);
 	bool HasClothSimulation() const { return ClothSolver.get() != nullptr; }
 
+	// Cloth 충돌에 사용할 PhysicsAsset 바디 이름
+	UPROPERTY(EditAnywhere)
+	FString ClothCollisionBody;
+
+	// Solver에 전달한 몸통 충돌 형상의 프리뷰 표시
+	void DrawClothBodyCollision(FLineBatcher& LineBatcher) const;
+
 	using Super::Serialize;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
 
@@ -188,6 +195,21 @@ private:
 
 	TArray<FClothInstance> ClothInstances;
 	TArray<FClothVertexPosition> ClothVertexPositions;
+
+	// Cloth 하나가 사용할 수 있는 SDK 충돌 배열의 상한
+	static constexpr int32 MaxClothCollisionSpheres = 32;
+	static constexpr int32 MaxClothCollisionPlanes = 32;
+	static constexpr int32 ClothBoxPlaneCount = 6;
+
+	// 등록된 바디와 Cloth 공간의 충돌 데이터
+	FString ActiveClothCollisionBody;
+	TArray<FVector4> ClothCollisionSpheres;
+	TArray<uint32> ClothCollisionCapsuleIndices;
+	TArray<FVector4> ClothCollisionPlanes;
+	TArray<uint32> ClothCollisionConvexMasks;
+
+	void BuildClothBodyCollision();
+	void UploadClothBodyCollision();
 
 	FClothInstance CreateClothInstance(nv::cloth::Factory& Factory,
 		const FSkeletalMeshLODRenderData& LOD, const FClothSectionBinding& Binding,
