@@ -43,6 +43,16 @@ namespace
 			return FMath::DegreesToRadians(std::clamp(LimitDegrees, 0.0f, 180.0f));
 		}
 	}
+
+	// ApplyAngularLimits와 같은 값. 반대쪽 Swing이 Free면 PhysX에 89.9°까지만 들어간다
+	float GetSwingLimitRadian(float LimitDegrees, EAngularConstraintMotion Motion, EAngularConstraintMotion OtherMotion)
+	{
+		if (Motion == ACM_Limited && OtherMotion == ACM_Free)
+		{
+			return FMath::DegreesToRadians(std::clamp(LimitDegrees, 0.0f, 89.9f));
+		}
+		return GetLimitRadian(LimitDegrees, Motion);
+	}
 }
 
 
@@ -328,8 +338,8 @@ void FPhysicsDebugDraw::DrawConstraintLimit(FLineBatcher* LineBatcher, const FCo
 
 	const FConeConstraint& Cone = Constraint.ProfileInstance.ConeLimit;
 	const FTwistConstraint& Twist = Constraint.ProfileInstance.TwistLimit;
-	const float Swing1Radian = GetLimitRadian(Cone.Swing1LimitDegrees, Cone.Swing1Motion);
-	const float Swing2Radian = GetLimitRadian(Cone.Swing2LimitDegrees, Cone.Swing2Motion);
+	const float Swing1Radian = GetSwingLimitRadian(Cone.Swing1LimitDegrees, Cone.Swing1Motion, Cone.Swing2Motion);
+	const float Swing2Radian = GetSwingLimitRadian(Cone.Swing2LimitDegrees, Cone.Swing2Motion, Cone.Swing1Motion);
 	const float TwistRadian = GetLimitRadian(Twist.TwistLimitDegrees, Twist.TwistMotion);
 
 
@@ -340,7 +350,14 @@ void FPhysicsDebugDraw::DrawConstraintLimit(FLineBatcher* LineBatcher, const FCo
 	{
 		if (bFreeAllSwing)
 		{
-			LineBatcher->AddSphere(Origin, DrawSize * 0.9f, SwingColor);
+			// 부모 프레임을 따라 돌도록 반지름과 반높이가 같은 캡슐(구)로 그린다
+			const float Radius = DrawSize * 0.9f;
+			LineBatcher->AddCapsule(Origin, AxisX, AxisY, Radius, Radius, SwingColor);
+			if (ConstraintFillAlpha > 0.0f)
+			{
+				LineBatcher->AddSolidCapsule(Origin, AxisX, AxisY, Radius, Radius,
+					FVector4(SwingColor.X, SwingColor.Y, SwingColor.Z, ConstraintFillAlpha));
+			}
 		}
 		else
 		{
