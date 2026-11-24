@@ -27,6 +27,10 @@ enum class ECollisionEnabled : uint8
     QueryAndPhysics
 };
 
+// QueryOnly 바디의 Shape는 query filter data word3에 이 비트를 켠다.
+// PxBatchQuery 사전 필터(차량 서스펜션 레이캐스트)는 Shape 플래그를 못 보고 filter data만 받기 때문이다
+inline constexpr uint32 QueryOnlyShapeQueryBit = 1u << 30;
+
 // 단일 리지드 액터의 수명과 강체 자세 관리
 struct FBodyInstance
 {

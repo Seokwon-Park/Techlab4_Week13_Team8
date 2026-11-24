@@ -188,6 +188,9 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
         for (physx::PxShape* Shape : Shapes)
         {
             Shape->setFlag(physx::PxShapeFlag::eSIMULATION_SHAPE, false);
+            physx::PxFilterData QueryFilter = Shape->getQueryFilterData();
+            QueryFilter.word3 |= QueryOnlyShapeQueryBit;
+            Shape->setQueryFilterData(QueryFilter);
         }
     }
 
