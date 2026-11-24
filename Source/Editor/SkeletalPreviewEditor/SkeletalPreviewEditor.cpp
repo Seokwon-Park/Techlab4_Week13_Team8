@@ -133,8 +133,11 @@ void FSkeletalPreviewEditor::FocusMesh()
 		.SphereRadius = Extent.Size()
 	};
 
-	// 작은 메시는 가까이 다가가면 기본 NearClip(0.1)에 잘리므로 크기에 비례해 줄인다
-	ViewportClient->SetNearClip(FMath::Clamp(Bound.SphereRadius * 0.01f, 0.001f, 0.1f));
+	// 작은 메시는 가까이 다가가면 기본 NearClip(0.1)에 잘리므로 크기에 비례해 줄인다.
+	// FarClip / NearClip이 1e5를 넘으면 ExtractFrustumPlanes의 Far 평면 법선 길이가 1e-6 아래로 떨어져 assert에 걸린다
+	const float NearClip = FMath::Clamp(Bound.SphereRadius * 0.01f, 0.001f, 0.1f);
+	ViewportClient->SetNearClip(NearClip);
+	ViewportClient->SetFarClip(NearClip * 1.0e5f);
 
 	// AABB로 ViewportClient의 카메라를 메시에 포커싱
 	ViewportClient->FocusOnBounds(Bound);
