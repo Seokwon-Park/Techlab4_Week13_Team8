@@ -599,6 +599,21 @@ USkeletalMeshComponent::FClothInstance USkeletalMeshComponent::CreateClothInstan
 		return {};
 	}
 
+	// 거리 맵을 네이티브 입자 순서로 변환하고 고정점의 반경을 0으로 설정
+	if (!Binding.MaxDistanceByRenderVertex.IsEmpty())
+	{
+		constexpr float UnboundedRadius = (std::numeric_limits<float>::max)();
+		Instance.MotionConstraintRadii.Init(UnboundedRadius, ParticleCount);
+		for (const auto& [RenderVertex, MaxDistance] : Binding.MaxDistanceByRenderVertex)
+		{
+			Instance.MotionConstraintRadii[RenderToParticle[RenderVertex]] = MaxDistance;
+		}
+		for (const uint32 RenderVertex : Binding.PinnedRenderVertices)
+		{
+			Instance.MotionConstraintRadii[RenderToParticle[RenderVertex]] = 0.0f;
+		}
+	}
+
 	// 추출한 위치, 삼각형, 역질량의 Fabric 쿠킹
 	nv::cloth::ClothMeshDesc Desc;
 	Desc.points.data = Positions.GetData();
@@ -663,6 +678,72 @@ void USkeletalMeshComponent::ReleaseClothSolver()
 	ClothSourceMesh = nullptr;
 
 }
+// 현재 본 포즈에 맞춘 Cloth 입자별 제약 구 갱신
+void USkeletalMeshComponent::UpdateClothMotionConstraints()
+{
+	const USkeletalMesh& Mesh = *ClothSourceMesh;
+	const TArray<FBoneInfo>& Bones = Mesh.GetRefSkeleton();
+	if (ComponentSpaceTransforms.Num() != Bones.Num())
+	{
+		return;
+	}
+
+	constexpr float UnboundedRadius = (std::numeric_limits<float>::max)();
+	const FSkeletalMeshLODRenderData& LOD = Mesh.GetRenderData().LODRenderData[0];
+	TArray<FMatrix> RefToLocal;
+	for (FClothInstance& Instance : ClothInstances)
+	{
+		if (Instance.MotionConstraintRadii.IsEmpty())
+		{
+			continue;
+		}
+
+		// 컴포넌트의 Cloth가 공유하는 현재 스키닝 행렬
+		if (RefToLocal.IsEmpty())
+		{
+			RefToLocal.SetNum(Bones.Num());
+			for (int32 BoneIndex = 0; BoneIndex < Bones.Num(); ++BoneIndex)
+			{
+				RefToLocal[BoneIndex] = Bones[BoneIndex].InverseBindPose * ComponentSpaceTransforms[BoneIndex];
+			}
+		}
+
+		nv::cloth::Cloth& Cloth = *Instance.Cloth;
+		const bool bFirstUpdate = Cloth.getNumMotionConstraints() == 0;
+		auto Constraints = Cloth.getMotionConstraints();
+		for (int32 ParticleIndex = 0; ParticleIndex < Instance.ParticleToRenderVertex.Num(); ++ParticleIndex)
+		{
+			const float Radius = Instance.MotionConstraintRadii[ParticleIndex];
+			if (!bFirstUpdate && Radius == UnboundedRadius)
+			{
+				// 이동 제한이 없는 입자의 전체 배열 기록
+				Constraints.begin()[ParticleIndex] = physx::PxVec4(0.0f, 0.0f, 0.0f, Radius);
+				continue;
+			}
+			const uint32 RenderVertex = Instance.ParticleToRenderVertex[ParticleIndex];
+			const FMatrix SkinMatrix = LOD.SkinWeights[RenderVertex].BuildSkinMatrix(RefToLocal);
+			const FVector SkinnedPosition = SkinMatrix.TransformPosition(LOD.BindVertices[RenderVertex].Position);
+			const physx::PxVec3 Center = U2PVector(SkinnedPosition * Instance.SimulationScale);
+			Constraints.begin()[ParticleIndex] = physx::PxVec4(Center, Radius);
+		}
+
+		// 첫 스텝의 현재·이전 위치 일치와 역질량 보존
+		if (bFirstUpdate)
+		{
+			auto Current = Cloth.getCurrentParticles();
+			auto Previous = Cloth.getPreviousParticles();
+			for (int32 ParticleIndex = 0; ParticleIndex < Instance.ParticleToRenderVertex.Num(); ++ParticleIndex)
+			{
+				const physx::PxVec3 Center = Constraints.begin()[ParticleIndex].getXYZ();
+				physx::PxVec4& CurrentParticle = Current.begin()[ParticleIndex];
+				physx::PxVec4& PreviousParticle = Previous.begin()[ParticleIndex];
+				CurrentParticle = physx::PxVec4(Center, CurrentParticle.w);
+				PreviousParticle = physx::PxVec4(Center, PreviousParticle.w);
+			}
+		}
+	}
+}
+
 // 시뮬레이션 입자의 메시 로컬 위치 수집
 void USkeletalMeshComponent::UpdateClothVertexPositions()
 {
@@ -694,6 +775,10 @@ void USkeletalMeshComponent::TickClothing()
 
 	// 첫 결과 또는 완료된 물리 스텝의 결과 갱신
 	bool bUpdateClothVertices = ClothVertexPositions.IsEmpty();
+	if (StepCount > 0 || bUpdateClothVertices)
+	{
+		UpdateClothMotionConstraints();
+	}
 	for (int32 StepIndex = 0; StepIndex < StepCount; ++StepIndex)
 	{
 		// 계산 대상이 있는 스텝의 시작

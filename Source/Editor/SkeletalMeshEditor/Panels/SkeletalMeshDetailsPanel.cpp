@@ -8,8 +8,6 @@
 #include "Render/SkeletalMesh.h"
 #include "UObject/UObjectGlobals.h"
 #include <filesystem>
-#include <charconv>
-#include <sstream>
 
 namespace
 {
@@ -118,7 +116,7 @@ void FSkeletalMeshDetailsPanel::DrawPhysicsDebug()
 	ImGui::Separator();
 }
 
-// 선택한 렌더 섹션의 Cloth 바인딩 입력과 적용
+// 선택한 렌더 섹션의 Cloth 브러시 조작과 바인딩 적용
 void FSkeletalMeshDetailsPanel::DrawClothBinding()
 {
 	USkeletalMesh* Mesh = Editor.GetMesh();
@@ -130,6 +128,7 @@ void FSkeletalMeshDetailsPanel::DrawClothBinding()
 
 	const auto& Sections = Mesh->GetRenderData().LODRenderData[0].Sections;
 	const auto& MaterialSlots = Mesh->GetMaterialSlots();
+	const int32 ClothSectionIndex = Editor.GetClothSectionIndex();
 	const FString Preview = Sections.IsValidIndex(ClothSectionIndex)
 		? std::to_string(ClothSectionIndex) : "Select a section";
 
@@ -143,57 +142,59 @@ void FSkeletalMeshDetailsPanel::DrawClothBinding()
 			const bool bSelected = Index == ClothSectionIndex;
 			if (ImGui::Selectable(Label.c_str(), bSelected) && !bSelected)
 			{
-				ClothSectionIndex = Index;
-				ClothPinnedVertexText[0] = '\0';
+				Editor.SelectClothSection(Index);
 				ClothBindingMessage.clear();
 			}
 		}
 		ImGui::EndCombo();
 	}
 
-	ImGui::InputTextWithHint("Pinned vertices", "Space-separated render vertex IDs",
-		ClothPinnedVertexText, sizeof(ClothPinnedVertexText));
+	const int32 VertexCount = Editor.GetClothSectionVertexCount();
+	const int32 PinCount = Editor.GetClothPinnedVertexCount();
+	ImGui::BeginDisabled(VertexCount == 0);
+	bool bPaintMaxDistance = Editor.IsClothPaintMode();
+	if (ImGui::Checkbox("Paint Max Distance", &bPaintMaxDistance))
+	{
+		Editor.SetClothPaintMode(bPaintMaxDistance);
+	}
+	if (bPaintMaxDistance)
+	{
+		float Radius = Editor.GetClothBrushRadius();
+		if (ImGui::SliderFloat("Brush Radius", &Radius, 4.0f, 64.0f, "%.0f px"))
+		{
+			Editor.SetClothBrushRadius(Radius);
+		}
+		float MaxDistance = Editor.GetClothBrushMaxDistance();
+		if (ImGui::DragFloat("Max Distance", &MaxDistance, 0.01f, 0.0f, FLT_MAX, "%.4g m", ImGuiSliderFlags_AlwaysClamp))
+		{
+			Editor.SetClothBrushMaxDistance(MaxDistance);
+		}
+		ImGui::TextDisabled("Drag to paint. 0 m pins. Shift + drag erases.");
+	}
+	ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.1f, 1.0f), "Pinned: %d / %d", PinCount, VertexCount);
+	ImGui::TextColored(ImVec4(0.2f, 0.75f, 1.0f, 1.0f), "Distance-limited: %d", Editor.GetClothCappedVertexCount());
+	const bool bApply = ImGui::Button("Apply Cloth Binding");
+	ImGui::EndDisabled();
+
 	if (!ClothBindingMessage.empty())
 	{
 		ImGui::TextWrapped("%s", ClothBindingMessage.c_str());
 	}
 
-	if (!ImGui::Button("Apply Cloth Binding"))
+	if (!bApply)
 	{
 		return;
 	}
 
-	// 공백으로 구분된 원본 정점 번호 검증
-	FClothSectionBinding NewBinding;
-	NewBinding.SectionIndex = ClothSectionIndex;
-	std::istringstream Input(ClothPinnedVertexText);
-	for (FString Token; Input >> Token;)
+	if (PinCount == VertexCount)
 	{
-		uint32 VertexIndex = 0;
-		const char* Last = Token.data() + Token.size();
-		const auto [End, Error] = std::from_chars(Token.data(), Last, VertexIndex);
-		if (Error != std::errc{} || End != Last)
-		{
-			ClothBindingMessage = "Enter unsigned vertex IDs separated by spaces.";
-			return;
-		}
-		NewBinding.PinnedRenderVertices.Add(VertexIndex);
+		ClothBindingMessage = "Leave at least one vertex unpinned.";
+		return;
 	}
 
-	// 나머지 섹션을 보존한 선택 바인딩 교체
-	TArray<FClothSectionBinding> Bindings;
-	for (const FClothSectionBinding& Existing : Mesh->GetClothSectionBindings())
-	{
-		if (Existing.SectionIndex != ClothSectionIndex)
-		{
-			Bindings.Add(Existing);
-		}
-	}
-	Bindings.Add(std::move(NewBinding));
-
-	ClothBindingMessage = Mesh->SetClothSectionBindings(std::move(Bindings))
+	ClothBindingMessage = Editor.ApplyClothBinding()
 		? "Cloth binding applied. Start PIE to simulate."
-		: "Select a valid section and enter vertex IDs from that section.";
+		: "Select a valid section with unshared render vertices.";
 }
 
 void FSkeletalMeshDetailsPanel::DrawContent()

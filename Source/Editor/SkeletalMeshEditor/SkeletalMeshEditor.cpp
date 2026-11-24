@@ -1,8 +1,13 @@
 #include "EnginePCH.h"
 #include "Editor/SkeletalMeshEditor/SkeletalMeshEditor.h"
 #include "SkeletalMeshEditorTab.h"
+#include "Collision/Ray.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Render/LineBatcher.h"
 #include "Render/SkeletalMesh.h"
+#include "Render/SkeletalMeshObject.h"
+#include <algorithm>
+#include <cmath>
 
 bool FSkeletalMeshEditor::InitializeResources()
 {
@@ -23,10 +28,334 @@ void FSkeletalMeshEditor::ShutdownResources()
 
 void FSkeletalMeshEditor::TickAfterWorld(float DeltaTime)
 {
+	if (bClothPaintMode)
+	{
+		UpdateClothPaintStroke();
+		return;
+	}
+
 	// 기즈모가 입력을 쓰지 않았을 때만 본을 피킹하고, 마지막에 기즈모를 선택한 본 위치로 맞춘다
 	if (!UpdateBoneGizmo())
 		UpdateBonePicking();
 	SyncBoneGizmo();
+}
+
+void FSkeletalMeshEditor::SelectClothSection(int32 SectionIndex)
+{
+	// 새 섹션의 고유 렌더 정점과 적용된 이동 반경 복원
+	bClothStrokeActive = false;
+	ClothSectionIndex = SectionIndex;
+	ClothSectionVertices.Reset();
+	ClothPinnedVertices.Reset();
+	ClothMaxDistances.Reset();
+
+	const FSkeletalMeshLODRenderData& LOD = Mesh->GetRenderData().LODRenderData[0];
+	const FSkeletalMeshSection& Section = LOD.Sections[SectionIndex];
+	TSet<uint32> SeenVertices;
+	for (uint32 Index = Section.StartIndex; Index < Section.StartIndex + Section.IndexCount; ++Index)
+	{
+		const uint32 VertexIndex = LOD.Indices[Index];
+		if (SeenVertices.Add(VertexIndex))
+		{
+			ClothSectionVertices.Add(VertexIndex);
+		}
+	}
+	if (ClothSectionVertices.IsEmpty())
+	{
+		bClothPaintMode = false;
+	}
+
+	for (const FClothSectionBinding& Binding : Mesh->GetClothSectionBindings())
+	{
+		if (Binding.SectionIndex == SectionIndex)
+		{
+			for (const uint32 VertexIndex : Binding.PinnedRenderVertices)
+			{
+				ClothPinnedVertices.Add(VertexIndex);
+			}
+			ClothMaxDistances = Binding.MaxDistanceByRenderVertex;
+			break;
+		}
+	}
+}
+
+void FSkeletalMeshEditor::SetClothPaintMode(bool bEnabled)
+{
+	// 본 기즈모와 Cloth 브러시 사이의 입력 소유권 전환
+	CancelViewportInteraction();
+	bClothPaintMode = bEnabled;
+}
+
+void FSkeletalMeshEditor::SetClothBrushMaxDistance(float MaxDistance)
+{
+	// 유한한 미터 단위 입력과 0의 고정점 의미 유지
+	if (std::isfinite(MaxDistance))
+	{
+		ClothBrushMaxDistance = FMath::Max(0.0f, MaxDistance);
+	}
+}
+
+bool FSkeletalMeshEditor::ApplyClothBinding()
+{
+	// 기존 섹션 바인딩을 보존한 선택 섹션 적용
+	TArray<FClothSectionBinding> Bindings;
+	for (const FClothSectionBinding& Binding : Mesh->GetClothSectionBindings())
+	{
+		if (Binding.SectionIndex != ClothSectionIndex)
+		{
+			Bindings.Add(Binding);
+		}
+	}
+
+	FClothSectionBinding NewBinding;
+	NewBinding.SectionIndex = ClothSectionIndex;
+	NewBinding.MaxDistanceByRenderVertex = ClothMaxDistances;
+	NewBinding.PinnedRenderVertices.Reserve(ClothPinnedVertices.Num());
+	for (const uint32 VertexIndex : ClothSectionVertices)
+	{
+		if (ClothPinnedVertices.Contains(VertexIndex))
+		{
+			NewBinding.PinnedRenderVertices.Add(VertexIndex);
+		}
+	}
+	Bindings.Add(std::move(NewBinding));
+	return Mesh->SetClothSectionBindings(std::move(Bindings));
+}
+
+void FSkeletalMeshEditor::UpdateClothPaintStroke()
+{
+	// 프리뷰에서 시작한 드래그를 다음 마우스 위치까지 연결
+	if (!CanProcessViewportInput() || !PointerInput.bHovered || PointerInput.bCancel)
+	{
+		bClothStrokeActive = false;
+		return;
+	}
+	if (PointerInput.bMousePressed)
+	{
+		PreviousClothMouseUV = PointerInput.MouseUV;
+		bClothStrokeActive = true;
+	}
+	if (!bClothStrokeActive)
+	{
+		return;
+	}
+
+	if (PointerInput.bMousePressed || PreviousClothMouseUV != PointerInput.MouseUV
+		|| bPreviousClothErase != PointerInput.bShiftDown)
+	{
+		const FVector2 Start(PreviousClothMouseUV.X * ViewportWidth, PreviousClothMouseUV.Y * ViewportHeight);
+		const FVector2 End(PointerInput.MouseUV.X * ViewportWidth, PointerInput.MouseUV.Y * ViewportHeight);
+		PaintClothVertices(Start, End);
+	}
+	PreviousClothMouseUV = PointerInput.MouseUV;
+	bPreviousClothErase = PointerInput.bShiftDown;
+	bClothStrokeActive = PointerInput.bMouseDown;
+}
+
+void FSkeletalMeshEditor::PaintClothVertices(const FVector2& Start, const FVector2& End)
+{
+	const FSkeletalMeshObject* MeshObject = MeshComponent ? MeshComponent->GetMeshObject() : nullptr;
+	const TArray<FVertex>* Vertices = MeshObject ? MeshObject->GetCPUSkinnedVertices() : nullptr;
+	if (!Vertices || ClothSectionVertices.IsEmpty())
+	{
+		return;
+	}
+
+	constexpr float MinClipW = 0.0001f;
+	const FMatrix World = MeshComponent->GetWorldMatrix();
+	const FMatrix LocalToClip = World * ViewportClient->GetViewProjectionMatrix();
+	const auto ToScreen = [this](const FVector4& Clip)
+	{
+		return FVector2((0.5f + 0.5f * Clip.X / Clip.W) * ViewportWidth,
+			(0.5f - 0.5f * Clip.Y / Clip.W) * ViewportHeight);
+	};
+
+	// 브러시가 지나간 범위에서 상태가 바뀔 정점 수집
+	struct FBrushCandidate
+	{
+		uint32 VertexIndex;
+		FVector2 Screen;
+		FRay LocalRay;
+		float OcclusionLimit;
+		bool bOccluded = false;
+		bool bOnVisibleFace = false;
+	};
+
+	TArray<FBrushCandidate> Candidates;
+	const bool bErase = PointerInput.bShiftDown;
+	const bool bPin = ClothBrushMaxDistance == 0.0f;
+	const FMatrix WorldToLocal = World.Inverse();
+	for (const uint32 VertexIndex : ClothSectionVertices)
+	{
+		const bool bPinned = ClothPinnedVertices.Contains(VertexIndex);
+		const float* OldMaxDistance = ClothMaxDistances.Find(VertexIndex);
+		const bool bHasSameValue = bPin
+			? bPinned && !OldMaxDistance
+			: !bPinned && OldMaxDistance && *OldMaxDistance == ClothBrushMaxDistance;
+		if (bErase ? !bPinned && !OldMaxDistance : bHasSameValue)
+		{
+			continue;
+		}
+
+		const FVector Position = (*Vertices)[VertexIndex].Position;
+		const FVector4 Clip = FVector4(Position, 1.0f) * LocalToClip;
+		if (Clip.W < MinClipW || Clip.Z < 0.0f || Clip.Z > Clip.W)
+		{
+			continue;
+		}
+
+		const FVector2 Screen = ToScreen(Clip);
+		if (Screen.X < 0.0f || Screen.X >= ViewportWidth || Screen.Y < 0.0f || Screen.Y >= ViewportHeight
+			|| DistanceToSegment(Screen, Start, End) > ClothBrushRadius)
+		{
+			continue;
+		}
+
+		const FRay Ray = ViewportClient->DeprojectScreenToWorld(Screen);
+		const float Distance = (World.TransformPosition(Position) - Ray.Origin).Dot(Ray.Direction);
+		const FRay LocalRay{ WorldToLocal.TransformPosition(Ray.Origin), WorldToLocal.TransformVector(Ray.Direction) };
+		const float Tolerance = 0.0001f * FMath::Max(1.0f, Distance);
+		Candidates.Add({ VertexIndex, Screen, LocalRay, Distance - Tolerance });
+	}
+	if (Candidates.IsEmpty())
+	{
+		return;
+	}
+
+	// 브러시 영역과 겹치는 삼각형으로 후보 정점의 가림 검사
+	const FVector2 BrushMin(FMath::Min(Start.X, End.X) - ClothBrushRadius, FMath::Min(Start.Y, End.Y) - ClothBrushRadius);
+	const FVector2 BrushMax(FMath::Max(Start.X, End.X) + ClothBrushRadius, FMath::Max(Start.Y, End.Y) + ClothBrushRadius);
+	TArray<FVector4> ClipVertices;
+	ClipVertices.Reserve(Vertices->Num());
+	for (const FVertex& Vertex : *Vertices)
+	{
+		ClipVertices.Add(FVector4(Vertex.Position, 1.0f) * LocalToClip);
+	}
+
+	const FSkeletalMeshLODRenderData& LOD = Mesh->GetRenderData().LODRenderData[0];
+	const bool bCullBackFaces = !ViewportClient->IsWireframe();
+	for (const FSkeletalMeshSection& Section : LOD.Sections)
+	{
+		const uint32 EndIndex = Section.StartIndex + Section.IndexCount;
+		for (uint32 Index = Section.StartIndex; Index + 2 < EndIndex; Index += 3)
+		{
+			const uint32 A = LOD.Indices[Index];
+			const uint32 B = LOD.Indices[Index + 1];
+			const uint32 C = LOD.Indices[Index + 2];
+			const FVector4& ClipA = ClipVertices[A];
+			const FVector4& ClipB = ClipVertices[B];
+			const FVector4& ClipC = ClipVertices[C];
+			// D3D 화면의 시계 방향 앞면 판정
+			if (bCullBackFaces && FVector(ClipA.X, ClipA.Y, ClipA.W).Dot(
+				FVector(ClipB.X, ClipB.Y, ClipB.W).Cross(FVector(ClipC.X, ClipC.Y, ClipC.W))) >= 0.0f)
+			{
+				continue;
+			}
+
+			FVector2 Min = BrushMin;
+			FVector2 Max = BrushMax;
+			if (ClipA.W >= MinClipW && ClipB.W >= MinClipW && ClipC.W >= MinClipW)
+			{
+				const FVector2 ScreenA = ToScreen(ClipA);
+				const FVector2 ScreenB = ToScreen(ClipB);
+				const FVector2 ScreenC = ToScreen(ClipC);
+				Min = FVector2(std::min({ ScreenA.X, ScreenB.X, ScreenC.X }), std::min({ ScreenA.Y, ScreenB.Y, ScreenC.Y }));
+				Max = FVector2(std::max({ ScreenA.X, ScreenB.X, ScreenC.X }), std::max({ ScreenA.Y, ScreenB.Y, ScreenC.Y }));
+				if (Max.X < BrushMin.X || Min.X > BrushMax.X || Max.Y < BrushMin.Y || Min.Y > BrushMax.Y)
+				{
+					continue;
+				}
+			}
+
+			for (FBrushCandidate& Candidate : Candidates)
+			{
+				const uint32 VertexIndex = Candidate.VertexIndex;
+				if (VertexIndex == A || VertexIndex == B || VertexIndex == C)
+				{
+					Candidate.bOnVisibleFace = true;
+					continue;
+				}
+				const FVector2& Screen = Candidate.Screen;
+				if (Candidate.bOccluded
+					|| Screen.X < Min.X || Screen.X > Max.X || Screen.Y < Min.Y || Screen.Y > Max.Y)
+				{
+					continue;
+				}
+
+				float HitDistance = 0.0f;
+				if (RayIntersectsTriangle(Candidate.LocalRay, (*Vertices)[A].Position, (*Vertices)[B].Position,
+					(*Vertices)[C].Position, HitDistance) && HitDistance < Candidate.OcclusionLimit)
+				{
+					const FVector4 HitClip = FVector4(Candidate.LocalRay.PointAt(HitDistance), 1.0f) * LocalToClip;
+					Candidate.bOccluded = HitClip.Z >= 0.0f && HitClip.Z <= HitClip.W;
+				}
+			}
+		}
+	}
+
+	for (const FBrushCandidate& Candidate : Candidates)
+	{
+		if (!Candidate.bOnVisibleFace || Candidate.bOccluded)
+		{
+			continue;
+		}
+
+		// 가시 정점의 기존 값 삭제 또는 교체
+		if (bErase)
+		{
+			ClothPinnedVertices.Remove(Candidate.VertexIndex);
+			ClothMaxDistances.Remove(Candidate.VertexIndex);
+		}
+		else if (bPin)
+		{
+			ClothMaxDistances.Remove(Candidate.VertexIndex);
+			ClothPinnedVertices.Add(Candidate.VertexIndex);
+		}
+		else
+		{
+			ClothPinnedVertices.Remove(Candidate.VertexIndex);
+			ClothMaxDistances.Add(Candidate.VertexIndex, ClothBrushMaxDistance);
+		}
+	}
+}
+
+void FSkeletalMeshEditor::OnRenderLine(FLineBatcher& LineBatcher)
+{
+	if (!bClothPaintMode)
+	{
+		FSkeletalPreviewEditor::OnRenderLine(LineBatcher);
+		return;
+	}
+
+	// 고정점과 거리 제한점의 프리뷰 마커
+	const FSkeletalMeshObject* MeshObject = MeshComponent ? MeshComponent->GetMeshObject() : nullptr;
+	const TArray<FVertex>* Vertices = MeshObject ? MeshObject->GetCPUSkinnedVertices() : nullptr;
+	if (!Vertices || (ClothPinnedVertices.IsEmpty() && ClothMaxDistances.IsEmpty()))
+	{
+		return;
+	}
+
+	const FMatrix World = MeshComponent->GetWorldMatrix();
+	const FVector4 PinColor(1.0f, 0.75f, 0.1f, 1.0f);
+	const FVector4 CapColor(0.2f, 0.75f, 1.0f, 1.0f);
+	const FVector X(BoneSphereSize, 0.0f, 0.0f);
+	const FVector Y(0.0f, BoneSphereSize, 0.0f);
+	const FVector Z(0.0f, 0.0f, BoneSphereSize);
+	const auto DrawMarker = [&](uint32 VertexIndex, const FVector4& Color)
+	{
+		const FVector Position = World.TransformPosition((*Vertices)[VertexIndex].Position);
+		LineBatcher.AddLine(Position - X, Position + X, Color);
+		LineBatcher.AddLine(Position - Y, Position + Y, Color);
+		LineBatcher.AddLine(Position - Z, Position + Z, Color);
+	};
+	for (const uint32 VertexIndex : ClothPinnedVertices)
+	{
+		DrawMarker(VertexIndex, PinColor);
+	}
+	for (const auto& MaxDistance : ClothMaxDistances)
+	{
+		DrawMarker(MaxDistance.first, CapColor);
+	}
 }
 
 TUniquePtr<IEditorTab> FSkeletalMeshEditor::CreateTab()

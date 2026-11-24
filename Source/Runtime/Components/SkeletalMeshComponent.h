@@ -171,6 +171,7 @@ private:
 	{
 		TUniquePtr<nv::cloth::Cloth> Cloth;
 		TArray<uint32> ParticleToRenderVertex;
+		TArray<float> MotionConstraintRadii;
 		FVector SimulationScale;
 	};
 
@@ -185,6 +186,7 @@ private:
 	FClothInstance CreateClothInstance(nv::cloth::Factory& Factory,
 		const FSkeletalMeshLODRenderData& LOD, const FClothSectionBinding& Binding,
 		float GravityZ) const;
+	void UpdateClothMotionConstraints();
 	void UpdateClothVertexPositions();
 	const TArray<FClothVertexPosition>* GetClothVertexPositions() const override
 	{

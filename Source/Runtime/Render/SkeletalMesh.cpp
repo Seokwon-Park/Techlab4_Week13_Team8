@@ -7,6 +7,7 @@
 #include "UObject/UObjectGlobals.h"
 #include <filesystem>
 #include <algorithm>
+#include <cmath>
 
 UPhysicsAsset* USkeletalMesh::GetPhysicsAsset()
 {
@@ -186,6 +187,17 @@ bool USkeletalMesh::SetClothSectionBindings(TArray<FClothSectionBinding> Binding
 		for (const uint32* Vertex = First; Vertex != End; ++Vertex)
 		{
 			ClothSectionByVertex[*Vertex] = Binding.SectionIndex;
+		}
+
+		// 선택한 섹션에 속한 정점과 유효한 반경의 확인
+		for (const auto& [RenderVertex, MaxDistance] : Binding.MaxDistanceByRenderVertex)
+		{
+			if (RenderVertex >= static_cast<uint32>(LOD.BindVertices.Num())
+				|| ClothSectionByVertex[RenderVertex] != Binding.SectionIndex
+				|| !std::isfinite(MaxDistance) || MaxDistance <= 0.0f)
+			{
+				return false;
+			}
 		}
 		BoundSections[Binding.SectionIndex] = 1;
 	}

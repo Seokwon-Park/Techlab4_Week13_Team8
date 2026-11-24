@@ -16,8 +16,6 @@ private:
 	void DrawPhysicsDebug();
 	void DrawClothBinding();
 
-	int32 ClothSectionIndex = -1;
-	char ClothPinnedVertexText[1024] = {};
 	FString ClothBindingMessage;
 	class UPhysicsAsset* DebugPhysicsAsset = nullptr;
 	float DebugMinBoneSize = 20.0f;

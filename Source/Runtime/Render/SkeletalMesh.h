@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Asset/RenderAsset.h"
+#include "Containers/Map.h"
 #include "Math/Box.h"
 #include "Vertex.h"
 #include "SkeletalMeshData.h"
@@ -37,6 +38,9 @@ struct FClothSectionBinding
 {
 	int32 SectionIndex = INDEX_NONE;
 	TArray<uint32> PinnedRenderVertices;
+
+	// 렌더 정점 번호와 시뮬레이션 공간의 이동 반경(m)
+	TMap<uint32, float> MaxDistanceByRenderVertex;
 };
 
 UCLASS()

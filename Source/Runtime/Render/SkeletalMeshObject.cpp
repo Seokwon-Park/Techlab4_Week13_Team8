@@ -62,12 +62,7 @@ void FSkeletalMeshObject::SkinVerticesCPU(TArray<FVertex>& OutVertices, FBox& Ou
 				const FVertex& Bind = LOD.BindVertices[v];
 				const FSkinWeight& W = LOD.SkinWeights[v];
 
-				FMatrix M = RefToLocal[W.BoneIndex[0]] * W.Weight[0];
-				for (int32 k = 1; k < MaxBoneInfluences; ++k)
-				{
-					if (W.Weight[k] > 0.0f)
-						M += RefToLocal[W.BoneIndex[k]] * W.Weight[k];
-				}
+				const FMatrix M = W.BuildSkinMatrix(RefToLocal);
 
 				FVertex& Out = OutVertices[v];
 				Out = Bind;

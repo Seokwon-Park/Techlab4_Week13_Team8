@@ -64,12 +64,23 @@ void FSkeletalMeshViewportPanel::DrawContent()
 	const FViewportPointerInput PointerInput
 	{
 		.MouseUV = FVector2((IO.MousePos.x - Origin.x) / Size.x, (IO.MousePos.y - Origin.y) / Size.y),
-		.bHovered = bHovered,
+		.bHovered = bHovered && (!Editor.IsClothPaintMode() || !bCameraDragging),
 		.bFocused = bFocused && !IO.AppFocusLost,
 		.bMousePressed = bHovered && !bCameraDragging && ImGui::IsMouseClicked(ImGuiMouseButton_Left),
 		.bMouseDown = bMouseDown,
 		.bCancel = ImGui::IsKeyPressed(ImGuiKey_Escape, false),
+		.bShiftDown = IO.KeyShift,
 	};
+
+	// 프리뷰 위의 브러시 반경과 현재 편집 모드 표시
+	if (Editor.IsClothPaintMode() && bHovered && !bCameraDragging)
+	{
+		const ImU32 BrushColor = IO.KeyShift ? IM_COL32(255, 110, 105, 255) : IM_COL32(255, 201, 65, 255);
+		ImDrawList* DrawList = ImGui::GetWindowDrawList();
+		DrawList->PushClipRect(Origin, ViewMax, true);
+		DrawList->AddCircle(IO.MousePos, Editor.GetClothBrushRadius(), BrushColor, 0, 2.0f);
+		DrawList->PopClipRect();
+	}
 
 	FViewportCameraInput Input
 	{
