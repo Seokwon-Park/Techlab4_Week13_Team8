@@ -28,6 +28,12 @@
 #include <extensions/PxDefaultSimulationFilterShader.h>   // PxSetGroup, PxSetGroupCollisionFlag
 #include <PxRigidDynamic.h>
 #include "Physics/NvClothSDK.h"
+#include "Physics/PhysXConversion.h"
+#include <NvCloth/Cloth.h>
+#include <NvCloth/Fabric.h>
+#include <NvCloth/PhaseConfig.h>
+#include <NvClothExt/ClothFabricCooker.h>
+#include <limits>
 #include "Physics/PhysicsSettings.h"
 #include <NvCloth/Factory.h>
 #include <NvCloth/Solver.h>
@@ -85,6 +91,7 @@ void USkeletalMeshComponent::BeginPlay()
 			}
 		}
 	}
+	RefreshClothSolver();
 }
 
 void USkeletalMeshComponent::TickComponent(float DeltaTime)
@@ -481,38 +488,175 @@ void USkeletalMeshComponent::OnSkeletalMeshChanged()
 void USkeletalMeshComponent::RefreshClothSolver()
 {
 	UWorld* World = GetWorld();
-	if (!IsRegistered() || !World || !World->IsGameWorld() || !GetSkeletalMesh())
+	const USkeletalMesh* Mesh = GetSkeletalMesh();
+	if (!IsRegistered() || !HasBegunPlay() || !World || !World->IsGameWorld() || !Mesh)
 	{
 		ReleaseClothSolver();
 		return;
 	}
+	if (ClothSourceMesh == Mesh){ return; }
 
-	// 컴포넌트별 Solver의 중복 생성 방지
-	if (ClothSolver)
-	{
-		return;
-	}
-
+	ReleaseClothSolver();
+	const auto& Bindings = Mesh->GetClothSectionBindings();
 	nv::cloth::Factory* Factory = NvClothSDK::GetFactory();
-	if (!Factory)
+	if (Bindings.IsEmpty() || !Factory){ return; }
+
+	// 바인딩별 Cloth 생성과 초기 월드 중력 적용
+	const FSkeletalMeshLODRenderData& LOD = Mesh->GetRenderData().LODRenderData[0];
+	const float GravityZ = World->IsWorldGravityOverridden()
+		? World->GetWorldGravityZ() : FPhysicsSettings::Get().DefaultGravityZ;
+	TArray<TUniquePtr<nv::cloth::Cloth>> NewCloths;
+	NewCloths.Reserve(Bindings.Num());
+
+	for (const FClothSectionBinding& Binding : Bindings)
 	{
+		TUniquePtr<nv::cloth::Cloth> Cloth = CreateClothInstance(*Factory, LOD, Binding, GravityZ);
+		if (!Cloth)
+		{
+			HTR_LOG(Warning, "Failed to create cloth for section {}", Binding.SectionIndex);
+			return;
+		}
+		NewCloths.Add(std::move(Cloth));
+	}
+
+	TUniquePtr<nv::cloth::Solver> NewSolver(Factory->createSolver());
+	if (!NewSolver)
+	{
+		HTR_LOG(Warning, "Failed to create component cloth solver");
 		return;
 	}
 
-	ClothSolver.reset(Factory->createSolver());
-	if (!ClothSolver)
+	// 준비된 Cloth의 등록과 틱 실행 연결
+	for (const auto& Cloth : NewCloths)
 	{
-		HTR_LOG(Warning, "Failed to create skeletal mesh cloth solver");
-		return;
+		NewSolver->addCloth(Cloth.get());
 	}
 
-	// Solver 생성 완료 후 월드 틱 등록
+	ClothInstances = std::move(NewCloths);
+	ClothSolver = std::move(NewSolver);
+	ClothSourceMesh = Mesh;
 	ClothTickFunction.RegisterTickFunction(World->GetTickTaskManager());
+}
+// 바인딩과 렌더 섹션으로부터 Cloth 인스턴스 생성
+TUniquePtr<nv::cloth::Cloth> USkeletalMeshComponent::CreateClothInstance(
+	nv::cloth::Factory& Factory, const FSkeletalMeshLODRenderData& LOD,
+	const FClothSectionBinding& Binding, float GravityZ) const
+{
+	const FSkeletalMeshSection& Section = LOD.Sections[Binding.SectionIndex];
+	const FVector Scale = GetWorldScale3D();
+	if (Scale.X <= 0.0f || Scale.Y <= 0.0f || Scale.Z <= 0.0f)
+	{
+		return {};
+	}
+
+	// 전역 렌더 정점에서 연속 Cloth 입자로의 변환
+	TArray<int32> RenderToParticle;
+	RenderToParticle.Init(INDEX_NONE, LOD.BindVertices.Num());
+	TArray<physx::PxVec3> Positions;
+	TArray<uint32> Indices;
+	Indices.Reserve(Section.IndexCount);
+	const uint32 End = Section.StartIndex + Section.IndexCount;
+
+	for (uint32 Index = Section.StartIndex; Index < End; ++Index)
+	{
+		const uint32 RenderVertex = LOD.Indices[Index];
+		int32& Particle = RenderToParticle[RenderVertex];
+		if (Particle == INDEX_NONE)
+		{
+			Particle = Positions.Num();
+			Positions.Add(U2PVector(LOD.BindVertices[RenderVertex].Position * Scale));
+		}
+		Indices.Add(static_cast<uint32>(Particle));
+	}
+
+	// Windows CPU Fabric의 16비트 인덱스와 SIMD 패딩 상한
+	constexpr uint32 MaxCpuParticles = (std::numeric_limits<uint16>::max)() - 7;
+	const uint32 ParticleCount = static_cast<uint32>(Positions.Num());
+	if (ParticleCount > MaxCpuParticles)
+	{
+		return {};
+	}
+
+	// 바인딩에서 지정한 고정점의 역질량 설정
+	TArray<float> InverseMasses;
+	InverseMasses.Init(1.0f, ParticleCount);
+	uint32 MovableParticleCount = ParticleCount;
+	for (const uint32 RenderVertex : Binding.PinnedRenderVertices)
+	{
+		float& InverseMass = InverseMasses[RenderToParticle[RenderVertex]];
+		if (InverseMass > 0.0f)
+		{
+			InverseMass = 0.0f;
+			--MovableParticleCount;
+		}
+	}
+	// 이동 가능한 입자가 없는 섹션의 쿠킹 생략
+	if (MovableParticleCount == 0)
+	{
+		return {};
+	}
+
+	// 추출한 위치, 삼각형, 역질량의 Fabric 쿠킹
+	nv::cloth::ClothMeshDesc Desc;
+	Desc.points.data = Positions.GetData();
+	Desc.points.count = ParticleCount;
+	Desc.points.stride = sizeof(physx::PxVec3);
+	Desc.triangles.data = Indices.GetData();
+	Desc.triangles.count = Indices.Num() / 3;
+	Desc.triangles.stride = sizeof(uint32) * 3;
+	Desc.invMasses.data = InverseMasses.GetData();
+	Desc.invMasses.count = ParticleCount;
+	Desc.invMasses.stride = sizeof(float);
+
+	const physx::PxQuat Rotation = U2PQuat(GetWorldRotation().Quaternion());
+	const physx::PxVec3 CookDown = Rotation.rotateInv(physx::PxVec3(0.0f, 0.0f, -1.0f));
+	nv::cloth::Fabric* Fabric = NvClothCookFabricFromMesh(&Factory, Desc, CookDown, nullptr, false);
+	if (!Fabric)
+	{
+		return {};
+	}
+
+	// 초기 입자 생성과 쿠킹 참조 반환
+	TArray<physx::PxVec4> Particles;
+	Particles.Reserve(ParticleCount);
+	for (uint32 Particle = 0; Particle < ParticleCount; ++Particle)
+	{
+		Particles.Emplace(Positions[Particle], InverseMasses[Particle]);
+	}
+
+	const uint32 PhaseCount = Fabric->getNumPhases();
+	TUniquePtr<nv::cloth::Cloth> Cloth(Factory.createCloth(
+		{ Particles.GetData(), Particles.GetData() + ParticleCount }, *Fabric));
+	Fabric->decRefCount();
+	if (!Cloth)
+	{
+		return {};
+	}
+
+	// 기본 제약 그룹과 초기 월드 자세의 적용
+	TArray<nv::cloth::PhaseConfig> Phases;
+	Phases.Reserve(PhaseCount);
+	for (uint32 Phase = 0; Phase < PhaseCount; ++Phase)
+	{
+		Phases.Emplace(static_cast<uint16>(Phase));
+	}
+	Cloth->setPhaseConfig({ Phases.GetData(), Phases.GetData() + Phases.Num() });
+	Cloth->teleportToLocation(U2PVector(GetWorldLocation()), Rotation);
+	Cloth->setGravity(physx::PxVec3(0.0f, 0.0f, GravityZ));
+	return Cloth;
 }
 void USkeletalMeshComponent::ReleaseClothSolver()
 {
 	ClothTickFunction.UnRegisterTickFunction();
+	for (const auto& Cloth : ClothInstances)
+	{
+		ClothSolver->removeCloth(Cloth.get());
+	}
+
+	ClothInstances.Empty();
 	ClothSolver.reset();
+	ClothSourceMesh = nullptr;
+
 }
 void USkeletalMeshComponent::TickClothing()
 {
@@ -839,6 +983,7 @@ USkeletalMeshComponent::USkeletalMeshComponent()
 
 USkeletalMeshComponent::~USkeletalMeshComponent()
 {
+	ReleaseClothSolver();
 	if (ManagedAnimGraph)
 	{
 		if (AnimInstance == ManagedAnimGraph.get())

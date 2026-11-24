@@ -33,6 +33,12 @@ struct FSkeletalMeshRenderData
 	TArray<FSkeletalMeshLODRenderData> LODRenderData;
 };
 
+struct FClothSectionBinding
+{
+	int32 SectionIndex = INDEX_NONE;
+	TArray<uint32> PinnedRenderVertices;
+};
+
 UCLASS()
 class USkeletalMesh : public URenderAsset
 {
@@ -44,6 +50,8 @@ public:
 	int32 GetNumBones() const { return RefSkeleton.Num(); }
 	int32 FindBoneIndex(const FString& Name) const;
 	const FSkeletalMeshRenderData& GetRenderData() const { return RenderData; }
+	const TArray<FClothSectionBinding>& GetClothSectionBindings() const { return ClothSectionBindings; }
+	bool SetClothSectionBindings(TArray<FClothSectionBinding> Bindings);
 	const TArray<FSkeletalMaterialSlot>& GetMaterialSlots() const { return MaterialSlots; }
 	UMaterial* GetMaterial(uint32 SlotIndex) const;
 
@@ -68,6 +76,7 @@ private:
 	TArray<FSkeletalMaterialSlot> MaterialSlots;
 	TArray<UMaterial*> Materials;
 	FSkeletalMeshRenderData RenderData;
+	TArray<FClothSectionBinding> ClothSectionBindings;
 	// UStaticMesh와 같은 캐시: 같은 머티리얼 조합의 컴포넌트끼리 섹션 목록 공유
 	TMap<TArray<UMaterial*>, TWeakPtr<const FMeshRenderState>, FMaterialSlotsHash> RenderStates;
 };

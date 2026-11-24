@@ -27,6 +27,8 @@ class USkeletalMeshComponent;
 // 네이티브 Cloth Solver의 전방 선언
 namespace nv::cloth
 {
+	class Factory;
+	class Cloth;
 	class Solver;
 }
 
@@ -167,7 +169,11 @@ private:
 	friend struct FSkeletalMeshComponentClothTickFunction;
 	TUniquePtr<nv::cloth::Solver> ClothSolver;
 	FSkeletalMeshComponentClothTickFunction ClothTickFunction;
+	TArray<TUniquePtr<nv::cloth::Cloth>> ClothInstances;
+	const USkeletalMesh* ClothSourceMesh = nullptr;
 
+	TUniquePtr<nv::cloth::Cloth> CreateClothInstance(nv::cloth::Factory& Factory,
+		const FSkeletalMeshLODRenderData& LOD, const FClothSectionBinding& Binding, float GravityZ) const;
 	void RefreshClothSolver();
 	void ReleaseClothSolver();
 	void TickClothing();

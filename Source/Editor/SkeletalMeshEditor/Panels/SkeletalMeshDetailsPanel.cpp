@@ -8,6 +8,8 @@
 #include "Render/SkeletalMesh.h"
 #include "UObject/UObjectGlobals.h"
 #include <filesystem>
+#include <charconv>
+#include <sstream>
 
 namespace
 {
@@ -116,10 +118,88 @@ void FSkeletalMeshDetailsPanel::DrawPhysicsDebug()
 	ImGui::Separator();
 }
 
+// 선택한 렌더 섹션의 Cloth 바인딩 입력과 적용
+void FSkeletalMeshDetailsPanel::DrawClothBinding()
+{
+	USkeletalMesh* Mesh = Editor.GetMesh();
+	if (!Mesh || Mesh->GetRenderData().LODRenderData.IsEmpty()
+		|| !ImGui::CollapsingHeader("Cloth"))
+	{
+		return;
+	}
+
+	const auto& Sections = Mesh->GetRenderData().LODRenderData[0].Sections;
+	const auto& MaterialSlots = Mesh->GetMaterialSlots();
+	const FString Preview = Sections.IsValidIndex(ClothSectionIndex)
+		? std::to_string(ClothSectionIndex) : "Select a section";
+
+	// 현재 메시의 섹션 번호와 머티리얼 이름 표시
+	if (ImGui::BeginCombo("Section", Preview.c_str()))
+	{
+		for (int32 Index = 0; Index < Sections.Num(); ++Index)
+		{
+			const FString Label = std::format("{} - {}",
+				Index, MaterialSlots[Sections[Index].MaterialSlotIndex].Name);
+			const bool bSelected = Index == ClothSectionIndex;
+			if (ImGui::Selectable(Label.c_str(), bSelected) && !bSelected)
+			{
+				ClothSectionIndex = Index;
+				ClothPinnedVertexText[0] = '\0';
+				ClothBindingMessage.clear();
+			}
+		}
+		ImGui::EndCombo();
+	}
+
+	ImGui::InputTextWithHint("Pinned vertices", "Space-separated render vertex IDs",
+		ClothPinnedVertexText, sizeof(ClothPinnedVertexText));
+	if (!ClothBindingMessage.empty())
+	{
+		ImGui::TextWrapped("%s", ClothBindingMessage.c_str());
+	}
+
+	if (!ImGui::Button("Apply Cloth Binding"))
+	{
+		return;
+	}
+
+	// 공백으로 구분된 원본 정점 번호 검증
+	FClothSectionBinding NewBinding;
+	NewBinding.SectionIndex = ClothSectionIndex;
+	std::istringstream Input(ClothPinnedVertexText);
+	for (FString Token; Input >> Token;)
+	{
+		uint32 VertexIndex = 0;
+		const char* Last = Token.data() + Token.size();
+		const auto [End, Error] = std::from_chars(Token.data(), Last, VertexIndex);
+		if (Error != std::errc{} || End != Last)
+		{
+			ClothBindingMessage = "Enter unsigned vertex IDs separated by spaces.";
+			return;
+		}
+		NewBinding.PinnedRenderVertices.Add(VertexIndex);
+	}
+
+	// 나머지 섹션을 보존한 선택 바인딩 교체
+	TArray<FClothSectionBinding> Bindings;
+	for (const FClothSectionBinding& Existing : Mesh->GetClothSectionBindings())
+	{
+		if (Existing.SectionIndex != ClothSectionIndex)
+		{
+			Bindings.Add(Existing);
+		}
+	}
+	Bindings.Add(std::move(NewBinding));
+
+	ClothBindingMessage = Mesh->SetClothSectionBindings(std::move(Bindings))
+		? "Cloth binding applied. Start PIE to simulate."
+		: "Select a valid section and enter vertex IDs from that section.";
+}
+
 void FSkeletalMeshDetailsPanel::DrawContent()
 {
 	DrawPhysicsDebug();
-
+	DrawClothBinding();
 	const int32 BoneIndex = Editor.GetSelectedBoneIndex();
 
 	if (ImGui::Button("Reset Transform"))

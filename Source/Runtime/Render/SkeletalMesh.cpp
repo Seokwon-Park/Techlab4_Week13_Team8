@@ -6,6 +6,7 @@
 #include "Physics/PhysicsAssetFile.h"
 #include "UObject/UObjectGlobals.h"
 #include <filesystem>
+#include <algorithm>
 
 UPhysicsAsset* USkeletalMesh::GetPhysicsAsset()
 {
@@ -134,6 +135,55 @@ bool USkeletalMesh::Build(FSkeletalMeshData&& ImportData, FString& OutError)
 	RenderData.LODRenderData.Empty();
 	RenderData.LODRenderData.Add(std::move(LOD));
 	RenderStates.Reset();
+	return true;
+}
+
+// 섹션과 고정점 검증 이후의 Cloth 바인딩 교체
+bool USkeletalMesh::SetClothSectionBindings(TArray<FClothSectionBinding> Bindings)
+{
+	if (Bindings.IsEmpty())
+	{
+		ClothSectionBindings.Empty();
+		return true;
+	}
+
+	if (RenderData.LODRenderData.IsEmpty())
+	{
+		return false;
+	}
+
+	const FSkeletalMeshLODRenderData& LOD = RenderData.LODRenderData[0];
+	TArray<uint8> BoundSections;
+	BoundSections.Init(0, LOD.Sections.Num());
+
+	for (const FClothSectionBinding& Binding : Bindings)
+	{
+		if (!LOD.Sections.IsValidIndex(Binding.SectionIndex) || BoundSections[Binding.SectionIndex])
+		{
+			return false;
+		}
+
+		const FSkeletalMeshSection& Section = LOD.Sections[Binding.SectionIndex];
+		if (Section.IndexCount == 0 || Section.IndexCount % 3 != 0)
+		{
+			return false;
+		}
+
+		// 선택한 섹션에 속한 고정점의 확인
+		const uint32* First = LOD.Indices.GetData() + Section.StartIndex;
+		const uint32* End = First + Section.IndexCount;
+		for (const uint32 RenderVertex : Binding.PinnedRenderVertices)
+		{
+			if (std::find(First, End, RenderVertex) == End)
+			{
+				return false;
+			}
+		}
+
+		BoundSections[Binding.SectionIndex] = 1;
+	}
+
+	ClothSectionBindings = std::move(Bindings);
 	return true;
 }
 
