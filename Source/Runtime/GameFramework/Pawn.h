@@ -29,6 +29,7 @@ public:
 
 	// UE 규칙: MovementComponent가 있으면 그쪽(AddInputVector)으로, 없으면 Pawn의 ControlInputVector에 누적한다.
 	// 누적값은 MovementComponent(또는 Pawn 자신)가 Tick에서 Consume해서 쓴다.
+	UFUNCTION(BlueprintCallable)
 	virtual void AddMovementInput(const FVector& WorldDirection, float ScaleValue = 1.0f);
 	virtual void AddControllerYawInput(float Value) {}
 	virtual void AddControllerPitchInput(float Value) {}

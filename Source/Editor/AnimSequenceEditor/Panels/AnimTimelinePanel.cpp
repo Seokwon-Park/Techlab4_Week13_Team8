@@ -92,6 +92,7 @@ namespace
                 else if (CastField<FIntProperty>(Property))    ImGui::Text("%s: %d", Name, *static_cast<const int32*>(Value));
                 else if (CastField<FBoolProperty>(Property))   ImGui::Text("%s: %s", Name, *static_cast<const bool*>(Value) ? "true" : "false");
                 else if (CastField<FStrProperty>(Property))    ImGui::Text("%s: %s", Name, static_cast<const FString*>(Value)->c_str());
+                else if (CastField<FNameProperty>(Property))   ImGui::Text("%s: %s", Name, static_cast<const FName*>(Value)->ToString().c_str());
                 else if (CastField<FVectorProperty>(Property))
                 {
                     const FVector& V = *static_cast<const FVector*>(Value);

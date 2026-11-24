@@ -5,8 +5,15 @@
 #include "Editor/Gizmo/Gizmo.h"
 #include "Camera/ViewportCameraMovement.h"
 #include "Containers/Array.h"
+#include "Engine/BlueprintGraph.h"
 
 class UClass;
+
+enum class EBlueprintGraphKind : uint8
+{
+	EventGraph,
+	ConstructionScript,
+};
 class AActor;
 class UActorComponent;
 class USceneComponent;
@@ -58,12 +65,32 @@ public:
 
 	// 고르고 있는 컴포넌트. nullptr이면 액터 자신(Self)이다.
 	UActorComponent* GetSelectedComponent() const { return SelectedComponent; }
-	void SelectComponent(UActorComponent* Component) { SelectedComponent = Component; }
+	void SelectComponent(UActorComponent* Component) { SelectedComponent = Component; bShowClassSettings = false; }
+	// 툴바 [Class Settings]: Details에 부모 클래스 같은 BP 자체 설정을 보인다. 컴포넌트를 고르면 풀린다.
+	bool IsShowingClassSettings() const { return bShowClassSettings; }
+	void ShowClassSettings() { SelectedComponent = nullptr; bShowClassSettings = true; }
+	// 이름을 바꾼다. 빈 이름이거나 같은 이름의 컴포넌트가 이미 있으면 바꾸지 않는다.
+	bool RenameComponent(UActorComponent* Component, const char* NewName);
 	// 컴포넌트를 지운다. 루트는 지울 수 없다. 패널을 다 그린 뒤 부른다.
 	void DeleteComponent(UActorComponent* Component);
 
 	// 패널이 값을 바꿨을 수 있을 때 부른다. 다음 Tick에서 저장된 상태와 비교해 바뀌었는지 가린다.
 	void NoteEdited() { bCheckDirty = true; }
+
+	// ---------------- 노드 그래프 ----------------
+	// 편집 중인 EventGraph / Construction Script. Save하면 .bp에 함께 쓴다.
+	FBPGraphSet& GetGraphs() { return Graphs; }
+	FBPGraph& GetGraph(EBlueprintGraphKind Kind) { return Kind == EBlueprintGraphKind::EventGraph ? Graphs.EventGraph : Graphs.ConstructionScript; }
+	// My Blueprint에서 그래프(와 노드)를 고르면 그 그래프 탭을 앞으로 가져오고 노드로 화면을 옮긴다.
+	void RequestOpenGraph(EBlueprintGraphKind Kind, int32 NodeId = 0) { PendingGraph = Kind; PendingNodeId = NodeId; bGraphOpenPending = true; }
+	bool ConsumeOpenGraphRequest(EBlueprintGraphKind Kind, int32& OutNodeId)
+	{
+		if (!bGraphOpenPending || PendingGraph != Kind)
+			return false;
+		bGraphOpenPending = false;
+		OutNodeId = PendingNodeId;
+		return true;
+	}
 
 protected:
 	TUniquePtr<class IEditorTab> CreateTab() override;
@@ -87,6 +114,12 @@ private:
 	FBlueprintViewportPointer Pointer;
 	FTransform DragStartTransform;
 	UActorComponent* SelectedComponent = nullptr;
+	bool bShowClassSettings = false;
+
+	FBPGraphSet Graphs;
+	EBlueprintGraphKind PendingGraph = EBlueprintGraphKind::EventGraph;
+	int32 PendingNodeId = 0;
+	bool bGraphOpenPending = false;
 
 	// 마지막으로 저장한(또는 연) 상태. 지금 상태와 비교해 * 표시를 정한다.
 	TArray<uint8> SavedBytes;

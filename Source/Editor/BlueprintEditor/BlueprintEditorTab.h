@@ -44,8 +44,11 @@ protected:
 private:
 	void DrawSceneNode(class USceneComponent* Component, class USceneComponent* Root);
 	void DrawRowLabel(class UActorComponent* Component, const ImVec2& Min, const ImVec2& Max);
+	// 검색어가 있을 때 이 컴포넌트나 그 아래 어딘가가 맞는지
+	bool SubtreeMatches(class USceneComponent* Component) const;
 
 	char AddSearch[128] = {};
+	char TreeSearch[128] = {};
 	class UActorComponent* PendingDelete = nullptr;
 	class UActorComponent* RenamingComponent = nullptr;
 	char RenameBuffer[256] = {};
@@ -62,7 +65,20 @@ protected:
 	void DrawContent() override;
 };
 
-// 왼쪽 아래: 고른 컴포넌트(또는 액터 자신)의 기본값
+// 왼쪽 아래: UE5 My Blueprint. GRAPHS(EventGraph와 이벤트), FUNCTIONS(Construction Script), VARIABLES(컴포넌트).
+class FBlueprintMyBlueprintPanel : public FBlueprintEditorPanel
+{
+public:
+	explicit FBlueprintMyBlueprintPanel(FBlueprintEditor& InEditor) : FBlueprintEditorPanel(InEditor, "My Blueprint") {}
+
+protected:
+	void DrawContent() override;
+
+private:
+	char Search[128] = {};
+};
+
+// 오른쪽: 고른 컴포넌트, 액터 자신(Class Defaults), 또는 Class Settings
 class FBlueprintDetailsPanel : public FBlueprintEditorPanel
 {
 public:
@@ -70,6 +86,14 @@ public:
 
 protected:
 	void DrawContent() override;
+
+private:
+	void DrawVariableSection(class UActorComponent* Component);
+	void DrawClassSettings();
+
+	char Search[128] = {};
+	char NameBuffer[256] = {};
+	class UActorComponent* NameBufferOwner = nullptr;
 };
 
 class FBlueprintEditorTab : public FAssetEditorTab
@@ -82,6 +106,8 @@ public:
 
 private:
 	void BuildDefaultLayout(ImGuiID InDockSpaceId, const ImVec2& Size);
+	// UE5 Blueprint 에디터 위쪽 툴바: Save | Class Settings, Class Defaults | Focus
+	void DrawToolbar();
 
 	FBlueprintEditor& BlueprintEditor;
 	TArray<TUniquePtr<FBlueprintEditorPanel>> Panels;

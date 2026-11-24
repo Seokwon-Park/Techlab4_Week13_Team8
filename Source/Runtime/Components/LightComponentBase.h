@@ -16,11 +16,13 @@ public:
 
 
 	// Getter
+	UFUNCTION(BlueprintPure)
 	float GetIntensity() const { return Intensity; }
 	FColor GetLightColor() const { return LightColor; }
 	bool CastsShadows() const { return bCastShadows; }
 
 	// Setter
+	UFUNCTION(BlueprintCallable)
 	void SetIntensity(float InIntensity) { Intensity = InIntensity; }
 	void SetLightColor(FColor InLightColor) { LightColor = InLightColor; }
 	void SetCastShadows(bool bInCastShadows) { bCastShadows = bInCastShadows; }

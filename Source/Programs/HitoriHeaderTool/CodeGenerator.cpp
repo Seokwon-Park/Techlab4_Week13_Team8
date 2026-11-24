@@ -157,8 +157,13 @@ std::string GenerateHeader(const FHeaderInfo& Header, const std::string& ModuleN
             Lines.push_back("\t{");
             for (const FFunctionInfo& Function : Class.Functions)
             {
+                // 인자 이름이 있으면 { "A", "B" }로 함께 넘긴다 (Blueprint 노드의 핀 이름).
+                std::string Names;
+                for (const std::string& ParamName : Function.ParamNames)
+                    Names += (Names.empty() ? "" : ", ") + ("\"" + ParamName + "\"");
                 Lines.push_back("\t\tInClass->AddFunction<&ThisClass::" + Function.Name + ">(\"" + Function.Name + "\", "
-                    + (Function.Flags.empty() ? std::string("FUNC_None") : JoinFlags(Function.Flags)) + ");");
+                    + (Function.Flags.empty() ? std::string("FUNC_None") : JoinFlags(Function.Flags))
+                    + (Function.ParamNames.empty() ? std::string() : ", { " + Names + " }") + ");");
             }
             Lines.push_back("\t}");
             Lines.push_back("private:");

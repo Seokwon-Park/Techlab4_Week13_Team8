@@ -28,6 +28,8 @@ namespace
     {
         { "CallInEditor",   "FUNC_CallInEditor" },
         { "ScriptCallable", "FUNC_ScriptCallable" },
+        { "BlueprintCallable", "FUNC_BlueprintCallable" },
+        { "BlueprintPure",  "FUNC_BlueprintPure" },
     };
 
     // UPROPERTY(Type=LinearColor): 멤버 타입이 정하는 프로퍼티 클래스 대신 F<이름>Property를 쓴다 (Runtime/UObject/Property.h).
@@ -490,6 +492,58 @@ void FHeaderParser::ParseFunction()
     const auto TokenIs = [&](size_t At, const char* Text) { return At < Tokens.size() && Tokens[At].Is(Text); };
     const bool bHasNoParams = TokenIs(Index + 1, ")") || (TokenIs(Index + 1, "void") && TokenIs(Index + 2, ")"));
 
+    // 인자 이름을 모은다 (Blueprint 노드의 핀 이름). 쉼표로 나눈 각 인자에서 '=' 앞의 마지막 식별자가 이름이다.
+    // "const FVector& Dir"처럼 이름 뒤에 아무 토큰도 없어야 이름으로 본다 ("const FVector&"처럼 이름 없는 인자는 빈 이름).
+    if (!bHasNoParams)
+    {
+        int Depth = 0;
+        std::string LastIdent;
+        bool bIdentIsLast = false;
+        bool bInDefault = false;
+        int TypeTokens = 0;
+        for (size_t At = Index + 1; At < Tokens.size(); ++At)
+        {
+            const FToken& T = Tokens[At];
+            if (Depth == 0 && (T.Is(",") || T.Is(")")))
+            {
+                Function.ParamNames.push_back(bIdentIsLast && TypeTokens >= 2 ? LastIdent : std::string());
+                LastIdent.clear();
+                bIdentIsLast = false;
+                bInDefault = false;
+                TypeTokens = 0;
+                if (T.Is(")"))
+                {
+                    break;
+                }
+                continue;
+            }
+            if (T.Is("(") || T.Is("<") || T.Is("{") || T.Is("[")) ++Depth;
+            else if (T.Is(")") || T.Is(">") || T.Is("}") || T.Is("]")) --Depth;
+            if (Depth == 0 && T.Is("="))
+            {
+                bInDefault = true;
+                continue;
+            }
+            if (bInDefault || Depth > 0)
+            {
+                continue;
+            }
+            if (T.Type == ETokenType::Identifier)
+            {
+                if (!T.Is("const"))
+                {
+                    ++TypeTokens;
+                }
+                LastIdent = T.Text;
+                bIdentIsLast = true;
+            }
+            else
+            {
+                bIdentIsLast = false;
+            }
+        }
+    }
+
     // 인자 목록은 건너뛴다. 기본 인자 안의 '이름(' 을 함수 선언으로 세지 않도록.
     if (!SkipBalanced("(", ")"))
     {
@@ -844,7 +898,7 @@ void FHeaderParser::ResolveFunctionSpecifiers(const std::vector<FSpecifier>& Spe
             [&](const FFlagSpecifier& Entry) { return Specifier.Key == Entry.Name; });
         if (FlagIt == std::end(FunctionFlagSpecifiers))
         {
-            Error(Specifier.Line, "Unknown UFUNCTION specifier " + Quote(Specifier.Key) + ". Use CallInEditor or ScriptCallable.");
+            Error(Specifier.Line, "Unknown UFUNCTION specifier " + Quote(Specifier.Key) + ". Use CallInEditor, ScriptCallable, BlueprintCallable or BlueprintPure.");
             continue;
         }
         if (std::find(Function.Flags.begin(), Function.Flags.end(), FlagIt->Flag) != Function.Flags.end())

@@ -36,7 +36,9 @@ public:
 	// UE와 같이 기본값은 bCanEverTick = false. Tick이 필요한 컴포넌트만 생성자에서 켠다.
 	FActorComponentTickFunction PrimaryComponentTick;
 
+	UFUNCTION(BlueprintCallable)
 	virtual void Activate(bool bReset = false);
+	UFUNCTION(BlueprintCallable)
 	virtual void Deactivate();
 	virtual bool ShouldActivate() const { return !bIsActive; }
 	virtual void SetActive(bool bNewActive);
