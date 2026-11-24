@@ -144,6 +144,7 @@ protected:
 
 	void RefreshBoneTransforms() override;
 	void OnSkeletalMeshChanged() override;
+	bool RequiresCPUSkinning() const override;
 	void OnRegister() override;
 	void OnUnregister() override;
 	void OnCreatePhysicsState() override;
@@ -225,7 +226,7 @@ private:
 	double ClothPreviewAccumulatedSeconds = 0.0;
 
 	void RefreshClothSolver(bool bForPreview = false);
-	void ReleaseClothSolver();
+	void ReleaseClothSolver(bool bRefreshSkinningMode = true);
 	void TickClothing();
 	void AdvanceCloth(int32 StepCount, float StepDelta);
 };

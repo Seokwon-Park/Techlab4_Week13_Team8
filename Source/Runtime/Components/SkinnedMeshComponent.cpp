@@ -12,13 +12,15 @@
 
 namespace
 {
-	TUniquePtr<FSkeletalMeshObject> MakeMeshObject(USkeletalMesh* Mesh)
+	TUniquePtr<FSkeletalMeshObject> MakeMeshObject(USkeletalMesh* Mesh, bool bRequestGPU)
 	{
-		if (USkinnedMeshComponent::bUseGPUSkinning)
+		if (bRequestGPU)
 		{
 			TUniquePtr<FSkeletalMeshObjectGPUSkin> GPUObject = MakeUnique<FSkeletalMeshObjectGPUSkin>(Mesh);
 			if (GPUObject->IsValid())
+			{
 				return GPUObject;
+			}
 			HTR_LOG(Warning, "GPU skinning unavailable; falling back to CPU skinning.");
 		}
 		return MakeUnique<FSkeletalMeshObjectCPUSkin>(Mesh);
@@ -159,7 +161,8 @@ void USkinnedMeshComponent::SendRenderDynamicData()
 void USkinnedMeshComponent::RecreateMeshObject()
 {
 	const bool bValid = SkeletalMesh && !SkeletalMesh->GetRenderData().LODRenderData.IsEmpty();
-	MeshObject = bValid ? MakeMeshObject(SkeletalMesh) : nullptr;
+	bMeshObjectRequestedGPUSkinning = bUseGPUSkinning && !RequiresCPUSkinning();
+	MeshObject = bValid ? MakeMeshObject(SkeletalMesh, bMeshObjectRequestedGPUSkinning) : nullptr;
 	if (MeshObject) MeshObject->SetDebugWeightBone(DebugWeightBone);
 	ComponentSpaceTransforms.Reset();
 	OnSkeletalMeshChanged();
@@ -171,10 +174,18 @@ void USkinnedMeshComponent::RecreateMeshObject()
 
 void USkinnedMeshComponent::RefreshSkinningMode()
 {
-	if (!MeshObject) return;
-	MeshObject = MakeMeshObject(SkeletalMesh);
-	if (MeshObject) MeshObject->SetDebugWeightBone(DebugWeightBone);
-	UpdateBoneTransformsNow();   // 포즈는 그대로 두고 새 MeshObject에 다시 올린다
+	const bool bRequestGPU = bUseGPUSkinning && !RequiresCPUSkinning();
+	if (!MeshObject || bMeshObjectRequestedGPUSkinning == bRequestGPU)
+	{
+		return;
+	}
+
+	// 요청 모드가 바뀐 컴포넌트의 버퍼 교체와 현재 포즈 업로드
+	MeshObject = MakeMeshObject(SkeletalMesh, bRequestGPU);
+	bMeshObjectRequestedGPUSkinning = bRequestGPU;
+	MeshObject->SetDebugWeightBone(DebugWeightBone);
+	UpdateBoneTransformsNow();
+	OnTransformDirty();
 }
 
 void USkinnedMeshComponent::Serialize(FStructuredArchive::FRecord Record)

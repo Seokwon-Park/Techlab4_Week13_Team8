@@ -234,7 +234,7 @@ void FSkeletalMeshDetailsPanel::DrawClothBinding()
 		}
 		else
 		{
-			ClothBindingMessage = "Cloth preview failed. Check the Output Log and CPU skinning.";
+			ClothBindingMessage = "Cloth preview failed. Check the Output Log.";
 		}
 	}
 

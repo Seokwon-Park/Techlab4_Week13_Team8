@@ -487,6 +487,11 @@ void USkeletalMeshComponent::OnSkeletalMeshChanged()
 		BoneSpaceTransforms.Add(Bone.LocalBindPose);
 	RefreshClothSolver();
 }
+bool USkeletalMeshComponent::RequiresCPUSkinning() const
+{
+	// 현재 메시의 Cloth 정점을 직접 쓰는 CPU 스키닝 경로 선택
+	return HasClothSimulation() && ClothSourceMesh == GetSkeletalMesh();
+}
 void USkeletalMeshComponent::RefreshClothSolver(bool bForPreview)
 {
 	UWorld* World = GetWorld();
@@ -507,10 +512,15 @@ void USkeletalMeshComponent::RefreshClothSolver(bool bForPreview)
 		return;
 	}
 
-	ReleaseClothSolver();
+	// Solver 교체 중 기존 스키닝 모드 유지
+	ReleaseClothSolver(false);
 	const auto& Bindings = Mesh->GetClothSectionBindings();
 	nv::cloth::Factory* Factory = NvClothSDK::GetFactory();
-	if (Bindings.IsEmpty() || !Factory){ return; }
+	if (Bindings.IsEmpty() || !Factory)
+	{
+		RefreshSkinningMode();
+		return;
+	}
 
 	// 바인딩별 Cloth 생성과 초기 월드 중력 적용
 	const FSkeletalMeshLODRenderData& LOD = Mesh->GetRenderData().LODRenderData[0];
@@ -525,6 +535,7 @@ void USkeletalMeshComponent::RefreshClothSolver(bool bForPreview)
 		if (!Instance.Cloth)
 		{
 			HTR_LOG(Warning, "Failed to create cloth for section {}", Binding.SectionIndex);
+			RefreshSkinningMode();
 			return;
 		}
 		NewCloths.Add(std::move(Instance));
@@ -534,6 +545,7 @@ void USkeletalMeshComponent::RefreshClothSolver(bool bForPreview)
 	if (!NewSolver)
 	{
 		HTR_LOG(Warning, "Failed to create component cloth solver");
+		RefreshSkinningMode();
 		return;
 	}
 
@@ -546,6 +558,7 @@ void USkeletalMeshComponent::RefreshClothSolver(bool bForPreview)
 	ClothInstances = std::move(NewCloths);
 	ClothSolver = std::move(NewSolver);
 	ClothSourceMesh = Mesh;
+	RefreshSkinningMode();
 	if (!bForPreview)
 	{
 		ClothTickFunction.RegisterTickFunction(World->GetTickTaskManager());
@@ -682,7 +695,7 @@ USkeletalMeshComponent::FClothInstance USkeletalMeshComponent::CreateClothInstan
 	Instance.Cloth = std::move(Cloth);
 	return Instance;
 }
-void USkeletalMeshComponent::ReleaseClothSolver()
+void USkeletalMeshComponent::ReleaseClothSolver(bool bRefreshSkinningMode)
 {
 	ClothTickFunction.UnRegisterTickFunction();
 	for (const FClothInstance& Instance : ClothInstances)
@@ -697,10 +710,18 @@ void USkeletalMeshComponent::ReleaseClothSolver()
 	ClothCollisionCapsuleIndices.Reset();
 	ClothCollisionPlanes.Reset();
 	ClothCollisionConvexMasks.Reset();
-	ClothVertexPositions.Reset();
+	if (!ClothVertexPositions.IsEmpty())
+	{
+		ClothVertexPositions.Reset();
+		MarkBoneTransformsDirty();
+	}
 	ClothSolver.reset();
 	ClothSourceMesh = nullptr;
 	ClothPreviewAccumulatedSeconds = 0.0;
+	if (bRefreshSkinningMode)
+	{
+		RefreshSkinningMode();
+	}
 }
 // 현재 본 포즈에 맞춘 Cloth 입자별 제약 구 갱신
 void USkeletalMeshComponent::UpdateClothMotionConstraints()
@@ -1056,11 +1077,9 @@ void USkeletalMeshComponent::UpdateClothVertexPositions()
 bool USkeletalMeshComponent::RestartClothPreview()
 {
 	const UWorld* World = GetWorld();
-	const FSkeletalMeshObject* MeshObject = GetMeshObject();
 
-	// 프리뷰 월드와 Cloth 정점 갱신을 지원하는 스키닝 경로 확인
-	if (!World || World->GetWorldType() != EWorldType::EditorPreview || !MeshObject
-		|| MeshObject->GetBoneMatrixBuffer())
+	// 프리뷰 월드와 렌더 객체 확인
+	if (!World || World->GetWorldType() != EWorldType::EditorPreview || !GetMeshObject())
 	{
 		return false;
 	}
@@ -1147,8 +1166,7 @@ void USkeletalMeshComponent::AdvanceCloth(int32 StepCount, float StepDelta)
 	{
 		UpdateClothVertexPositions();
 
-		FSkeletalMeshObject* MeshObject = GetMeshObject();
-		if (MeshObject && !MeshObject->GetBoneMatrixBuffer())
+		if (GetMeshObject())
 		{
 			SendRenderDynamicData();
 		}
@@ -1447,7 +1465,7 @@ USkeletalMeshComponent::USkeletalMeshComponent()
 
 USkeletalMeshComponent::~USkeletalMeshComponent()
 {
-	ReleaseClothSolver();
+	ReleaseClothSolver(false);
 	if (ManagedAnimGraph)
 	{
 		if (AnimInstance == ManagedAnimGraph.get())

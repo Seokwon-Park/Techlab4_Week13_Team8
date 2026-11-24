@@ -41,33 +41,60 @@ namespace
 	// 이 간격마다 FPS 평균을 갱신한다.
 	constexpr double FrameStatsWindowSeconds = 0.5;
 
-	// UE처럼 첫 인자로 프로젝트 파일을 받는다. "Path/To/Game.hproject" 또는 -project=Path/To/Game.hproject
-	std::filesystem::path FindProjectInCommandLine()
+	struct FStartupOptions
 	{
-		int32 Count = 0;
-		LPWSTR* Args = CommandLineToArgvW(GetCommandLineW(), &Count);
-		if (!Args) return {};
+		std::filesystem::path Project;
+		bool bPreferClothCuda = false;
+	};
 
-		std::filesystem::path Result;
-		for (int32 i = 1; i < Count && Result.empty(); ++i)
+	// 프로젝트 경로와 Cloth 백엔드 시작 옵션의 추출
+	const FStartupOptions& GetStartupOptions()
+	{
+		static const FStartupOptions Options = []
 		{
-			std::wstring Arg = Args[i];
-			constexpr std::wstring_view Prefix = L"-project=";
-			if (Arg.size() > Prefix.size() && _wcsnicmp(Arg.c_str(), Prefix.data(), Prefix.size()) == 0)
-				Arg = Arg.substr(Prefix.size());
-			const std::filesystem::path Candidate(Arg);
-			if (_wcsicmp(Candidate.extension().c_str(), FPaths::ProjectExtension) == 0)
-				Result = Candidate;
-		}
-		LocalFree(Args);
-		return Result;
+			FStartupOptions Result;
+			int32 Count = 0;
+			LPWSTR* Args = CommandLineToArgvW(GetCommandLineW(), &Count);
+			if (!Args)
+			{
+				return Result;
+			}
+
+			for (int32 Index = 1; Index < Count; ++Index)
+			{
+				if (_wcsicmp(Args[Index], L"-ClothCUDA") == 0)
+				{
+					Result.bPreferClothCuda = true;
+					continue;
+				}
+				if (!Result.Project.empty())
+				{
+					continue;
+				}
+
+				std::wstring_view Arg = Args[Index];
+				constexpr std::wstring_view Prefix = L"-project=";
+				if (Arg.size() > Prefix.size() && _wcsnicmp(Arg.data(), Prefix.data(), Prefix.size()) == 0)
+				{
+					Arg.remove_prefix(Prefix.size());
+				}
+				const std::filesystem::path Candidate(Arg);
+				if (_wcsicmp(Candidate.extension().c_str(), FPaths::ProjectExtension) == 0)
+				{
+					Result.Project = Candidate;
+				}
+			}
+			LocalFree(Args);
+			return Result;
+		}();
+		return Options;
 	}
 
 	// 엔진 폴더와 프로젝트를 정하고 작업 디렉터리를 프로젝트 폴더로 옮긴다.
 	bool InitProjectPaths(HINSTANCE hInstance)
 	{
 		// 엔진 폴더 밖에서 빌드된 exe(프로젝트의 <Name>Editor.exe 등)는 커맨드라인 프로젝트의 EngineDir로도 엔진을 찾는다.
-		const std::filesystem::path CommandLineProject = FindProjectInCommandLine();
+		const std::filesystem::path& CommandLineProject = GetStartupOptions().Project;
 		if (!FPaths::InitEngineDir(CommandLineProject))
 		{
 			MessageBoxW(nullptr, L"Cannot find the engine folder (Resources/Shader).", L"Hitori", MB_OK | MB_ICONERROR);
@@ -205,8 +232,8 @@ bool FEngineLoop::Init()
 		return false;
 	}
 
-	// PhysX 초기화 완료 후 NvCloth Factory 생성
-	NvClothSDK::Initialize();
+	// PhysX 초기화 완료 후 시작 옵션에 따른 NvCloth Factory 생성
+	NvClothSDK::Initialize(GetStartupOptions().bPreferClothCuda);
 
 	GEngine = NewObject<UEngine>(nullptr, PendingEngineClass);
 	if (!GEngine)
