@@ -12,7 +12,13 @@
 
 namespace
 {
-	constexpr float MinShapeSize = 0.5f;
+	// Shape 값은 본 로컬 단위라 메시마다 크기가 달라서 최소값을 배율로 둔다
+	constexpr float MinShapeScale = 0.05f;
+
+	FVector ClampShapeScale(const FVector& Scale)
+	{
+		return FVector(std::max(Scale.X, MinShapeScale), std::max(Scale.Y, MinShapeScale), std::max(Scale.Z, MinShapeScale));
+	}
 
 	// 축 하나만 끌면 그 축만 1에서 벗어나므로 1에서 가장 먼 값을 쓴다
 	float DominantScale(float A, float B)
@@ -181,6 +187,19 @@ void FPhysicsAssetEditor::SelectBody(int32 BodyIndex)
 	SelectBone(FindBoneIndexByName(PhysicsAsset->SkeletalBodySetups[BodyIndex]->BoneName));
 	SelectionType = EPhysicsAssetSelection::Body;
 	SelectionIndex = BodyIndex;
+	SelectedShapeType = EAggCollisionShape::Unknown;
+	SelectedShapeIndex = INDEX_NONE;
+}
+
+void FPhysicsAssetEditor::SelectShape(int32 BodyIndex, EAggCollisionShape::Type ShapeType, int32 ShapeIndex)
+{
+	SelectBody(BodyIndex);
+	if (GetSelectedBodyIndex() != BodyIndex)
+	{
+		return;
+	}
+	SelectedShapeType = ShapeType;
+	SelectedShapeIndex = ShapeIndex;
 }
 
 void FPhysicsAssetEditor::SelectConstraint(int32 ConstraintIndex)
@@ -377,11 +396,110 @@ void FPhysicsAssetEditor::DeleteConstraint(int32 ConstraintIndex)
 	MarkDirty();
 }
 
+void FPhysicsAssetEditor::AddShape(int32 BodyIndex, EAggCollisionShape::Type ShapeType)
+{
+	if (!PhysicsAsset || BodyIndex < 0 || BodyIndex >= PhysicsAsset->SkeletalBodySetups.Num())
+	{
+		return;
+	}
+
+	const int32 BoneIndex = FindBoneIndexByName(PhysicsAsset->SkeletalBodySetups[BodyIndex]->BoneName);
+	if (BoneIndex == INDEX_NONE)
+	{
+		return;
+	}
+
+	// 15cm = 사람 메시 대각선(약 256)의 6%. 컴포넌트 공간 크기를 InverseBindPose의 스케일로 본 로컬 단위로 바꾼다
+	const FBox& BindBox = Mesh->GetRenderData().LODRenderData[0].BindAABB;
+	const FMatrix& InverseBindPose = Mesh->GetRefSkeleton()[BoneIndex].InverseBindPose;
+	const float ComponentToBoneScale = FVector(InverseBindPose.M[0][0], InverseBindPose.M[0][1], InverseBindPose.M[0][2]).Size();
+	const float Size = (BindBox.Max - BindBox.Min).Size() * 0.06f * ComponentToBoneScale;
+
+	FKAggregateGeom& Geom = PhysicsAsset->SkeletalBodySetups[BodyIndex]->AggGeom;
+	int32 NewIndex = INDEX_NONE;
+	switch (ShapeType)
+	{
+	case EAggCollisionShape::Sphere:
+	{
+		FKSphereElem Elem;
+		Elem.Radius = Size;
+		NewIndex = Geom.SphereElems.Num();
+		Geom.SphereElems.Add(Elem);
+		break;
+	}
+	case EAggCollisionShape::Box:
+	{
+		FKBoxElem Elem;
+		Elem.X = Elem.Y = Elem.Z = Size * 0.5f;
+		NewIndex = Geom.BoxElems.Num();
+		Geom.BoxElems.Add(Elem);
+		break;
+	}
+	case EAggCollisionShape::Sphyl:
+	{
+		FKSphylElem Elem;
+		Elem.Radius = Size;
+		Elem.Length = Size;
+		NewIndex = Geom.SphylElems.Num();
+		Geom.SphylElems.Add(Elem);
+		break;
+	}
+	default:
+		return;
+	}
+
+	SelectShape(BodyIndex, ShapeType, NewIndex);
+	MarkDirty();
+}
+
+void FPhysicsAssetEditor::DeleteShape(int32 BodyIndex, EAggCollisionShape::Type ShapeType, int32 ShapeIndex)
+{
+	if (!PhysicsAsset || BodyIndex < 0 || BodyIndex >= PhysicsAsset->SkeletalBodySetups.Num())
+	{
+		return;
+	}
+
+	FKAggregateGeom& Geom = PhysicsAsset->SkeletalBodySetups[BodyIndex]->AggGeom;
+	const auto RemoveAt = [ShapeIndex](auto& Elems)
+	{
+		if (ShapeIndex < 0 || ShapeIndex >= Elems.Num())
+		{
+			return false;
+		}
+		Elems.RemoveAt(ShapeIndex);
+		return true;
+	};
+
+	bool bRemoved = false;
+	switch (ShapeType)
+	{
+	case EAggCollisionShape::Sphere: bRemoved = RemoveAt(Geom.SphereElems); break;
+	case EAggCollisionShape::Box:    bRemoved = RemoveAt(Geom.BoxElems); break;
+	case EAggCollisionShape::Sphyl:  bRemoved = RemoveAt(Geom.SphylElems); break;
+	case EAggCollisionShape::Convex: bRemoved = RemoveAt(Geom.ConvexElems); break;
+	default: break;
+	}
+	if (!bRemoved)
+	{
+		return;
+	}
+
+	if (Geom.GetElementCount() == 0)
+	{
+		DeleteBody(BodyIndex);
+		return;
+	}
+	SelectBody(BodyIndex);
+	MarkDirty();
+}
+
 void FPhysicsAssetEditor::OnBoneSelected()
 {
 	PhysicsGizmo.EndDrag();
 	SelectionType = EPhysicsAssetSelection::None;
 	SelectionIndex = INDEX_NONE;
+	SelectedShapeType = EAggCollisionShape::Unknown;
+	SelectedShapeIndex = INDEX_NONE;
 	if (!PhysicsAsset || !Mesh || SelectedBoneIndex < 0)
 	{
 		return;
@@ -434,9 +552,11 @@ void FPhysicsAssetEditor::UpdatePhysicsPicking()
 		const FVector2 MousePosition(PointerInput.MouseUV.X * ViewportWidth, PointerInput.MouseUV.Y * ViewportHeight);
 		EPhysicsAssetSelection HitType = EPhysicsAssetSelection::None;
 		int32 HitIndex = INDEX_NONE;
-		if (PickPhysics(ViewportClient->DeprojectScreenToWorld(MousePosition), HitType, HitIndex))
+		EAggCollisionShape::Type HitShapeType = EAggCollisionShape::Unknown;
+		int32 HitShapeIndex = INDEX_NONE;
+		if (PickPhysics(ViewportClient->DeprojectScreenToWorld(MousePosition), HitType, HitIndex, HitShapeType, HitShapeIndex))
 		{
-			HitType == EPhysicsAssetSelection::Body ? SelectBody(HitIndex) : SelectConstraint(HitIndex);
+			HitType == EPhysicsAssetSelection::Body ? SelectShape(HitIndex, HitShapeType, HitShapeIndex) : SelectConstraint(HitIndex);
 			return;
 		}
 	}
@@ -462,7 +582,7 @@ USkeletalBodySetup* FPhysicsAssetEditor::GetSelectedBodySetup() const
 	return PhysicsAsset->SkeletalBodySetups[BodyIndex];
 }
 
-bool FPhysicsAssetEditor::GetSelectedShapeLocal(FVector& OutCenter, FQuat& OutRotation) const
+bool FPhysicsAssetEditor::ResolveSelectedShape(EAggCollisionShape::Type& OutType, int32& OutIndex) const
 {
 	const USkeletalBodySetup* BodySetup = GetSelectedBodySetup();
 	if (!BodySetup)
@@ -471,25 +591,61 @@ bool FPhysicsAssetEditor::GetSelectedShapeLocal(FVector& OutCenter, FQuat& OutRo
 	}
 
 	const FKAggregateGeom& Geom = BodySetup->AggGeom;
+	const int32 Index = GetSelectedShapeIndex();
+	switch (GetSelectedShapeType())
+	{
+	case EAggCollisionShape::Sphere: OutType = EAggCollisionShape::Sphere; OutIndex = Index; return Index >= 0 && Index < Geom.SphereElems.Num();
+	case EAggCollisionShape::Box:    OutType = EAggCollisionShape::Box;    OutIndex = Index; return Index >= 0 && Index < Geom.BoxElems.Num();
+	case EAggCollisionShape::Sphyl:  OutType = EAggCollisionShape::Sphyl;  OutIndex = Index; return Index >= 0 && Index < Geom.SphylElems.Num();
+	default: break;
+	}
+
+	OutIndex = 0;
 	if (!Geom.SphylElems.IsEmpty())
 	{
-		OutCenter = Geom.SphylElems[0].Center;
-		OutRotation = Geom.SphylElems[0].Rotation.Quaternion();
+		OutType = EAggCollisionShape::Sphyl;
 		return true;
 	}
 	if (!Geom.BoxElems.IsEmpty())
 	{
-		OutCenter = Geom.BoxElems[0].Center;
-		OutRotation = Geom.BoxElems[0].Rotation.Quaternion();
+		OutType = EAggCollisionShape::Box;
 		return true;
 	}
 	if (!Geom.SphereElems.IsEmpty())
 	{
-		OutCenter = Geom.SphereElems[0].Center;
-		OutRotation = FQuat::Identity();
+		OutType = EAggCollisionShape::Sphere;
 		return true;
 	}
 	return false;
+}
+
+bool FPhysicsAssetEditor::GetSelectedShapeLocal(FVector& OutCenter, FQuat& OutRotation) const
+{
+	EAggCollisionShape::Type ShapeType;
+	int32 ShapeIndex;
+	if (!ResolveSelectedShape(ShapeType, ShapeIndex))
+	{
+		return false;
+	}
+
+	const FKAggregateGeom& Geom = GetSelectedBodySetup()->AggGeom;
+	switch (ShapeType)
+	{
+	case EAggCollisionShape::Sphyl:
+		OutCenter = Geom.SphylElems[ShapeIndex].Center;
+		OutRotation = Geom.SphylElems[ShapeIndex].Rotation.Quaternion();
+		return true;
+	case EAggCollisionShape::Box:
+		OutCenter = Geom.BoxElems[ShapeIndex].Center;
+		OutRotation = Geom.BoxElems[ShapeIndex].Rotation.Quaternion();
+		return true;
+	case EAggCollisionShape::Sphere:
+		OutCenter = Geom.SphereElems[ShapeIndex].Center;
+		OutRotation = FQuat::Identity();
+		return true;
+	default:
+		return false;
+	}
 }
 
 UPhysicsConstraintTemplate* FPhysicsAssetEditor::GetSelectedConstraintTemplate() const
@@ -691,7 +847,9 @@ void FPhysicsAssetEditor::ApplyConstraintTransform()
 void FPhysicsAssetEditor::ApplyShapeTransform()
 {
 	USkeletalBodySetup* BodySetup = GetSelectedBodySetup();
-	if (!BodySetup)
+	EAggCollisionShape::Type ShapeType;
+	int32 ShapeIndex;
+	if (!BodySetup || !ResolveSelectedShape(ShapeType, ShapeIndex))
 	{
 		return;
 	}
@@ -704,11 +862,11 @@ void FPhysicsAssetEditor::ApplyShapeTransform()
 	const FVector Center = DragBoneWorldInverse.TransformPosition(GizmoTarget->GetWorldLocation());
 	const FRotator Rotation = (DragBoneWorldRotation.Inverse() *
 		GizmoTarget->GetRelativeRotation().Quaternion()).Normalized().ToFRotator();
-	const FVector Scale = GizmoTarget->GetRelativeScale3D();
+	const FVector Scale = ClampShapeScale(GizmoTarget->GetRelativeScale3D());
 
-	if (!Geom.SphylElems.IsEmpty())
+	if (ShapeType == EAggCollisionShape::Sphyl)
 	{
-		FKSphylElem& Elem = Geom.SphylElems[0];
+		FKSphylElem& Elem = Geom.SphylElems[ShapeIndex];
 		if (Mode == UE::Widget::WM_Translate)
 		{
 			Elem.Center = Center;
@@ -720,13 +878,13 @@ void FPhysicsAssetEditor::ApplyShapeTransform()
 		else if (Mode == UE::Widget::WM_Scale)
 		{
 			const float TotalHeight = (Elem.Length + Elem.Radius * 2.0f) * Scale.Z;
-			Elem.Radius = std::max(Elem.Radius * DominantScale(Scale.X, Scale.Y), MinShapeSize);
+			Elem.Radius *= DominantScale(Scale.X, Scale.Y);
 			Elem.Length = std::max(TotalHeight - Elem.Radius * 2.0f, 0.0f);
 		}
 	}
-	else if (!Geom.BoxElems.IsEmpty())
+	else if (ShapeType == EAggCollisionShape::Box)
 	{
-		FKBoxElem& Elem = Geom.BoxElems[0];
+		FKBoxElem& Elem = Geom.BoxElems[ShapeIndex];
 		if (Mode == UE::Widget::WM_Translate)
 		{
 			Elem.Center = Center;
@@ -737,14 +895,14 @@ void FPhysicsAssetEditor::ApplyShapeTransform()
 		}
 		else if (Mode == UE::Widget::WM_Scale)
 		{
-			Elem.X = std::max(Elem.X * Scale.X, MinShapeSize);
-			Elem.Y = std::max(Elem.Y * Scale.Y, MinShapeSize);
-			Elem.Z = std::max(Elem.Z * Scale.Z, MinShapeSize);
+			Elem.X *= Scale.X;
+			Elem.Y *= Scale.Y;
+			Elem.Z *= Scale.Z;
 		}
 	}
-	else if (!Geom.SphereElems.IsEmpty())
+	else if (ShapeType == EAggCollisionShape::Sphere)
 	{
-		FKSphereElem& Elem = Geom.SphereElems[0];
+		FKSphereElem& Elem = Geom.SphereElems[ShapeIndex];
 		if (Mode == UE::Widget::WM_Translate)
 		{
 			Elem.Center = Center;
@@ -752,14 +910,15 @@ void FPhysicsAssetEditor::ApplyShapeTransform()
 		else if (Mode == UE::Widget::WM_Scale)
 		{
 			const float SphereScale = DominantScale(DominantScale(Scale.X, Scale.Y), Scale.Z);
-			Elem.Radius = std::max(Elem.Radius * SphereScale, MinShapeSize);
+			Elem.Radius *= SphereScale;
 		}
 	}
 
 	MarkDirty();
 }
 
-bool FPhysicsAssetEditor::PickPhysics(const FRay& Ray, EPhysicsAssetSelection& OutType, int32& OutIndex) const
+bool FPhysicsAssetEditor::PickPhysics(const FRay& Ray, EPhysicsAssetSelection& OutType, int32& OutIndex,
+	EAggCollisionShape::Type& OutShapeType, int32& OutShapeIndex) const
 {
 	FPhysicsDebugDraw DebugDraw;
 	float NearestT = FLT_MAX;
@@ -803,40 +962,46 @@ bool FPhysicsAssetEditor::PickPhysics(const FRay& Ray, EPhysicsAssetSelection& O
 
 		const FMatrix BodyMatrix = BoneWorld.GetLocalMatrix();
 		const FVector& Scale = BoneWorld.Scale;
-		const auto Consider = [&](bool bHit, float T)
+		const auto Consider = [&](bool bHit, float T, EAggCollisionShape::Type ShapeType, int32 ShapeIndex)
 		{
 			if (bHit && T < NearestT)
 			{
 				NearestT = T;
 				OutType = EPhysicsAssetSelection::Body;
 				OutIndex = BodyIndex;
+				OutShapeType = ShapeType;
+				OutShapeIndex = ShapeIndex;
 			}
 		};
 
-		for (const FKSphereElem& Elem : BodySetup->AggGeom.SphereElems)
+		const FKAggregateGeom& Geom = BodySetup->AggGeom;
+		for (int32 i = 0; i < Geom.SphereElems.Num(); ++i)
 		{
+			const FKSphereElem& Elem = Geom.SphereElems[i];
 			const float Radius = Elem.Radius * std::max({ std::abs(Scale.X), std::abs(Scale.Y), std::abs(Scale.Z) });
 			float T = 0.0f;
-			Consider(RayIntersectsSphere(Ray, BodyMatrix.TransformPosition(Elem.Center), Radius, T), T);
+			Consider(RayIntersectsSphere(Ray, BodyMatrix.TransformPosition(Elem.Center), Radius, T), T, EAggCollisionShape::Sphere, i);
 		}
 
-		for (const FKSphylElem& Elem : BodySetup->AggGeom.SphylElems)
+		for (int32 i = 0; i < Geom.SphylElems.Num(); ++i)
 		{
+			const FKSphylElem& Elem = Geom.SphylElems[i];
 			const FMatrix ElemWorld = DebugDraw.MakeElemMatrix(Elem.Center, Elem.Rotation) * BodyMatrix;
 			const FVector Center = ElemWorld.TransformPosition(FVector::ZeroVector);
 			const FVector Up = FVector(ElemWorld.M[2][0], ElemWorld.M[2][1], ElemWorld.M[2][2]).GetSafeNormal();
 			const float Radius = Elem.Radius * std::max(std::abs(Scale.X), std::abs(Scale.Y));
 			const float HalfLength = Elem.Length * 0.5f * std::abs(Scale.Z);
 			float T = 0.0f;
-			Consider(RayIntersectsCapsule(Ray, Center - Up * HalfLength, Center + Up * HalfLength, Radius, T), T);
+			Consider(RayIntersectsCapsule(Ray, Center - Up * HalfLength, Center + Up * HalfLength, Radius, T), T, EAggCollisionShape::Sphyl, i);
 		}
 
-		for (const FKBoxElem& Elem : BodySetup->AggGeom.BoxElems)
+		for (int32 i = 0; i < Geom.BoxElems.Num(); ++i)
 		{
+			const FKBoxElem& Elem = Geom.BoxElems[i];
 			const FMatrix ElemWorld = DebugDraw.MakeElemMatrix(Elem.Center, Elem.Rotation) * BodyMatrix;
 			const FVector HalfExtent(Elem.X * 0.5f, Elem.Y * 0.5f, Elem.Z * 0.5f);
 			float T = 0.0f;
-			Consider(RayIntersectsAABB(ToLocalRay(Ray, ElemWorld), HalfExtent * -1.0f, HalfExtent, T), T);
+			Consider(RayIntersectsAABB(ToLocalRay(Ray, ElemWorld), HalfExtent * -1.0f, HalfExtent, T), T, EAggCollisionShape::Box, i);
 		}
 	}
 

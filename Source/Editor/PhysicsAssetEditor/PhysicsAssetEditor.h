@@ -43,9 +43,13 @@ public:
 	bool Save();
 
 	void SelectBody(int32 BodyIndex);
+	void SelectShape(int32 BodyIndex, EAggCollisionShape::Type ShapeType, int32 ShapeIndex);
 	void SelectConstraint(int32 ConstraintIndex);
 	EPhysicsAssetSelection GetSelectionType() const { return SelectionType; }
 	int32 GetSelectedBodyIndex() const { return SelectionType == EPhysicsAssetSelection::Body ? SelectionIndex : INDEX_NONE; }
+	// 바디만 선택했으면 Unknown
+	EAggCollisionShape::Type GetSelectedShapeType() const { return SelectionType == EPhysicsAssetSelection::Body ? SelectedShapeType : EAggCollisionShape::Unknown; }
+	int32 GetSelectedShapeIndex() const { return SelectionType == EPhysicsAssetSelection::Body ? SelectedShapeIndex : INDEX_NONE; }
 	int32 GetSelectedConstraintIndex() const { return SelectionType == EPhysicsAssetSelection::Constraint ? SelectionIndex : INDEX_NONE; }
 	int32 FindBoneIndexByName(FName BoneName) const;
 
@@ -54,6 +58,10 @@ public:
 	// 자식 바디의 Constraint를 지울 바디의 부모 바디로 옮긴 뒤 지운다
 	void DeleteBody(int32 BodyIndex);
 	void DeleteConstraint(int32 ConstraintIndex);
+	// 본 원점에 기본 크기로 만들고 선택한다
+	void AddShape(int32 BodyIndex, EAggCollisionShape::Type ShapeType);
+	// 마지막 Shape면 바디도 지운다
+	void DeleteShape(int32 BodyIndex, EAggCollisionShape::Type ShapeType, int32 ShapeIndex);
 
 	bool bShowBodies = true;
 	bool bShowConstraints = true;
@@ -71,7 +79,8 @@ protected:
 private:
 	void UpdatePhysicsPicking();
 	USkeletalBodySetup* GetSelectedBodySetup() const;
-	// 선택한 바디의 첫 Shape (Sphyl, Box, Sphere 순)의 본 로컬 위치와 회전
+	// 선택한 Shape. 바디만 선택했으면 첫 Shape (Sphyl, Box, Sphere 순)
+	bool ResolveSelectedShape(EAggCollisionShape::Type& OutType, int32& OutIndex) const;
 	bool GetSelectedShapeLocal(FVector& OutCenter, FQuat& OutRotation) const;
 	UPhysicsConstraintTemplate* GetSelectedConstraintTemplate() const;
 	bool GetShapeGizmoTransform(FTransform& OutTransform) const;
@@ -84,7 +93,8 @@ private:
 	void ApplyShapeTransform();
 	void ApplyConstraintTransform();
 	// 레이에 맞은 Body·Constraint 중 가장 가까운 것. Constraint가 맞으면 Body보다 우선한다
-	bool PickPhysics(const struct FRay& Ray, EPhysicsAssetSelection& OutType, int32& OutIndex) const;
+	bool PickPhysics(const struct FRay& Ray, EPhysicsAssetSelection& OutType, int32& OutIndex,
+		EAggCollisionShape::Type& OutShapeType, int32& OutShapeIndex) const;
 	FString GetSaveFilePath() const;
 	void ClearSelection();
 	bool IsBoneChildOf(int32 BoneIndex, int32 AncestorBoneIndex) const;
@@ -101,6 +111,8 @@ private:
 	UPhysicsAsset* PhysicsAsset = nullptr;
 	EPhysicsAssetSelection SelectionType = EPhysicsAssetSelection::None;
 	int32 SelectionIndex = INDEX_NONE;
+	EAggCollisionShape::Type SelectedShapeType = EAggCollisionShape::Unknown;
+	int32 SelectedShapeIndex = INDEX_NONE;
 
 	USceneComponent* GizmoTarget = nullptr;
 	// PhysicsGizmo가 생성자에서 포인터를 받으므로 먼저 선언해야 한다

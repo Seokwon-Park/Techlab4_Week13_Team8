@@ -47,10 +47,14 @@ void FPhysicsAssetTreePanel::DrawContent()
 	case EPendingAction::AddBody:          Editor.MakeNewBody(PendingIndex); break;
 	case EPendingAction::DeleteBody:       Editor.DeleteBody(PendingIndex); break;
 	case EPendingAction::DeleteConstraint: Editor.DeleteConstraint(PendingIndex); break;
+	case EPendingAction::AddShape:         Editor.AddShape(PendingIndex, PendingShapeType); break;
+	case EPendingAction::DeleteShape:      Editor.DeleteShape(PendingIndex, PendingShapeType, PendingShapeIndex); break;
 	default: break;
 	}
 	PendingAction = EPendingAction::None;
 	PendingIndex = INDEX_NONE;
+	PendingShapeType = EAggCollisionShape::Unknown;
+	PendingShapeIndex = INDEX_NONE;
 }
 
 int32 FPhysicsAssetTreePanel::FindBody(int32 BoneIndex) const
@@ -151,11 +155,12 @@ void FPhysicsAssetTreePanel::DrawBone(int32 BoneIndex)
 void FPhysicsAssetTreePanel::DrawBody(int32 BoneIndex, int32 BodyIndex, bool bNestChildBones)
 {
 	ImGuiTreeNodeFlags Flags = BranchFlags;
-	if (!HasConstraints(BoneIndex) && !(bNestChildBones && HasBodyDescendant(BoneIndex)))
+	if (Editor.GetPhysicsAsset()->SkeletalBodySetups[BodyIndex]->AggGeom.GetElementCount() == 0 &&
+		!HasConstraints(BoneIndex) && !(bNestChildBones && HasBodyDescendant(BoneIndex)))
 	{
 		Flags |= ImGuiTreeNodeFlags_Leaf;
 	}
-	if (Editor.GetSelectedBodyIndex() == BodyIndex)
+	if (Editor.GetSelectedBodyIndex() == BodyIndex && Editor.GetSelectedShapeType() == EAggCollisionShape::Unknown)
 	{
 		Flags |= ImGuiTreeNodeFlags_Selected;
 	}
@@ -169,6 +174,19 @@ void FPhysicsAssetTreePanel::DrawBody(int32 BoneIndex, int32 BodyIndex, bool bNe
 	}
 	if (ImGui::BeginPopupContextItem("BodyContext"))
 	{
+		const auto AddShapeItem = [this, BodyIndex](const char* Label, EAggCollisionShape::Type ShapeType)
+		{
+			if (ImGui::MenuItem(Label))
+			{
+				PendingAction = EPendingAction::AddShape;
+				PendingIndex = BodyIndex;
+				PendingShapeType = ShapeType;
+			}
+		};
+		AddShapeItem("Add Sphere", EAggCollisionShape::Sphere);
+		AddShapeItem("Add Box", EAggCollisionShape::Box);
+		AddShapeItem("Add Capsule", EAggCollisionShape::Sphyl);
+		ImGui::Separator();
 		if (ImGui::MenuItem("Delete Body"))
 		{
 			PendingAction = EPendingAction::DeleteBody;
@@ -179,6 +197,7 @@ void FPhysicsAssetTreePanel::DrawBody(int32 BoneIndex, int32 BodyIndex, bool bNe
 
 	if (bOpen)
 	{
+		DrawShapes(BodyIndex);
 		DrawConstraints(BoneIndex);
 		if (bNestChildBones)
 		{
@@ -189,6 +208,56 @@ void FPhysicsAssetTreePanel::DrawBody(int32 BoneIndex, int32 BodyIndex, bool bNe
 		}
 		ImGui::TreePop();
 	}
+}
+
+void FPhysicsAssetTreePanel::DrawShapes(int32 BodyIndex)
+{
+	const FKAggregateGeom& Geom = Editor.GetPhysicsAsset()->SkeletalBodySetups[BodyIndex]->AggGeom;
+	for (int32 i = 0; i < Geom.SphereElems.Num(); ++i)
+	{
+		DrawShape(BodyIndex, EAggCollisionShape::Sphere, i, "Sphere");
+	}
+	for (int32 i = 0; i < Geom.BoxElems.Num(); ++i)
+	{
+		DrawShape(BodyIndex, EAggCollisionShape::Box, i, "Box");
+	}
+	for (int32 i = 0; i < Geom.SphylElems.Num(); ++i)
+	{
+		DrawShape(BodyIndex, EAggCollisionShape::Sphyl, i, "Capsule");
+	}
+	for (int32 i = 0; i < Geom.ConvexElems.Num(); ++i)
+	{
+		DrawShape(BodyIndex, EAggCollisionShape::Convex, i, "Convex");
+	}
+}
+
+void FPhysicsAssetTreePanel::DrawShape(int32 BodyIndex, EAggCollisionShape::Type ShapeType, int32 ShapeIndex, const char* Label)
+{
+	ImGuiTreeNodeFlags Flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanAvailWidth;
+	if (Editor.GetSelectedBodyIndex() == BodyIndex && Editor.GetSelectedShapeType() == ShapeType &&
+		Editor.GetSelectedShapeIndex() == ShapeIndex)
+	{
+		Flags |= ImGuiTreeNodeFlags_Selected;
+	}
+
+	ImGui::PushID(static_cast<int32>(ShapeType) * 1000 + ShapeIndex);
+	ImGui::TreeNodeEx("Shape", Flags, "%s %d", Label, ShapeIndex);
+	if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+	{
+		Editor.SelectShape(BodyIndex, ShapeType, ShapeIndex);
+	}
+	if (ImGui::BeginPopupContextItem("ShapeContext"))
+	{
+		if (ImGui::MenuItem("Delete Shape"))
+		{
+			PendingAction = EPendingAction::DeleteShape;
+			PendingIndex = BodyIndex;
+			PendingShapeType = ShapeType;
+			PendingShapeIndex = ShapeIndex;
+		}
+		ImGui::EndPopup();
+	}
+	ImGui::PopID();
 }
 
 void FPhysicsAssetTreePanel::DrawConstraints(int32 BoneIndex)
