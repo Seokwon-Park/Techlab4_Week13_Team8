@@ -69,11 +69,16 @@ void USpringArmComponent::UpdateDesiredArmLocation(
 	FVector DesiredLoc = ArmOrigin;
 	if (bDoLocationLag)
 	{
-		DesiredLoc = FMath::VInterpTo(
-			PreviousDesiredLoc,
-			ArmOrigin,
-			DeltaTime,
-			CameraLagSpeed);
+		if (bCameraLagZOnly)
+		{
+			DesiredLoc.Z = FMath::FInterpTo(
+				PreviousDesiredLoc.Z, ArmOrigin.Z, DeltaTime, CameraLagSpeed);
+		}
+		else
+		{
+			DesiredLoc = FMath::VInterpTo(
+				PreviousDesiredLoc, ArmOrigin, DeltaTime, CameraLagSpeed);
+		}
 		const FVector FromOrigin = DesiredLoc - ArmOrigin;
 		if (CameraLagMaxDistance > 0.0f &&
 			FromOrigin.Size() > CameraLagMaxDistance)
@@ -132,6 +137,16 @@ void USpringArmComponent::OnRegister()
 
 FRotator USpringArmComponent::GetTargetRotation() const
 {
+	const FRotator Rel = GetRelativeRotation();
+	if (!bUsePawnControlRotation && !bInheritPitch && !bInheritRoll)
+	{
+		const USceneComponent* Parent = GetAttachParent();
+		const float ParentYaw = bInheritYaw && Parent
+			? Parent->GetWorldRotation().Yaw
+			: 0.0f;
+		return FRotator(Rel.Pitch, FMath::NormalizeAxis(ParentYaw + Rel.Yaw), Rel.Roll);
+	}
+
 	FRotator R = GetWorldRotation();
 	if (bUsePawnControlRotation)
 	{
@@ -144,7 +159,6 @@ FRotator USpringArmComponent::GetTargetRotation() const
 		}
 	}
 
-	const FRotator Rel = GetRelativeRotation();
 	if (!bInheritPitch)
 	{
 		R.Pitch = Rel.Pitch;

@@ -16,35 +16,83 @@
                 "Transform": {
                   "Location": { "X": -12, "Y": 0, "Z": 1.15 },
                   "Rotation": { "Pitch": 0, "Roll": 0, "Yaw": 0 },
-                  "Scale": { "X": 1, "Y": 1, "Z": 1 }
+                  "Scale": { "X": 0.01, "Y": 0.01, "Z": 0.01 }
                 },
                 "bAutoActivate": true,
                 "bHiddenInGame": false,
                 "bVisible": true,
-                "StaticMesh": "Cube",
+                "StaticMesh": "FBX/AvanteN_Body/AvanteN_Body_Static.fbx.bin",
                 "bBlockComponent": false,
                 "bCastShadow": true,
                 "bGenerateOverlapEvents": false,
                 "bReceiveShadow": true,
                 "bSimulatePhysics": true
               },
-              "OverrideMaterials": [
-                {
-                  "Base": "DefaultMaterial",
-                  "Instance": {
-                    "BaseColor": { "X": 0.04, "Y": 0.46, "Z": 0.73, "W": 1 },
-                    "BlendState": "Opaque",
-                    "FlipNormalY": false,
-                    "PSOType": 0,
-                    "Properties": {},
-                    "SamplerState": "LinearClamp",
-                    "Shininess": 8,
-                    "SpecularColor": { "X": 0.12, "Y": 0.12, "Z": 0.12 },
-                    "Textures": ["WhiteTexture", "FlatNormalTexture"],
-                    "UVScrollSpeed": [0, 0]
-                  }
-                }
-              ]
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UVehicleWheelMeshComponent",
+              "Name": "WheelFL",
+              "Parent": "Chassis",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": { "X": 138.677, "Y": -80.915, "Z": -39.166 },
+                  "Rotation": { "Pitch": 0, "Roll": 0, "Yaw": 0 },
+                  "Scale": { "X": 1, "Y": 1, "Z": 1 }
+                },
+                "bVisible": true,
+                "StaticMesh": "FBX/AvanteN_Wheel_FL/AvanteN_Wheel_FL_Static.fbx.bin"
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UVehicleWheelMeshComponent",
+              "Name": "WheelFR",
+              "Parent": "Chassis",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": { "X": 138.677, "Y": 80.915, "Z": -39.166 },
+                  "Rotation": { "Pitch": 0, "Roll": 0, "Yaw": 0 },
+                  "Scale": { "X": 1, "Y": 1, "Z": 1 }
+                },
+                "bVisible": true,
+                "StaticMesh": "FBX/AvanteN_Wheel_FR/AvanteN_Wheel_FR_Static.fbx.bin"
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UVehicleWheelMeshComponent",
+              "Name": "WheelRL",
+              "Parent": "Chassis",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": { "X": -138.677, "Y": -80.915, "Z": -39.166 },
+                  "Rotation": { "Pitch": 0, "Roll": 0, "Yaw": 0 },
+                  "Scale": { "X": 1, "Y": 1, "Z": 1 }
+                },
+                "bVisible": true,
+                "StaticMesh": "FBX/AvanteN_Wheel_RL/AvanteN_Wheel_RL_Static.fbx.bin"
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UVehicleWheelMeshComponent",
+              "Name": "WheelRR",
+              "Parent": "Chassis",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": { "X": -138.677, "Y": 80.915, "Z": -39.166 },
+                  "Rotation": { "Pitch": 0, "Roll": 0, "Yaw": 0 },
+                  "Scale": { "X": 1, "Y": 1, "Z": 1 }
+                },
+                "bVisible": true,
+                "StaticMesh": "FBX/AvanteN_Wheel_RR/AvanteN_Wheel_RR_Static.fbx.bin"
+              },
+              "OverrideMaterials": []
             }
           ],
           "Properties": {
