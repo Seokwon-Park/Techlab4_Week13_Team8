@@ -81,6 +81,14 @@ enum class EEditorIcon : uint8
 	ShowAntiAliasing,
 	ShowVignette,
 	ShowCameraOverlay,
+	// 클래스 종류 (Pick Parent Class 창)
+	ClassActor,
+	ClassPawn,
+	ClassCharacter,
+	ClassController,
+	ClassGameMode,
+	ClassComponent,
+	ClassSceneComponent,
 
 	Count
 };
