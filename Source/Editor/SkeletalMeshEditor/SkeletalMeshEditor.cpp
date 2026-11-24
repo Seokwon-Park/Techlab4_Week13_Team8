@@ -1,6 +1,8 @@
 #include "EnginePCH.h"
 #include "Editor/SkeletalMeshEditor/SkeletalMeshEditor.h"
 #include "SkeletalMeshEditorTab.h"
+#include "Asset/AssetUtils.h"
+#include "Asset/FbxImporter/FbxMeshBake.h"
 #include "Collision/Ray.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Render/LineBatcher.h"
@@ -103,33 +105,58 @@ void FSkeletalMeshEditor::SetClothBrushMaxDistance(float MaxDistance)
 	}
 }
 
-bool FSkeletalMeshEditor::ApplyClothBinding()
+bool FSkeletalMeshEditor::ApplyClothBinding(FString& OutError)
 {
-	// 기존 섹션 바인딩을 보존한 선택 섹션 적용
-	TArray<FClothSectionBinding> Bindings;
-	for (const FClothSectionBinding& Binding : Mesh->GetClothSectionBindings())
+	// 에셋 키로부터 기존 바이너리와 임포트 메타데이터 로드
+	const FString Path = FAssetUtils::ResolveAssetFilePath(Mesh->GetPath());
+	FFbxBakedMesh Baked;
+	if (!FFbxMeshBake::Read(Path, Baked, OutError))
 	{
-		if (Binding.SectionIndex != ClothSectionIndex)
+		return false;
+	}
+
+	const FSkeletalMeshLODRenderData& LOD = Mesh->GetRenderData().LODRenderData[0];
+	if (Baked.Kind != EFbxMeshKind::Skeletal
+		|| !Baked.SkeletalMesh.HasSameClothGeometry(LOD.BindVertices, LOD.Indices, LOD.Sections))
+	{
+		OutError = "The mesh on disk differs from the open mesh. Restart the editor before saving Cloth.";
+		return false;
+	}
+
+	// 디스크의 다른 섹션을 보존한 선택 섹션 교체
+	auto& Bindings = Baked.SkeletalMesh.ClothSectionBindings;
+	// 저장된 동일 섹션 바인딩 제거
+	for (int32 Index = 0; Index < Bindings.Num(); ++Index)
+	{
+		if (Bindings[Index].SectionIndex == ClothSectionIndex)
 		{
-			Bindings.Add(Binding);
+			Bindings.RemoveAt(Index);
+			break;
 		}
 	}
 
-	FClothSectionBinding NewBinding;
-	NewBinding.SectionIndex = ClothSectionIndex;
-	NewBinding.MaxDistanceByRenderVertex = ClothMaxDistances;
-	NewBinding.PinnedRenderVertices.Reserve(ClothPinnedVertices.Num());
-	for (const uint32 VertexIndex : ClothSectionVertices)
+	FClothSectionBinding Binding;
+	Binding.SectionIndex = ClothSectionIndex;
+	Binding.MaxDistanceByRenderVertex = ClothMaxDistances;
+	Binding.PinnedRenderVertices.Reserve(ClothPinnedVertices.Num());
+	for (const uint32 Vertex : ClothSectionVertices)
 	{
-		if (ClothPinnedVertices.Contains(VertexIndex))
+		if (ClothPinnedVertices.Contains(Vertex))
 		{
-			NewBinding.PinnedRenderVertices.Add(VertexIndex);
+			Binding.PinnedRenderVertices.Add(Vertex);
 		}
 	}
-	Bindings.Add(std::move(NewBinding));
-	// 바인딩 반영 성공 시 실행 중인 프리뷰 재생성
+	Bindings.Add(std::move(Binding));
+
+	// 저장 성공 이후에만 메모리와 프리뷰 상태 반영
+	if (!Baked.SkeletalMesh.Validate(OutError) || !FFbxMeshBake::WriteAtomically(Path, Baked, OutError))
+	{
+		return false;
+	}
+
 	if (!Mesh->SetClothSectionBindings(std::move(Bindings)))
 	{
+		OutError = "Cloth was saved. Restart the editor to reload the mesh.";
 		return false;
 	}
 

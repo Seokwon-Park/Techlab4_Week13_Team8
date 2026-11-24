@@ -174,7 +174,7 @@ void FSkeletalMeshDetailsPanel::DrawClothBinding()
 	}
 	ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.1f, 1.0f), "Pinned: %d / %d", PinCount, VertexCount);
 	ImGui::TextColored(ImVec4(0.2f, 0.75f, 1.0f, 1.0f), "Distance-limited: %d", Editor.GetClothCappedVertexCount());
-	const bool bApply = ImGui::Button("Apply Cloth Binding");
+	const bool bApply = ImGui::Button("Apply & Save Cloth Binding");
 	ImGui::EndDisabled();
 
 	// 적용된 Cloth의 프리뷰 실행·정지·초기화 버튼
@@ -223,9 +223,9 @@ void FSkeletalMeshDetailsPanel::DrawClothBinding()
 		return;
 	}
 
-	ClothBindingMessage = Editor.ApplyClothBinding()
-		? "Cloth binding applied. Click Simulate to preview."
-		: "Select a valid section with unshared render vertices.";
+	FString SaveError;
+	const bool bSaved = Editor.ApplyClothBinding(SaveError);
+	ClothBindingMessage = bSaved ? "Cloth binding saved. Click Simulate to preview." : std::move(SaveError);
 }
 
 void FSkeletalMeshDetailsPanel::DrawContent()

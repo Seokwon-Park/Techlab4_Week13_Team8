@@ -33,4 +33,5 @@ public:
 	static bool IsBakedPath(const FString& Path);
 	static bool Read(const FString& Path, FFbxBakedMesh& OutData, FString& OutError);
 	static bool Write(const FString& Path, const FFbxBakedMesh& Data, FString& OutError);
+	static bool WriteAtomically(const FString& Path, const FFbxBakedMesh& Data, FString& OutError);
 };

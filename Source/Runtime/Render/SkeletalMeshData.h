@@ -4,7 +4,7 @@
 #include "Math/Box.h"
 #include "Math/Transform.h"
 #include <Containers/Array.h>
-
+#include "Containers/Map.h"
 
 struct FSkeletalMeshSection
 {
@@ -52,6 +52,15 @@ struct FSkinWeight
 	}
 };
 
+// 렌더 섹션별 Cloth 고정점과 정점 이동 반경
+struct FClothSectionBinding
+{
+	int32 SectionIndex = INDEX_NONE;
+	TArray<uint32> PinnedRenderVertices;
+	TMap<uint32, float> MaxDistanceByRenderVertex;
+};
+
+
 struct FSkeletalMeshData
 {
 	TArray<FVertex> BindVertices;
@@ -62,7 +71,13 @@ struct FSkeletalMeshData
 	TArray<FBoneInfo> Bones;
 	FBox BindAABB;
 	FString SourcePath;
+	TArray<FClothSectionBinding> ClothSectionBindings;
 
+	static bool ValidateClothSectionBindings(const TArray<FClothSectionBinding>& Bindings,
+		const TArray<FSkeletalMeshSection>& Sections, const TArray<uint32>& Indices, int32 NumVertices);
+
+	bool HasSameClothGeometry(const TArray<FVertex>& OtherVertices,
+		const TArray<uint32>& OtherIndices, const TArray<FSkeletalMeshSection>& OtherSections) const;
 	bool Validate(FString& OutError) const;
 };
 

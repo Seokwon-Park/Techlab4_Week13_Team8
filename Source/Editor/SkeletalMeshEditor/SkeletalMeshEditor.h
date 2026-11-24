@@ -34,7 +34,7 @@ public:
 	int32 GetClothPinnedVertexCount() const { return ClothPinnedVertices.Num(); }
 	int32 GetClothCappedVertexCount() const { return ClothMaxDistances.Num(); }
 	int32 GetClothSectionVertexCount() const { return ClothSectionVertices.Num(); }
-	bool ApplyClothBinding();
+	bool ApplyClothBinding(FString& OutError);
 
 	// 선택한 본의 프리뷰 포즈를 부모 기준 로컬 변환으로 조회·수정합니다.
 	bool GetSelectedBoneLocalTransform(FTransform& OutTransform) const;

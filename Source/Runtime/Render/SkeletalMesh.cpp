@@ -135,84 +135,25 @@ bool USkeletalMesh::Build(FSkeletalMeshData&& ImportData, FString& OutError)
 	Materials = std::move(NewMaterials);
 	RenderData.LODRenderData.Empty();
 	RenderData.LODRenderData.Add(std::move(LOD));
+	ClothSectionBindings = std::move(ImportData.ClothSectionBindings);
 	RenderStates.Reset();
 	return true;
 }
 
-// 섹션과 고정점 검증 이후의 Cloth 바인딩 교체
 bool USkeletalMesh::SetClothSectionBindings(TArray<FClothSectionBinding> Bindings)
 {
-	if (Bindings.IsEmpty())
+	// 편집 입력과 파일 로드의 공용 검증
+	if (!Bindings.IsEmpty())
 	{
-		ClothSectionBindings.Empty();
-		return true;
-	}
-
-	if (RenderData.LODRenderData.IsEmpty())
-	{
-		return false;
-	}
-
-	const FSkeletalMeshLODRenderData& LOD = RenderData.LODRenderData[0];
-	TArray<uint8> BoundSections;
-	BoundSections.Init(0, LOD.Sections.Num());
-
-	// 렌더 정점별 Cloth 섹션 번호 초기화
-	TArray<int32> ClothSectionByVertex;
-	ClothSectionByVertex.Init(INDEX_NONE, LOD.BindVertices.Num());
-	for (const FClothSectionBinding& Binding : Bindings)
-	{
-		if (!LOD.Sections.IsValidIndex(Binding.SectionIndex) || BoundSections[Binding.SectionIndex])
+		if (RenderData.LODRenderData.IsEmpty())
 		{
 			return false;
 		}
-
-		const FSkeletalMeshSection& Section = LOD.Sections[Binding.SectionIndex];
-		if (Section.IndexCount == 0 || Section.IndexCount % 3 != 0)
+		const FSkeletalMeshLODRenderData& LOD = RenderData.LODRenderData[0];
+		if (!FSkeletalMeshData::ValidateClothSectionBindings(
+			Bindings, LOD.Sections, LOD.Indices, LOD.BindVertices.Num()))
 		{
 			return false;
-		}
-
-		// 선택한 섹션에 속한 고정점의 확인
-		const uint32* First = LOD.Indices.GetData() + Section.StartIndex;
-		const uint32* End = First + Section.IndexCount;
-		for (const uint32 RenderVertex : Binding.PinnedRenderVertices)
-		{
-			if (std::find(First, End, RenderVertex) == End)
-			{
-				return false;
-			}
-		}
-		// Cloth 섹션에서 사용하는 렌더 정점 기록
-		for (const uint32* Vertex = First; Vertex != End; ++Vertex)
-		{
-			ClothSectionByVertex[*Vertex] = Binding.SectionIndex;
-		}
-
-		// 선택한 섹션에 속한 정점과 유효한 반경의 확인
-		for (const auto& [RenderVertex, MaxDistance] : Binding.MaxDistanceByRenderVertex)
-		{
-			if (RenderVertex >= static_cast<uint32>(LOD.BindVertices.Num())
-				|| ClothSectionByVertex[RenderVertex] != Binding.SectionIndex
-				|| !std::isfinite(MaxDistance) || MaxDistance <= 0.0f)
-			{
-				return false;
-			}
-		}
-		BoundSections[Binding.SectionIndex] = 1;
-	}
-	// 섹션 사이에서 공유하는 Cloth 렌더 정점 검사
-	for (int32 SectionIndex = 0; SectionIndex < LOD.Sections.Num(); ++SectionIndex)
-	{
-		const FSkeletalMeshSection& Section = LOD.Sections[SectionIndex];
-		const uint32 EndIndex = Section.StartIndex + Section.IndexCount;
-		for (uint32 Index = Section.StartIndex; Index < EndIndex; ++Index)
-		{
-			const int32 ClothSection = ClothSectionByVertex[LOD.Indices[Index]];
-			if (ClothSection != INDEX_NONE && ClothSection != SectionIndex)
-			{
-				return false;
-			}
 		}
 	}
 	ClothSectionBindings = std::move(Bindings);

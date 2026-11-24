@@ -34,15 +34,6 @@ struct FSkeletalMeshRenderData
 	TArray<FSkeletalMeshLODRenderData> LODRenderData;
 };
 
-struct FClothSectionBinding
-{
-	int32 SectionIndex = INDEX_NONE;
-	TArray<uint32> PinnedRenderVertices;
-
-	// 렌더 정점 번호와 시뮬레이션 공간의 이동 반경(m)
-	TMap<uint32, float> MaxDistanceByRenderVertex;
-};
-
 UCLASS()
 class USkeletalMesh : public URenderAsset
 {
