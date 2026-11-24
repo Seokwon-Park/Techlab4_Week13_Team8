@@ -27,7 +27,7 @@
 #include "Core/Async/TaskPool.h"
 #include "Tasks/Tasks.h"
 #include "Physics/PhysXSDK.h"
-
+#include "Physics/NvClothSDK.h"
 #include "Render/RealtimeGPUProfiler.h"
 
 #include "UObject/UObjectGlobals.h"
@@ -205,6 +205,9 @@ bool FEngineLoop::Init()
 		return false;
 	}
 
+	// PhysX 초기화 완료 후 NvCloth Factory 생성
+	NvClothSDK::Initialize();
+
 	GEngine = NewObject<UEngine>(nullptr, PendingEngineClass);
 	if (!GEngine)
 	{
@@ -327,6 +330,7 @@ void FEngineLoop::Exit()
 	{
 		RenderDevice->Shutdown();
 	}
+	NvClothSDK::Shutdown();
 	PhysXSDK::Shutdown();
 }
 
