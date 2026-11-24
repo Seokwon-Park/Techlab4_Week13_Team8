@@ -187,14 +187,17 @@ void UEditorEngine::TickPIEInput(float DeltaTime)
 		GameViewport.LostFocus();
 		return;
 	}
-	constexpr EKeyCode Keys[] = { EKeyCode::W, EKeyCode::A, EKeyCode::S, EKeyCode::D,
-		EKeyCode::Space, EKeyCode::Shift };
-	for (EKeyCode Key : Keys)
+	// Enhanced Input Context가 어떤 키든 매핑할 수 있도록 키보드 전체를 넘긴다.
+	// Esc / F8은 위에서 에디터가 처리했고, 마우스 버튼 가상 키는 아래 마우스 루프가 넘긴다.
+	for (int32 Code = 1; Code < 256; ++Code)
 	{
+		if (FInputSystem::IsMouseVirtualKey(Code)) continue;
+		const EKeyCode Key = static_cast<EKeyCode>(Code);
+		if (Key == EKeyCode::Escape || Key == EKeyCode::F8) continue;
 		if (FInputSystem::IsKeyPressed(Key))
-			GameViewport.InputKey(nullptr, static_cast<int32>(Key), true);
+			GameViewport.InputKey(nullptr, Code, true);
 		if (FInputSystem::IsKeyReleased(Key))
-			GameViewport.InputKey(nullptr, static_cast<int32>(Key), false);
+			GameViewport.InputKey(nullptr, Code, false);
 	}
 
 	// UI 히트 테스트용 마우스 좌표 → 게임 렌더 타깃 기준
@@ -213,10 +216,11 @@ void UEditorEngine::TickPIEInput(float DeltaTime)
 			static_cast<int32>(V * GameViewport.GetHeight()));
 	}
 
-	constexpr EMouseButton MouseButtons[] = { EMouseButton::Left, EMouseButton::Right };
+	constexpr EMouseButton MouseButtons[] = { EMouseButton::Left, EMouseButton::Right, EMouseButton::Middle,
+		EMouseButton::Side1, EMouseButton::Side2 };
 	for (EMouseButton Button : MouseButtons)
 	{
-		const int32 Key = Button == EMouseButton::Left ? static_cast<int32>(EKeyCode::LButton) : static_cast<int32>(EKeyCode::RButton);
+		const int32 Key = FInputSystem::MouseButtonToVirtualKey(Button);
 		if (FInputSystem::IsMousePressed(Button) && !bCaptureStartedThisFrame)
 			GameViewport.InputKey(nullptr, Key, true);
 		if (FInputSystem::IsMouseReleased(Button))

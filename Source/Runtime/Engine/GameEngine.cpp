@@ -142,21 +142,23 @@ void UGameEngine::DispatchInput(FGameViewportClient& Viewport, float DeltaTime)
 		return;
 	}
 
-	constexpr EKeyCode Keys[] = { EKeyCode::W, EKeyCode::A, EKeyCode::S, EKeyCode::D,
-		EKeyCode::Space, EKeyCode::Shift, EKeyCode::Escape };
-	for (EKeyCode Key : Keys)
+	// Enhanced Input Context가 어떤 키든 매핑할 수 있도록 키보드 전체를 넘긴다.
+	// 마우스 버튼 가상 키(VK_LBUTTON 등)는 아래 마우스 루프가 넘긴다.
+	for (int32 Code = 1; Code < 256; ++Code)
 	{
-		if (FInputSystem::IsKeyPressed(Key))  Viewport.InputKey(nullptr, static_cast<int32>(Key), true);
-		if (FInputSystem::IsKeyReleased(Key)) Viewport.InputKey(nullptr, static_cast<int32>(Key), false);
+		if (FInputSystem::IsMouseVirtualKey(Code)) continue;
+		const EKeyCode Key = static_cast<EKeyCode>(Code);
+		if (FInputSystem::IsKeyPressed(Key))  Viewport.InputKey(nullptr, Code, true);
+		if (FInputSystem::IsKeyReleased(Key)) Viewport.InputKey(nullptr, Code, false);
 	}
 
 	Viewport.MouseMove(nullptr, FInputSystem::GetMouseX(), FInputSystem::GetMouseY());
 
-	constexpr EMouseButton MouseButtons[] = { EMouseButton::Left, EMouseButton::Right };
+	constexpr EMouseButton MouseButtons[] = { EMouseButton::Left, EMouseButton::Right, EMouseButton::Middle,
+		EMouseButton::Side1, EMouseButton::Side2 };
 	for (EMouseButton Button : MouseButtons)
 	{
-		const int32 Key = Button == EMouseButton::Left
-			? static_cast<int32>(EKeyCode::LButton) : static_cast<int32>(EKeyCode::RButton);
+		const int32 Key = FInputSystem::MouseButtonToVirtualKey(Button);
 		if (FInputSystem::IsMousePressed(Button))  Viewport.InputKey(nullptr, Key, true);
 		if (FInputSystem::IsMouseReleased(Button)) Viewport.InputKey(nullptr, Key, false);
 	}

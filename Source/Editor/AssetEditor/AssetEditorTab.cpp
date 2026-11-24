@@ -37,6 +37,8 @@ bool FAssetEditorTab::GetTabIcon(EEditorIcon& OutIcon, ImU32& OutColor) const
 		{ "ParticleSystem", EEditorIcon::Particle,     IM_COL32(245, 245, 245, 255) },
 		{ "Widget",         EEditorIcon::Widget,       IM_COL32(80, 160, 255, 255) },
 		{ "Blueprint",      EEditorIcon::Script,       IM_COL32(60, 140, 230, 255) },
+		{ "InputAction",         EEditorIcon::Settings, IM_COL32(220, 90, 90, 255) },
+		{ "InputMappingContext", EEditorIcon::Settings, IM_COL32(120, 200, 90, 255) },
 	};
 
 	const FString TypeName = Editor.GetEditorTypeName();

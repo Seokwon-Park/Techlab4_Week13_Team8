@@ -11,6 +11,7 @@
 #include "Render/SkeletalMesh.h"
 #include "Editor/AnimSequenceEditor/AnimSequenceEditor.h"
 #include "Editor/BlendSpaceEditor/BlendSpaceEditor.h"
+#include "Editor/InputEditor/InputAssetEditor.h"
 #include "Editor/UIEditor/UIEditor.h"
 #include "Animation/AnimSequenceFile.h"
 #include "Animation/BlendSpaceFile.h"
@@ -132,6 +133,20 @@ void FEditorManager::CreateEditor(const FString& AssetPath)
 		{
 			Editor->Shutdown();
 			HTR_LOG(Warning, "BlendSpace editor initialization failed: {}", AssetPath);
+			return;
+		}
+		Editors.Add(std::move(Editor));
+		return;
+	}
+
+	// 입력 에셋 (*.inputaction / *.inputcontext). 미리보기 없이 속성만 편집한다
+	if (FInputAssetEditor::CanOpen(AssetPath))
+	{
+		TUniquePtr<FAssetEditor> Editor = MakeUnique<FInputAssetEditor>(EditorEngine, *this, AssetPath);
+		if (!Editor->Initialize())
+		{
+			Editor->Shutdown();
+			HTR_LOG(Warning, "Input asset editor initialization failed: {}", AssetPath);
 			return;
 		}
 		Editors.Add(std::move(Editor));

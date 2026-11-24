@@ -62,6 +62,9 @@ private:
 	void DrawSearchRow();
 	void DrawAssetGrid();
 	void DrawCreatePopups();
+	// UE5 콘텐츠 브라우저의 Add / 빈 곳 우클릭 메뉴 (검색, GET, CREATE, 주요 에셋, 종류별 하위 메뉴).
+	// 열린 팝업 안에서 부른다
+	void DrawCreateMenu();
 
 	// 폴더 이동. 뒤로/앞으로 기록을 남긴다.
 	void NavigateTo(const fs::path& Path);
@@ -88,6 +91,9 @@ private:
 	char NewAssetName[64] = "NewWidget";
 	bool bOpenCreateWidget = false;
 	bool bOpenCreateParticle = false;
+	bool bOpenCreateInputAction = false;
+	bool bOpenCreateInputContext = false;
+	char CreateMenuSearch[64] = {};
 	bool bOpenNewFolder = false;
 	bool bOpenCreateBlueprint = false;
 

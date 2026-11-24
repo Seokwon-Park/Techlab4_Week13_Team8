@@ -9,6 +9,8 @@
 #include "Editor/EditorUI/EditorIcons.h"
 #include "Animation/AnimSequenceFile.h"
 #include "Animation/BlendSpaceFile.h"
+#include "Input/InputAssetLibrary.h"
+#include <cstring>
 #include "Animation/AnimBlueprintFile.h"
 
 #include "Particles/ParticleSystemFile.h"
@@ -42,6 +44,8 @@ namespace
 		Sound,
 		Script,
 		Blueprint,
+		InputAction,
+		InputMappingContext,
 		Other,
 
 		Count
@@ -71,6 +75,8 @@ namespace
 		{ "Sound",              EEditorIcon::Sound,        IM_COL32(130, 130, 255, 255) },
 		{ "Script",             EEditorIcon::Script,       IM_COL32(242, 210, 75, 255) },
 		{ "Blueprint Class",    EEditorIcon::Script,       IM_COL32(60, 140, 230, 255) },
+		{ "Input Action",       EEditorIcon::Settings,     IM_COL32(220, 90, 90, 255) },
+		{ "Input Mapping Context", EEditorIcon::Settings,  IM_COL32(120, 200, 90, 255) },
 		{ "File",               EEditorIcon::File,         IM_COL32(150, 150, 150, 255) },
 	};
 	static_assert(IM_ARRAYSIZE(CategoryInfos) == static_cast<int>(EAssetCategory::Count));
@@ -98,6 +104,8 @@ namespace
 		if (ParticleSystemFile::IsParticleSystemPath(PathString)) return EAssetCategory::Particle;
 		if (FBlueprint::IsBlueprintPath(PathString)) return EAssetCategory::Blueprint;
 		if (PhysicsAssetFile::IsPhysicsAssetPath(PathString)) return EAssetCategory::PhysicsAsset;
+		if (FInputAssetLibrary::IsInputActionPath(PathString)) return EAssetCategory::InputAction;
+		if (FInputAssetLibrary::IsMappingContextPath(PathString)) return EAssetCategory::InputMappingContext;
 		if (FFbxMeshBake::IsBakedPath(PathString))
 			return PathString.ends_with("_Static.fbx.bin") ? EAssetCategory::StaticMesh : EAssetCategory::SkeletalMesh;
 
@@ -617,22 +625,7 @@ void FContentDrawerPanel::DrawToolbar()
 	ImGui::SetItemTooltip("Create a new asset or folder in this folder");
 	if (ImGui::BeginPopup("##AddMenu"))
 	{
-		EditorIcons::MenuSection("Create");
-		if (EditorIcons::MenuRow("New Folder", EEditorIcon::Folder))
-		{
-			strcpy_s(NewAssetName, "NewFolder");
-			bOpenNewFolder = true;
-		}
-		if (EditorIcons::MenuRow("Widget Blueprint", EEditorIcon::Widget))
-		{
-			strcpy_s(NewAssetName, "NewWidget");
-			bOpenCreateWidget = true;
-		}
-		if (EditorIcons::MenuRow("Particle System", EEditorIcon::Particle))
-		{
-			strcpy_s(NewAssetName, "NewParticleSystem");
-			bOpenCreateParticle = true;
-		}
+		DrawCreateMenu();
 		ImGui::EndPopup();
 	}
 
@@ -830,10 +823,7 @@ void FContentDrawerPanel::DrawAssetGrid()
 	// 빈 곳 우클릭: 만들기 메뉴
 	if (ImGui::BeginPopupContextWindow("##DrawerContext", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
 	{
-		if (ImGui::MenuItem("New Folder")) { strcpy_s(NewAssetName, "NewFolder"); bOpenNewFolder = true; }
-		if (ImGui::MenuItem("Blueprint Class")) { MakeUniqueBlueprintName(); bOpenCreateBlueprint = true; }
-		if (ImGui::MenuItem("Create Widget")) { strcpy_s(NewAssetName, "NewWidget"); bOpenCreateWidget = true; }
-		if (ImGui::MenuItem("Create Particle System")) { strcpy_s(NewAssetName, "NewParticleSystem"); bOpenCreateParticle = true; }
+		DrawCreateMenu();
 		ImGui::EndPopup();
 	}
 
@@ -1068,7 +1058,8 @@ void FContentDrawerPanel::DrawAssetGrid()
 			else if ((Entry.Path.extension() == ".obj" || FFbxMeshBake::IsBakedPath(Entry.PathString)
 				|| Entry.Category == EAssetCategory::Animation || Entry.Category == EAssetCategory::BlendSpace
 				|| Entry.Category == EAssetCategory::AnimBlueprint || Entry.Category == EAssetCategory::Particle
-				|| Entry.Category == EAssetCategory::Blueprint || Entry.Category == EAssetCategory::PhysicsAsset) && OnOpenMesh)
+				|| Entry.Category == EAssetCategory::Blueprint || Entry.Category == EAssetCategory::PhysicsAsset
+				|| Entry.Category == EAssetCategory::InputAction || Entry.Category == EAssetCategory::InputMappingContext) && OnOpenMesh)
 			{
 				OnOpenMesh(Entry.PathString);
 			}
@@ -1080,12 +1071,178 @@ void FContentDrawerPanel::DrawAssetGrid()
 	ImGui::Dummy(ImVec2(0.0f, 4.0f * S));
 }
 
+namespace
+{
+	enum class ECreateAction : uint8
+	{
+		BlueprintClass,
+		Widget,
+		ParticleSystem,
+		InputAction,
+		InputMappingContext,
+		BlendSpace,			// 스켈레탈 메시 우클릭에서만 만든다
+		AnimBlueprint,		// 스켈레탈 메시 우클릭에서만 만든다
+	};
+
+	struct FCreateItem
+	{
+		const char* Label;
+		ECreateAction Action;
+		EAssetCategory Category;	// 아이콘과 색
+		const char* Submenu;		// 종류별 하위 메뉴 이름
+		bool bFeatured;				// 위쪽 큰 줄에도 보인다
+		const char* DisabledHint;	// 있으면 이 메뉴에서는 못 만들고 이유를 툴팁으로 보인다
+	};
+
+	// 같은 Submenu끼리 붙여 두고, 하위 메뉴가 UE처럼 이름순으로 보이게 Submenu 이름순으로 둔다
+	const FCreateItem CreateItems[] = {
+		{ "Animation Blueprint",   ECreateAction::AnimBlueprint,       EAssetCategory::AnimBlueprint,       "Animation",      false, "Right-click a Skeletal Mesh to create an Animation Blueprint for it." },
+		{ "Blend Space 1D",        ECreateAction::BlendSpace,          EAssetCategory::BlendSpace,          "Animation",      false, "Right-click a Skeletal Mesh to create a Blend Space for it." },
+		{ "Blueprint Class",       ECreateAction::BlueprintClass,      EAssetCategory::Blueprint,           "Blueprint",      true,  nullptr },
+		{ "Particle System",       ECreateAction::ParticleSystem,      EAssetCategory::Particle,            "FX",             true,  nullptr },
+		{ "Input Action",          ECreateAction::InputAction,         EAssetCategory::InputAction,         "Input",          false, nullptr },
+		{ "Input Mapping Context", ECreateAction::InputMappingContext, EAssetCategory::InputMappingContext, "Input",          false, nullptr },
+		{ "Widget Blueprint",      ECreateAction::Widget,              EAssetCategory::Widget,              "User Interface", true,  nullptr },
+	};
+
+	// 주요 에셋 줄: 어두운 타일 안 아이콘 + 타일 아래 종류 색 띠 + 이름 (UE5 Add 메뉴의 큰 줄)
+	bool FeaturedRow(const char* Label, EEditorIcon Icon, ImU32 Color)
+	{
+		const float S = EditorIcons::GetScale();
+		const float H = 34.0f * S;
+		const float Tile = 26.0f * S;
+		const float TextX = 14.0f * S + Tile;
+
+		ImGui::PushID(Label);
+		const ImVec2 Min = ImGui::GetCursorScreenPos();
+		const float Width = ImMax(TextX + ImGui::CalcTextSize(Label).x + 24.0f * S, ImGui::GetContentRegionAvail().x);
+		const bool bPressed = ImGui::Selectable("##Featured", false, ImGuiSelectableFlags_None, ImVec2(Width, H));
+
+		ImDrawList* DL = ImGui::GetWindowDrawList();
+		const ImVec2 TileMin(Min.x + 4.0f * S, Min.y + (H - Tile) * 0.5f);
+		const ImVec2 TileMax(TileMin.x + Tile, TileMin.y + Tile);
+		DL->AddRectFilled(TileMin, TileMax, IM_COL32(16, 16, 16, 255), 2.0f * S);
+		EditorIcons::Draw(DL, Icon, ImVec2((TileMin.x + TileMax.x) * 0.5f, (TileMin.y + TileMax.y) * 0.5f - 1.0f * S),
+			16.0f * S, IM_COL32(235, 235, 235, 255));
+		DL->AddRectFilled(ImVec2(TileMin.x, TileMax.y - 3.0f * S), TileMax, Color);
+		DL->AddText(ImVec2(Min.x + TextX, Min.y + (H - ImGui::GetFontSize()) * 0.5f), ImGui::GetColorU32(ImGuiCol_Text), Label);
+
+		ImGui::PopID();
+		return bPressed;
+	}
+
+	// 종류 아이콘 + 이름 한 줄. 못 만드는 항목은 흐리게 두고 이유를 툴팁으로 보인다
+	bool CreateItemRow(const FCreateItem& Item)
+	{
+		const bool bEnabled = Item.DisabledHint == nullptr;
+		const bool bPressed = EditorIcons::MenuRow(Item.Label, GetCategoryInfo(Item.Category).Icon, false, bEnabled);
+		if (!bEnabled) ImGui::SetItemTooltip("%s", Item.DisabledHint);
+		return bPressed && bEnabled;
+	}
+}
+
+void FContentDrawerPanel::DrawCreateMenu()
+{
+	const float S = EditorIcons::GetScale();
+
+	auto Run = [this](ECreateAction Action)
+	{
+		switch (Action)
+		{
+		case ECreateAction::BlueprintClass:      MakeUniqueBlueprintName(); bOpenCreateBlueprint = true; break;
+		case ECreateAction::Widget:              strcpy_s(NewAssetName, "NewWidget"); bOpenCreateWidget = true; break;
+		case ECreateAction::ParticleSystem:      strcpy_s(NewAssetName, "NewParticleSystem"); bOpenCreateParticle = true; break;
+		case ECreateAction::InputAction:         strcpy_s(NewAssetName, "IA_NewAction"); bOpenCreateInputAction = true; break;
+		case ECreateAction::InputMappingContext: strcpy_s(NewAssetName, "IMC_NewContext"); bOpenCreateInputContext = true; break;
+		default: break;
+		}
+	};
+	auto NewFolder = [this]()
+	{
+		strcpy_s(NewAssetName, "NewFolder");
+		bOpenNewFolder = true;
+	};
+
+	// 메뉴 폭을 UE 메뉴와 비슷하게 잡는다
+	ImGui::Dummy(ImVec2(280.0f * S, 0.0f));
+
+	// 검색: 메뉴가 열릴 때 비우고 바로 입력을 받는다
+	if (ImGui::IsWindowAppearing())
+	{
+		CreateMenuSearch[0] = '\0';
+		ImGui::SetKeyboardFocusHere();
+	}
+	EditorIcons::SearchBox("##CreateMenuSearch", CreateMenuSearch, sizeof(CreateMenuSearch), "Start typing to search");
+
+	// 검색어가 있으면 하위 메뉴를 펼친 목록에서 이름(또는 종류 이름)으로 거른다
+	if (CreateMenuSearch[0] != '\0')
+	{
+		bool bAny = false;
+		if (EditorIcons::MatchesFilter("New Folder", CreateMenuSearch))
+		{
+			bAny = true;
+			if (EditorIcons::MenuRow("New Folder", EEditorIcon::Folder)) NewFolder();
+		}
+		for (const FCreateItem& Item : CreateItems)
+		{
+			if (!EditorIcons::MatchesFilter(Item.Label, CreateMenuSearch) && !EditorIcons::MatchesFilter(Item.Submenu, CreateMenuSearch))
+				continue;
+			bAny = true;
+			if (CreateItemRow(Item)) Run(Item.Action);
+		}
+		if (!bAny) ImGui::TextDisabled("  No results");
+		return;
+	}
+
+	EditorIcons::MenuSection("Get");
+	if (EditorIcons::MenuRow("Import Static Mesh...", EEditorIcon::Import, false, OnImportFbx != nullptr) && OnImportFbx)
+		OnImportFbx(EFbxImportMode::Static);
+	if (EditorIcons::MenuRow("Import Skeletal Mesh...", EEditorIcon::Import, false, OnImportFbx != nullptr) && OnImportFbx)
+		OnImportFbx(EFbxImportMode::Skeletal);
+
+	EditorIcons::MenuSection("Create");
+	if (EditorIcons::MenuRow("New Folder", EEditorIcon::Folder)) NewFolder();
+
+	ImGui::Separator();
+	for (const FCreateItem& Item : CreateItems)
+	{
+		if (!Item.bFeatured) continue;
+		const FCategoryInfo& Info = GetCategoryInfo(Item.Category);
+		if (FeaturedRow(Item.Label, Info.Icon, Info.Color)) Run(Item.Action);
+	}
+
+	ImGui::Separator();
+	// 종류별 하위 메뉴. 같은 Submenu가 이어져 있으므로 이름이 바뀔 때마다 하나씩 연다
+	const ImVec2 RowSpacing(ImGui::GetStyle().ItemSpacing.x, 9.0f * S);
+	const char* PrevSubmenu = nullptr;
+	for (const FCreateItem& Head : CreateItems)
+	{
+		if (PrevSubmenu && std::strcmp(PrevSubmenu, Head.Submenu) == 0) continue;
+		PrevSubmenu = Head.Submenu;
+
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, RowSpacing);
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 4.0f * S);
+		const bool bOpen = ImGui::BeginMenu(Head.Submenu);
+		ImGui::PopStyleVar();
+		if (!bOpen) continue;
+
+		for (const FCreateItem& Item : CreateItems)
+		{
+			if (std::strcmp(Item.Submenu, Head.Submenu) != 0) continue;
+			if (CreateItemRow(Item)) Run(Item.Action);
+		}
+		ImGui::EndMenu();
+	}
+}
+
 // 만들기 창. 메뉴 안에서 바로 열 수 없어 플래그만 세우고 여기(창 기준)에서 연다.
 void FContentDrawerPanel::DrawCreatePopups()
 {
 	if (bOpenCreateWidget) { ImGui::OpenPopup("Create Widget"); bOpenCreateWidget = false; }
 	if (bOpenCreateParticle) { ImGui::OpenPopup("Create Particle System"); bOpenCreateParticle = false; }
 	if (bOpenNewFolder) { ImGui::OpenPopup("New Folder"); bOpenNewFolder = false; }
+	if (bOpenCreateInputAction) { ImGui::OpenPopup("Create Input Action"); bOpenCreateInputAction = false; }
+	if (bOpenCreateInputContext) { ImGui::OpenPopup("Create Input Mapping Context"); bOpenCreateInputContext = false; }
 	if (bOpenCreateBlueprint) { ImGui::OpenPopup("Pick Parent Class"); bOpenCreateBlueprint = false; BlueprintParentClass = "AActor"; BlueprintClassSearch[0] = '\0'; }
 	DrawCreateBlueprintPopup();
 
@@ -1134,6 +1291,27 @@ void FContentDrawerPanel::DrawCreatePopups()
 			HTR_LOG(Warning, "Failed to create particle system: {}", Error);
 		}
 	});
+
+	// 입력 에셋은 빈 파일을 만들고 바로 에디터로 연다
+	auto CreateInputAsset = [this](const fs::path& Target, bool bContext)
+	{
+		FString Error;
+		const FString Path = Target.generic_string();
+		const bool bCreated = bContext
+			? FInputAssetLibrary::CreateDefaultMappingContext(Path, Error)
+			: FInputAssetLibrary::CreateDefaultInputAction(Path, Error);
+		if (!bCreated)
+		{
+			HTR_LOG(Warning, "Failed to create input asset: {}", Error);
+			return;
+		}
+		HighlightPath = Path;
+		if (OnOpenMesh) OnOpenMesh(Path);
+	};
+	NameDialog("Create Input Action", FInputAssetLibrary::ActionExtension,
+		[CreateInputAsset](const fs::path& Target) { CreateInputAsset(Target, false); });
+	NameDialog("Create Input Mapping Context", FInputAssetLibrary::ContextExtension,
+		[CreateInputAsset](const fs::path& Target) { CreateInputAsset(Target, true); });
 
 	NameDialog("New Folder", "", [this](const fs::path& Target)
 	{
