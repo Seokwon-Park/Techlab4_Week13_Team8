@@ -54,6 +54,7 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	bool bEnableCameraLag = false;
+	bool bCameraLagZOnly = false;
 
 	UPROPERTY(EditAnywhere)
 	bool bEnableCameraRotationLag = false;

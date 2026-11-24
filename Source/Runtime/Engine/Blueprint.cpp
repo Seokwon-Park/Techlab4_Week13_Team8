@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "Engine/Blueprint.h"
+#include "Engine/BlueprintGraph.h"
 
 #include <algorithm>
 #include <cctype>
@@ -29,7 +30,21 @@ namespace
 		FString AssetPath;        // Assets 기준 경로 ("Blueprints/BP_Door.bp")
 		FString ParentClassName;
 		TArray<uint8> FileBytes;  // 기본값을 적용할 때마다 다시 읽는다
+		// "Graphs" (EventGraph, Construction Script). 없으면 nullptr.
+		// 실행 중인 Delay가 옛 그래프를 붙잡고 있을 수 있어 shared_ptr로 둔다.
+		std::shared_ptr<const FBPGraphSet> Graphs;
 	};
+
+	std::shared_ptr<const FBPGraphSet> ReadGraphs(const TArray<uint8>& Bytes)
+	{
+		const FJsonObject Root = FJsonObject::parse(Bytes.begin(), Bytes.end(), nullptr, false);
+		if (Root.is_discarded() || !Root.is_object() || !Root.contains("Graphs") || !Root["Graphs"].is_object())
+			return nullptr;
+		auto Graphs = std::make_shared<FBPGraphSet>();
+		if (!FBlueprintGraphSerializer::FromJson(Root["Graphs"].dump(), *Graphs))
+			return nullptr;
+		return Graphs;
+	}
 
 	// BP 클래스 -> 데이터. UClass는 등록된 뒤 지우지 않으므로 포인터를 키로 쓴다.
 	std::unordered_map<const UClass*, FBlueprintData>& GetRegistry()
@@ -361,6 +376,7 @@ namespace
 			}
 		}
 
+		Data.Graphs = ReadGraphs(Data.FileBytes);
 		GetRegistry()[Class] = std::move(Data);
 
 		// 놓인 액터를 새 기본값 + 자기 차이로 다시 맞춘다. 인스턴스가 바꾸지 않은 값은 새 기본값을 따라간다.
@@ -461,7 +477,8 @@ void FBlueprint::RegisterAll(const std::filesystem::path& AssetRoot)
 		HTR_LOG(Info, "Blueprint: {} classes registered", Registered);
 }
 
-UClass* FBlueprint::SaveBlueprint(const std::filesystem::path& File, UClass* ParentClass, AActor* Template, FString& OutError)
+UClass* FBlueprint::SaveBlueprint(const std::filesystem::path& File, UClass* ParentClass, AActor* Template, FString& OutError,
+	const FBPGraphSet* Graphs)
 {
 	if (!ParentClass || !ParentClass->IsChildOf(AActor::StaticClass()))
 	{
@@ -495,6 +512,33 @@ UClass* FBlueprint::SaveBlueprint(const std::filesystem::path& File, UClass* Par
 		return nullptr;
 	}
 
+	// 그래프: 넘겨받았으면 그것을, 아니면 지금 파일에 있던 것을 그대로 남긴다.
+	{
+		FJsonObject Root = FJsonObject::parse(Bytes.begin(), Bytes.end(), nullptr, false);
+		FJsonObject GraphsJson;
+		if (Graphs)
+		{
+			GraphsJson = FJsonObject::parse(FBlueprintGraphSerializer::ToJson(*Graphs), nullptr, false);
+		}
+		else
+		{
+			TArray<uint8> OldBytes;
+			if (ReadFileBytes(File, OldBytes))
+			{
+				const FJsonObject Old = FJsonObject::parse(OldBytes.begin(), OldBytes.end(), nullptr, false);
+				if (!Old.is_discarded() && Old.is_object() && Old.contains("Graphs"))
+					GraphsJson = Old["Graphs"];
+			}
+		}
+		if (!Root.is_discarded() && Root.is_object() && GraphsJson.is_object())
+		{
+			Root["Graphs"] = std::move(GraphsJson);
+			const std::string Text = Root.dump(1, '\t');
+			Bytes.SetNum(static_cast<int32>(Text.size()));
+			std::memcpy(Bytes.GetData(), Text.data(), Text.size());
+		}
+	}
+
 	std::error_code Ec;
 	std::filesystem::create_directories(File.parent_path(), Ec);
 	{
@@ -507,6 +551,12 @@ UClass* FBlueprint::SaveBlueprint(const std::filesystem::path& File, UClass* Par
 		Stream.write(reinterpret_cast<const char*>(Bytes.GetData()), Bytes.Num());
 	}
 	return LoadBlueprint(File, &OutError);
+}
+
+std::shared_ptr<const FBPGraphSet> FBlueprint::GetGraphs(const UClass* Class)
+{
+	const FBlueprintData* Data = FindData(Class);
+	return Data ? Data->Graphs : nullptr;
 }
 
 bool FBlueprint::IsBlueprintClass(const UClass* Class)

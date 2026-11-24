@@ -122,6 +122,7 @@ public:
 	bool bSimulatePhysics = false;   // UE는 BodyInstance.bSimulatePhysics. A의 FBodyInstance에 없어서 컴포넌트에 둔다
 
 	virtual UBodySetup* GetBodySetup() { return nullptr; }   // UStaticMeshComponent가 override
+	UFUNCTION(BlueprintCallable)
 	virtual void SetSimulatePhysics(bool bSimulate);
 	void SyncComponentToRBPhysics();
 	// UE UPrimitiveComponent::GetBodyInstance. 이름이 없으면 컴포넌트를 대표하는 바디 (스켈레탈은 루트 바디)

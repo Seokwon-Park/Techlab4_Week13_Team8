@@ -9,6 +9,8 @@
 #include "Editor/EditorUI/EditorIcons.h"
 #include "Animation/AnimSequenceFile.h"
 #include "Animation/BlendSpaceFile.h"
+#include "Input/InputAssetLibrary.h"
+#include <cstring>
 #include "Animation/AnimBlueprintFile.h"
 
 #include "Particles/ParticleSystemFile.h"
@@ -42,6 +44,8 @@ namespace
 		Sound,
 		Script,
 		Blueprint,
+		InputAction,
+		InputMappingContext,
 		Other,
 
 		Count
@@ -71,6 +75,8 @@ namespace
 		{ "Sound",              EEditorIcon::Sound,        IM_COL32(130, 130, 255, 255) },
 		{ "Script",             EEditorIcon::Script,       IM_COL32(242, 210, 75, 255) },
 		{ "Blueprint Class",    EEditorIcon::Script,       IM_COL32(60, 140, 230, 255) },
+		{ "Input Action",       EEditorIcon::Settings,     IM_COL32(220, 90, 90, 255) },
+		{ "Input Mapping Context", EEditorIcon::Settings,  IM_COL32(120, 200, 90, 255) },
 		{ "File",               EEditorIcon::File,         IM_COL32(150, 150, 150, 255) },
 	};
 	static_assert(IM_ARRAYSIZE(CategoryInfos) == static_cast<int>(EAssetCategory::Count));
@@ -98,6 +104,8 @@ namespace
 		if (ParticleSystemFile::IsParticleSystemPath(PathString)) return EAssetCategory::Particle;
 		if (FBlueprint::IsBlueprintPath(PathString)) return EAssetCategory::Blueprint;
 		if (PhysicsAssetFile::IsPhysicsAssetPath(PathString)) return EAssetCategory::PhysicsAsset;
+		if (FInputAssetLibrary::IsInputActionPath(PathString)) return EAssetCategory::InputAction;
+		if (FInputAssetLibrary::IsMappingContextPath(PathString)) return EAssetCategory::InputMappingContext;
 		if (FFbxMeshBake::IsBakedPath(PathString))
 			return PathString.ends_with("_Static.fbx.bin") ? EAssetCategory::StaticMesh : EAssetCategory::SkeletalMesh;
 
@@ -617,22 +625,7 @@ void FContentDrawerPanel::DrawToolbar()
 	ImGui::SetItemTooltip("Create a new asset or folder in this folder");
 	if (ImGui::BeginPopup("##AddMenu"))
 	{
-		EditorIcons::MenuSection("Create");
-		if (EditorIcons::MenuRow("New Folder", EEditorIcon::Folder))
-		{
-			strcpy_s(NewAssetName, "NewFolder");
-			bOpenNewFolder = true;
-		}
-		if (EditorIcons::MenuRow("Widget Blueprint", EEditorIcon::Widget))
-		{
-			strcpy_s(NewAssetName, "NewWidget");
-			bOpenCreateWidget = true;
-		}
-		if (EditorIcons::MenuRow("Particle System", EEditorIcon::Particle))
-		{
-			strcpy_s(NewAssetName, "NewParticleSystem");
-			bOpenCreateParticle = true;
-		}
+		DrawCreateMenu();
 		ImGui::EndPopup();
 	}
 
@@ -830,10 +823,7 @@ void FContentDrawerPanel::DrawAssetGrid()
 	// 빈 곳 우클릭: 만들기 메뉴
 	if (ImGui::BeginPopupContextWindow("##DrawerContext", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
 	{
-		if (ImGui::MenuItem("New Folder")) { strcpy_s(NewAssetName, "NewFolder"); bOpenNewFolder = true; }
-		if (ImGui::MenuItem("Blueprint Class")) { strcpy_s(NewAssetName, "BP_NewBlueprint"); bOpenCreateBlueprint = true; }
-		if (ImGui::MenuItem("Create Widget")) { strcpy_s(NewAssetName, "NewWidget"); bOpenCreateWidget = true; }
-		if (ImGui::MenuItem("Create Particle System")) { strcpy_s(NewAssetName, "NewParticleSystem"); bOpenCreateParticle = true; }
+		DrawCreateMenu();
 		ImGui::EndPopup();
 	}
 
@@ -1068,7 +1058,8 @@ void FContentDrawerPanel::DrawAssetGrid()
 			else if ((Entry.Path.extension() == ".obj" || FFbxMeshBake::IsBakedPath(Entry.PathString)
 				|| Entry.Category == EAssetCategory::Animation || Entry.Category == EAssetCategory::BlendSpace
 				|| Entry.Category == EAssetCategory::AnimBlueprint || Entry.Category == EAssetCategory::Particle
-				|| Entry.Category == EAssetCategory::Blueprint || Entry.Category == EAssetCategory::PhysicsAsset) && OnOpenMesh)
+				|| Entry.Category == EAssetCategory::Blueprint || Entry.Category == EAssetCategory::PhysicsAsset
+				|| Entry.Category == EAssetCategory::InputAction || Entry.Category == EAssetCategory::InputMappingContext) && OnOpenMesh)
 			{
 				OnOpenMesh(Entry.PathString);
 			}
@@ -1080,13 +1071,179 @@ void FContentDrawerPanel::DrawAssetGrid()
 	ImGui::Dummy(ImVec2(0.0f, 4.0f * S));
 }
 
+namespace
+{
+	enum class ECreateAction : uint8
+	{
+		BlueprintClass,
+		Widget,
+		ParticleSystem,
+		InputAction,
+		InputMappingContext,
+		BlendSpace,			// 스켈레탈 메시 우클릭에서만 만든다
+		AnimBlueprint,		// 스켈레탈 메시 우클릭에서만 만든다
+	};
+
+	struct FCreateItem
+	{
+		const char* Label;
+		ECreateAction Action;
+		EAssetCategory Category;	// 아이콘과 색
+		const char* Submenu;		// 종류별 하위 메뉴 이름
+		bool bFeatured;				// 위쪽 큰 줄에도 보인다
+		const char* DisabledHint;	// 있으면 이 메뉴에서는 못 만들고 이유를 툴팁으로 보인다
+	};
+
+	// 같은 Submenu끼리 붙여 두고, 하위 메뉴가 UE처럼 이름순으로 보이게 Submenu 이름순으로 둔다
+	const FCreateItem CreateItems[] = {
+		{ "Animation Blueprint",   ECreateAction::AnimBlueprint,       EAssetCategory::AnimBlueprint,       "Animation",      false, "Right-click a Skeletal Mesh to create an Animation Blueprint for it." },
+		{ "Blend Space 1D",        ECreateAction::BlendSpace,          EAssetCategory::BlendSpace,          "Animation",      false, "Right-click a Skeletal Mesh to create a Blend Space for it." },
+		{ "Blueprint Class",       ECreateAction::BlueprintClass,      EAssetCategory::Blueprint,           "Blueprint",      true,  nullptr },
+		{ "Particle System",       ECreateAction::ParticleSystem,      EAssetCategory::Particle,            "FX",             true,  nullptr },
+		{ "Input Action",          ECreateAction::InputAction,         EAssetCategory::InputAction,         "Input",          false, nullptr },
+		{ "Input Mapping Context", ECreateAction::InputMappingContext, EAssetCategory::InputMappingContext, "Input",          false, nullptr },
+		{ "Widget Blueprint",      ECreateAction::Widget,              EAssetCategory::Widget,              "User Interface", true,  nullptr },
+	};
+
+	// 주요 에셋 줄: 어두운 타일 안 아이콘 + 타일 아래 종류 색 띠 + 이름 (UE5 Add 메뉴의 큰 줄)
+	bool FeaturedRow(const char* Label, EEditorIcon Icon, ImU32 Color)
+	{
+		const float S = EditorIcons::GetScale();
+		const float H = 34.0f * S;
+		const float Tile = 26.0f * S;
+		const float TextX = 14.0f * S + Tile;
+
+		ImGui::PushID(Label);
+		const ImVec2 Min = ImGui::GetCursorScreenPos();
+		const float Width = ImMax(TextX + ImGui::CalcTextSize(Label).x + 24.0f * S, ImGui::GetContentRegionAvail().x);
+		const bool bPressed = ImGui::Selectable("##Featured", false, ImGuiSelectableFlags_None, ImVec2(Width, H));
+
+		ImDrawList* DL = ImGui::GetWindowDrawList();
+		const ImVec2 TileMin(Min.x + 4.0f * S, Min.y + (H - Tile) * 0.5f);
+		const ImVec2 TileMax(TileMin.x + Tile, TileMin.y + Tile);
+		DL->AddRectFilled(TileMin, TileMax, IM_COL32(16, 16, 16, 255), 2.0f * S);
+		EditorIcons::Draw(DL, Icon, ImVec2((TileMin.x + TileMax.x) * 0.5f, (TileMin.y + TileMax.y) * 0.5f - 1.0f * S),
+			16.0f * S, IM_COL32(235, 235, 235, 255));
+		DL->AddRectFilled(ImVec2(TileMin.x, TileMax.y - 3.0f * S), TileMax, Color);
+		DL->AddText(ImVec2(Min.x + TextX, Min.y + (H - ImGui::GetFontSize()) * 0.5f), ImGui::GetColorU32(ImGuiCol_Text), Label);
+
+		ImGui::PopID();
+		return bPressed;
+	}
+
+	// 종류 아이콘 + 이름 한 줄. 못 만드는 항목은 흐리게 두고 이유를 툴팁으로 보인다
+	bool CreateItemRow(const FCreateItem& Item)
+	{
+		const bool bEnabled = Item.DisabledHint == nullptr;
+		const bool bPressed = EditorIcons::MenuRow(Item.Label, GetCategoryInfo(Item.Category).Icon, false, bEnabled);
+		if (!bEnabled) ImGui::SetItemTooltip("%s", Item.DisabledHint);
+		return bPressed && bEnabled;
+	}
+}
+
+void FContentDrawerPanel::DrawCreateMenu()
+{
+	const float S = EditorIcons::GetScale();
+
+	auto Run = [this](ECreateAction Action)
+	{
+		switch (Action)
+		{
+		case ECreateAction::BlueprintClass:      MakeUniqueBlueprintName(); bOpenCreateBlueprint = true; break;
+		case ECreateAction::Widget:              strcpy_s(NewAssetName, "NewWidget"); bOpenCreateWidget = true; break;
+		case ECreateAction::ParticleSystem:      strcpy_s(NewAssetName, "NewParticleSystem"); bOpenCreateParticle = true; break;
+		case ECreateAction::InputAction:         strcpy_s(NewAssetName, "IA_NewAction"); bOpenCreateInputAction = true; break;
+		case ECreateAction::InputMappingContext: strcpy_s(NewAssetName, "IMC_NewContext"); bOpenCreateInputContext = true; break;
+		default: break;
+		}
+	};
+	auto NewFolder = [this]()
+	{
+		strcpy_s(NewAssetName, "NewFolder");
+		bOpenNewFolder = true;
+	};
+
+	// 메뉴 폭을 UE 메뉴와 비슷하게 잡는다
+	ImGui::Dummy(ImVec2(280.0f * S, 0.0f));
+
+	// 검색: 메뉴가 열릴 때 비우고 바로 입력을 받는다
+	if (ImGui::IsWindowAppearing())
+	{
+		CreateMenuSearch[0] = '\0';
+		ImGui::SetKeyboardFocusHere();
+	}
+	EditorIcons::SearchBox("##CreateMenuSearch", CreateMenuSearch, sizeof(CreateMenuSearch), "Start typing to search");
+
+	// 검색어가 있으면 하위 메뉴를 펼친 목록에서 이름(또는 종류 이름)으로 거른다
+	if (CreateMenuSearch[0] != '\0')
+	{
+		bool bAny = false;
+		if (EditorIcons::MatchesFilter("New Folder", CreateMenuSearch))
+		{
+			bAny = true;
+			if (EditorIcons::MenuRow("New Folder", EEditorIcon::Folder)) NewFolder();
+		}
+		for (const FCreateItem& Item : CreateItems)
+		{
+			if (!EditorIcons::MatchesFilter(Item.Label, CreateMenuSearch) && !EditorIcons::MatchesFilter(Item.Submenu, CreateMenuSearch))
+				continue;
+			bAny = true;
+			if (CreateItemRow(Item)) Run(Item.Action);
+		}
+		if (!bAny) ImGui::TextDisabled("  No results");
+		return;
+	}
+
+	EditorIcons::MenuSection("Get");
+	if (EditorIcons::MenuRow("Import Static Mesh...", EEditorIcon::Import, false, OnImportFbx != nullptr) && OnImportFbx)
+		OnImportFbx(EFbxImportMode::Static);
+	if (EditorIcons::MenuRow("Import Skeletal Mesh...", EEditorIcon::Import, false, OnImportFbx != nullptr) && OnImportFbx)
+		OnImportFbx(EFbxImportMode::Skeletal);
+
+	EditorIcons::MenuSection("Create");
+	if (EditorIcons::MenuRow("New Folder", EEditorIcon::Folder)) NewFolder();
+
+	ImGui::Separator();
+	for (const FCreateItem& Item : CreateItems)
+	{
+		if (!Item.bFeatured) continue;
+		const FCategoryInfo& Info = GetCategoryInfo(Item.Category);
+		if (FeaturedRow(Item.Label, Info.Icon, Info.Color)) Run(Item.Action);
+	}
+
+	ImGui::Separator();
+	// 종류별 하위 메뉴. 같은 Submenu가 이어져 있으므로 이름이 바뀔 때마다 하나씩 연다
+	const ImVec2 RowSpacing(ImGui::GetStyle().ItemSpacing.x, 9.0f * S);
+	const char* PrevSubmenu = nullptr;
+	for (const FCreateItem& Head : CreateItems)
+	{
+		if (PrevSubmenu && std::strcmp(PrevSubmenu, Head.Submenu) == 0) continue;
+		PrevSubmenu = Head.Submenu;
+
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, RowSpacing);
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 4.0f * S);
+		const bool bOpen = ImGui::BeginMenu(Head.Submenu);
+		ImGui::PopStyleVar();
+		if (!bOpen) continue;
+
+		for (const FCreateItem& Item : CreateItems)
+		{
+			if (std::strcmp(Item.Submenu, Head.Submenu) != 0) continue;
+			if (CreateItemRow(Item)) Run(Item.Action);
+		}
+		ImGui::EndMenu();
+	}
+}
+
 // 만들기 창. 메뉴 안에서 바로 열 수 없어 플래그만 세우고 여기(창 기준)에서 연다.
 void FContentDrawerPanel::DrawCreatePopups()
 {
 	if (bOpenCreateWidget) { ImGui::OpenPopup("Create Widget"); bOpenCreateWidget = false; }
 	if (bOpenCreateParticle) { ImGui::OpenPopup("Create Particle System"); bOpenCreateParticle = false; }
 	if (bOpenNewFolder) { ImGui::OpenPopup("New Folder"); bOpenNewFolder = false; }
-	if (bOpenCreateBlueprint) { ImGui::OpenPopup("Create Blueprint Class"); bOpenCreateBlueprint = false; BlueprintClassSearch[0] = '\0'; }
+	if (bOpenCreateInputAction) { ImGui::OpenPopup("Create Input Action"); bOpenCreateInputAction = false; }
+	if (bOpenCreateInputContext) { ImGui::OpenPopup("Create Input Mapping Context"); bOpenCreateInputContext = false; }
+	if (bOpenCreateBlueprint) { ImGui::OpenPopup("Pick Parent Class"); bOpenCreateBlueprint = false; BlueprintParentClass = "AActor"; BlueprintClassSearch[0] = '\0'; }
 	DrawCreateBlueprintPopup();
 
 	// 이름 입력 + 같은 이름 검사 + Create/Cancel. Create를 누르면 OnCreate(만들 경로)를 부른다.
@@ -1135,6 +1292,27 @@ void FContentDrawerPanel::DrawCreatePopups()
 		}
 	});
 
+	// 입력 에셋은 빈 파일을 만들고 바로 에디터로 연다
+	auto CreateInputAsset = [this](const fs::path& Target, bool bContext)
+	{
+		FString Error;
+		const FString Path = Target.generic_string();
+		const bool bCreated = bContext
+			? FInputAssetLibrary::CreateDefaultMappingContext(Path, Error)
+			: FInputAssetLibrary::CreateDefaultInputAction(Path, Error);
+		if (!bCreated)
+		{
+			HTR_LOG(Warning, "Failed to create input asset: {}", Error);
+			return;
+		}
+		HighlightPath = Path;
+		if (OnOpenMesh) OnOpenMesh(Path);
+	};
+	NameDialog("Create Input Action", FInputAssetLibrary::ActionExtension,
+		[CreateInputAsset](const fs::path& Target) { CreateInputAsset(Target, false); });
+	NameDialog("Create Input Mapping Context", FInputAssetLibrary::ContextExtension,
+		[CreateInputAsset](const fs::path& Target) { CreateInputAsset(Target, true); });
+
 	NameDialog("New Folder", "", [this](const fs::path& Target)
 	{
 		std::error_code Error;
@@ -1145,92 +1323,314 @@ void FContentDrawerPanel::DrawCreatePopups()
 	});
 }
 
-// UE5의 "Pick Parent Class" 창. 자주 쓰는 부모를 위에 두고, 아래에서 모든 액터 클래스를 검색해 고른다.
+// ---------------- Blueprint Class 만들기 (UE5 "Pick Parent Class") ----------------
+
+namespace
+{
+	struct FCommonParent
+	{
+		const char* ClassName;
+		const char* Label;
+		EEditorIcon Icon;
+		const char* Description;
+	};
+
+	// UE5 창의 COMMON 목록. 엔진에 없는 클래스는 건너뛴다.
+	const FCommonParent CommonParents[] = {
+		{ "AActor",            "Actor",             EEditorIcon::ClassActor,          "An Actor is an object that can be placed or spawned in the world." },
+		{ "APawn",             "Pawn",              EEditorIcon::ClassPawn,           "A Pawn is an actor that can be 'possessed' and receive input from a controller." },
+		{ "ACharacter",        "Character",         EEditorIcon::ClassCharacter,      "A character is a type of Pawn that includes the ability to walk around." },
+		{ "APlayerController", "Player Controller", EEditorIcon::ClassController,     "A Player Controller is an actor responsible for controlling a Pawn used by the player." },
+		{ "AGameModeBase",     "Game Mode Base",    EEditorIcon::ClassGameMode,       "Game Mode Base defines the game being played, its rules, scoring, and other facets of the game type." },
+		{ "UActorComponent",   "Actor Component",   EEditorIcon::ClassComponent,      "An ActorComponent is a reusable component that can be added to any actor." },
+		{ "USceneComponent",   "Scene Component",   EEditorIcon::ClassSceneComponent, "A Scene Component is a component that has a scene transform and can be attached to other scene components." },
+	};
+
+	// Blueprint 부모가 될 수 있나. 지금 데이터 Blueprint는 액터만 지원하고, 추상 클래스는 만들 수 없다.
+	bool CanBeBlueprintParent(const UClass* Class)
+	{
+		return Class && Class->Constructor && Class->IsChildOf(AActor::StaticClass());
+	}
+
+	// 클래스 아이콘. 가장 가까운 COMMON 부모의 아이콘을 쓴다.
+	EEditorIcon GetClassIcon(const UClass* Class)
+	{
+		for (const UClass* It = Class; It; It = It->Super)
+		{
+			for (const FCommonParent& Parent : CommonParents)
+			{
+				if (It->Name == Parent.ClassName)
+					return Parent.Icon;
+			}
+		}
+		return EEditorIcon::ClassActor;
+	}
+
+	// 동그라미 안의 "?" (UE5 도움말 아이콘). 마우스를 올리면 Tooltip을 보인다.
+	void HelpIcon(const char* Id, const char* Tooltip)
+	{
+		const float S = EditorIcons::GetScale();
+		const float Size = 18.0f * S;
+		ImGui::InvisibleButton(Id, ImVec2(Size, Size));
+		const bool bHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
+		const ImVec2 Min = ImGui::GetItemRectMin();
+		const ImVec2 Center(Min.x + Size * 0.5f, Min.y + Size * 0.5f);
+		const ImU32 Color = bHovered ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 200, 200, 255);
+		ImDrawList* DrawList = ImGui::GetWindowDrawList();
+		DrawList->AddCircle(Center, Size * 0.45f, Color, 0, 1.5f * S);
+		const ImVec2 TextSize = ImGui::CalcTextSize("?");
+		DrawList->AddText(ImVec2(Center.x - TextSize.x * 0.5f, Center.y - TextSize.y * 0.5f), Color, "?");
+		if (bHovered && Tooltip)
+			ImGui::SetTooltip("%s", Tooltip);
+	}
+
+	// 아이콘 + 이름이 왼쪽 정렬된 넓은 버튼 (UE5 Pick Parent Class 행의 버튼).
+	bool ClassButton(const char* Id, EEditorIcon Icon, const char* Label, const ImVec2& Size)
+	{
+		const float S = EditorIcons::GetScale();
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f * S);
+		const bool bPressed = ImGui::Button(Id, Size);
+		ImGui::PopStyleVar();
+
+		const ImVec2 Min = ImGui::GetItemRectMin();
+		const float IconSize = 16.0f * S;
+		const float CenterY = Min.y + Size.y * 0.5f;
+		const ImU32 TextColor = ImGui::GetColorU32(ImGuiCol_Text);
+		ImDrawList* DrawList = ImGui::GetWindowDrawList();
+		EditorIcons::Draw(DrawList, Icon, ImVec2(Min.x + 12.0f * S + IconSize * 0.5f, CenterY), IconSize, TextColor);
+		DrawList->AddText(ImVec2(Min.x + 20.0f * S + IconSize, CenterY - ImGui::GetTextLineHeight() * 0.5f), TextColor, Label);
+		return bPressed;
+	}
+
+	// UE5처럼 배경 없는 "▼ COMMON" 접기 제목.
+	bool SectionHeader(const char* Label, bool bDefaultOpen)
+	{
+		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0, 0, 0, 0));
+		ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(1, 1, 1, 0.06f));
+		ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(1, 1, 1, 0.10f));
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.75f, 0.75f, 0.75f, 1.0f));
+		if (ImGui::IsWindowAppearing())
+			ImGui::SetNextItemOpen(bDefaultOpen);
+		const bool bOpen = ImGui::CollapsingHeader(Label, ImGuiTreeNodeFlags_SpanAvailWidth);
+		ImGui::PopStyleColor(4);
+		return bOpen;
+	}
+}
+
+void FContentDrawerPanel::MakeUniqueBlueprintName()
+{
+	for (int32 Index = 0; ; ++Index)
+	{
+		const FString Name = Index == 0 ? FString("BP_NewBlueprint") : "BP_NewBlueprint" + std::to_string(Index);
+		std::error_code Error;
+		if (!fs::exists(CurrentPath / (Name + FBlueprint::Extension), Error) && !FindClass(Name))
+		{
+			strcpy_s(NewAssetName, Name.c_str());
+			return;
+		}
+	}
+}
+
+void FContentDrawerPanel::CreateBlueprintAsset(UClass* ParentClass)
+{
+	const fs::path Target = CurrentPath / (FString(NewAssetName) + FBlueprint::Extension);
+	FString CreateError;
+	if (FBlueprint::SaveBlueprint(Target, ParentClass, nullptr, CreateError))
+	{
+		HighlightPath = Target.generic_string();
+		if (OnOpenMesh) OnOpenMesh(Target.generic_string());   // 만들자마자 Blueprint 에디터로 연다
+	}
+	else
+	{
+		HTR_LOG(Warning, "Failed to create blueprint: {}", CreateError);
+	}
+}
+
+void FContentDrawerPanel::DrawBlueprintClassTree(UClass* Class, const TArray<UClass*>& Classes, UClass*& OutPicked)
+{
+	TArray<UClass*> Children;
+	for (UClass* Other : Classes)
+	{
+		if (Other->Super == Class)
+			Children.Add(Other);
+	}
+
+	ImGuiTreeNodeFlags Flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanAvailWidth;
+	if (Children.IsEmpty()) Flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+	if (BlueprintParentClass == Class->Name) Flags |= ImGuiTreeNodeFlags_Selected;
+	if (Class == AActor::StaticClass()) Flags |= ImGuiTreeNodeFlags_DefaultOpen;
+
+	const bool bCanPick = CanBeBlueprintParent(Class);
+	if (!bCanPick) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+	const FString Label = Class->Name + (FBlueprint::IsBlueprintClass(Class) ? "  (Blueprint)" : "");
+	const bool bOpen = ImGui::TreeNodeEx(Class, Flags, "%s", Label.c_str());
+	if (!bCanPick) ImGui::PopStyleColor();
+
+	if (bCanPick && ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen())
+	{
+		BlueprintParentClass = Class->Name;
+		if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+			OutPicked = Class;
+	}
+	if (!bCanPick)
+		ImGui::SetItemTooltip("%s is abstract and can't be used as a parent.", Class->Name.c_str());
+
+	if (bOpen && !Children.IsEmpty())
+	{
+		for (UClass* Child : Children)
+			DrawBlueprintClassTree(Child, Classes, OutPicked);
+		ImGui::TreePop();
+	}
+}
+
+// UE5의 "Pick Parent Class" 창. COMMON 버튼을 누르면 그 부모로 바로 만들고,
+// ALL CLASSES에서는 모든 액터 클래스를 트리로 보여 주고 검색한다 (고르고 Select, 또는 더블클릭).
 void FContentDrawerPanel::DrawCreateBlueprintPopup()
 {
 	const float S = EditorIcons::GetScale();
-	ImGui::SetNextWindowSize(ImVec2(420.0f * S, 0.0f), ImGuiCond_Appearing);
-	if (!ImGui::BeginPopupModal("Create Blueprint Class", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+	ImGui::SetNextWindowSize(ImVec2(620.0f * S, 0.0f), ImGuiCond_Appearing);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowTitleAlign, ImVec2(0.5f, 0.5f));
+	bool bKeepOpen = true;
+	const bool bVisible = ImGui::BeginPopupModal("Pick Parent Class", &bKeepOpen, ImGuiWindowFlags_AlwaysAutoResize);
+	ImGui::PopStyleVar();
+	if (!bVisible)
 		return;
 
-	struct FCommonParent { const char* ClassName; const char* Label; const char* Description; };
-	static const FCommonParent CommonParents[] = {
-		{ "AActor",            "Actor",             "An object that can be placed or spawned in the world." },
-		{ "APawn",             "Pawn",              "An actor that can be possessed and receive input from a controller." },
-		{ "ACharacter",        "Character",         "A pawn with a capsule and movement that can walk and jump." },
-		{ "AStaticMeshActor",  "Static Mesh Actor", "An actor that shows a static mesh." },
-		{ "APlayerController", "Player Controller", "Takes player input and controls a pawn." },
-		{ "AGameModeBase",     "Game Mode Base",    "Defines the rules of play: which pawn, controller, HUD and state to spawn." },
-	};
+	// 파일 이름이 곧 클래스 이름이라 같은 이름의 파일이나 클래스(C++ 또는 다른 BP)가 있으면 만들 수 없다.
+	const fs::path Target = CurrentPath / (FString(NewAssetName) + FBlueprint::Extension);
+	std::error_code FsError;
+	const char* NameError = nullptr;
+	if (NewAssetName[0] == '\0') NameError = "Enter a name.";
+	else if (fs::exists(Target, FsError)) NameError = "A file with this name already exists.";
+	else if (FindClass(NewAssetName)) NameError = "A class with this name already exists.";
 
-	ImGui::TextDisabled("COMMON CLASSES");
-	for (const FCommonParent& Parent : CommonParents)
-	{
-		if (!FindClass(Parent.ClassName))
-			continue;
-		ImGui::PushID(Parent.ClassName);
-		if (ImGui::Selectable(Parent.Label, BlueprintParentClass == Parent.ClassName))
-			BlueprintParentClass = Parent.ClassName;
-		ImGui::SetItemTooltip("%s\n%s", Parent.ClassName, Parent.Description);
-		ImGui::PopID();
-	}
+	UClass* Picked = nullptr;
+	const float WindowWidth = 620.0f * S - ImGui::GetStyle().WindowPadding.x * 2.0f;
 
-	ImGui::Spacing();
-	ImGui::TextDisabled("ALL CLASSES");
-	EditorIcons::SearchBox("##BlueprintParentSearch", BlueprintClassSearch, sizeof(BlueprintClassSearch), "Search classes");
+	// ---- COMMON ----
+	if (SectionHeader("COMMON", true))
 	{
-		TArray<UClass*> Classes;
-		Classes.Add(AActor::StaticClass());
-		GetDerivedClasses(AActor::StaticClass(), Classes);
-		std::sort(Classes.begin(), Classes.end(), [](const UClass* A, const UClass* B) { return A->Name < B->Name; });
-		ImGui::BeginChild("##ParentClassList", ImVec2(0.0f, 180.0f * S), ImGuiChildFlags_Borders);
-		for (UClass* Class : Classes)
+		const float ButtonWidth = 280.0f * S;
+		const float ButtonHeight = 28.0f * S;
+		const float HelpWidth = 18.0f * S;
+		const float Spacing = ImGui::GetStyle().ItemSpacing.x;
+		const float DescWidth = WindowWidth - ImGui::GetStyle().WindowPadding.x * 2.0f - ButtonWidth - HelpWidth - Spacing * 2.0f;
+		const float RowHeight = std::max(ButtonHeight, ImGui::GetTextLineHeightWithSpacing() * 2.0f);
+
+		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.09f, 0.09f, 0.09f, 1.0f));
+		ImGui::BeginChild("##CommonClasses", ImVec2(WindowWidth, 0.0f), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
+		ImGui::PopStyleColor();
+		for (const FCommonParent& Parent : CommonParents)
 		{
-			// 추상 클래스는 만들 수 없으므로 부모로 고를 수 없다.
-			if (!Class || !Class->Constructor || !EditorIcons::MatchesFilter(Class->Name.c_str(), BlueprintClassSearch))
-				continue;
-			ImGui::PushID(Class);
-			const FString Label = Class->Name + (FBlueprint::IsBlueprintClass(Class) ? "  (Blueprint)" : "");
-			if (ImGui::Selectable(Label.c_str(), BlueprintParentClass == Class->Name))
-				BlueprintParentClass = Class->Name;
+			UClass* Class = FindClass(Parent.ClassName);
+			if (!Class)
+				continue;   // 이 엔진에 없는 클래스 (UCLASS로 등록되지 않음)
+			const bool bSupported = CanBeBlueprintParent(Class);
+
+			ImGui::PushID(Parent.ClassName);
+			const float RowY = ImGui::GetCursorPosY();
+
+			ImGui::SetCursorPosY(RowY + (RowHeight - ButtonHeight) * 0.5f);
+			ImGui::BeginDisabled(!bSupported || NameError != nullptr);
+			if (ClassButton("##Pick", Parent.Icon, Parent.Label, ImVec2(ButtonWidth, ButtonHeight)))
+				Picked = Class;
+			ImGui::EndDisabled();
+			if (!bSupported && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+				ImGui::SetTooltip("Blueprints of components aren't supported yet. Only Actor classes can be Blueprint parents.");
+
+			ImGui::SameLine();
+			ImGui::SetCursorPosY(RowY);
+			ImGui::BeginGroup();
+			ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + DescWidth);
+			ImGui::TextUnformatted(Parent.Description);
+			ImGui::PopTextWrapPos();
+			ImGui::EndGroup();
+
+			ImGui::SameLine(WindowWidth - HelpWidth - ImGui::GetStyle().WindowPadding.x);
+			ImGui::SetCursorPosY(RowY + (RowHeight - HelpWidth) * 0.5f);
+			const FString Help = FString(Parent.ClassName) + "\n" + Parent.Description;
+			HelpIcon("##Help", Help.c_str());
+
+			ImGui::SetCursorPosY(RowY + RowHeight + ImGui::GetStyle().ItemSpacing.y);
 			ImGui::PopID();
 		}
 		ImGui::EndChild();
 	}
 
-	ImGui::Spacing();
-	ImGui::Text("Parent: %s", BlueprintParentClass.c_str());
-	if (ImGui::IsWindowAppearing())
-		ImGui::SetKeyboardFocusHere();
-	const bool bEnter = ImGui::InputText("Name", NewAssetName, sizeof(NewAssetName), ImGuiInputTextFlags_EnterReturnsTrue);
-	const fs::path Target = CurrentPath / (FString(NewAssetName) + FBlueprint::Extension);
-	std::error_code Error;
-	const bool bExists = fs::exists(Target, Error);
-	// 파일 이름이 곧 클래스 이름이라 C++ 클래스나 다른 BP와 이름이 겹치면 안 된다.
-	const bool bNameTaken = NewAssetName[0] != '\0' && FindClass(NewAssetName) != nullptr;
-	if (bExists) ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "A file with this name already exists.");
-	else if (bNameTaken) ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "A class with this name already exists.");
-
-	UClass* ParentClass = FindClass(BlueprintParentClass);
-	const bool bValid = !bExists && !bNameTaken && NewAssetName[0] != '\0' && ParentClass;
-	ImGui::BeginDisabled(!bValid);
-	if (ImGui::Button("Create") || (bEnter && bValid))
+	// ---- ALL CLASSES ----
+	const bool bAllClassesOpen = SectionHeader("ALL CLASSES", false);
+	if (bAllClassesOpen)
 	{
-		FString CreateError;
-		if (FBlueprint::SaveBlueprint(Target, ParentClass, nullptr, CreateError))
+		EditorIcons::SearchBox("##BlueprintParentSearch", BlueprintClassSearch, sizeof(BlueprintClassSearch), "Search", WindowWidth);
+
+		TArray<UClass*> Classes;
+		Classes.Add(AActor::StaticClass());
+		GetDerivedClasses(AActor::StaticClass(), Classes);
+		std::sort(Classes.begin(), Classes.end(), [](const UClass* A, const UClass* B) { return A->Name < B->Name; });
+
+		ImGui::BeginChild("##ParentClassList", ImVec2(WindowWidth, 260.0f * S), ImGuiChildFlags_Borders);
+		if (BlueprintClassSearch[0] == '\0')
 		{
-			HighlightPath = Target.generic_string();
-			if (OnOpenMesh) OnOpenMesh(Target.generic_string());   // 만들자마자 Blueprint 에디터로 연다
+			DrawBlueprintClassTree(AActor::StaticClass(), Classes, Picked);
 		}
 		else
 		{
-			HTR_LOG(Warning, "Failed to create blueprint: {}", CreateError);
+			// 검색 중에는 트리 대신 맞는 클래스만 평평하게 보여 준다.
+			for (UClass* Class : Classes)
+			{
+				if (!CanBeBlueprintParent(Class) || !EditorIcons::MatchesFilter(Class->Name.c_str(), BlueprintClassSearch))
+					continue;
+				ImGui::PushID(Class);
+				const FString Label = Class->Name + (FBlueprint::IsBlueprintClass(Class) ? "  (Blueprint)" : "");
+				if (ImGui::Selectable(Label.c_str(), BlueprintParentClass == Class->Name, ImGuiSelectableFlags_AllowDoubleClick))
+				{
+					BlueprintParentClass = Class->Name;
+					if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+						Picked = Class;
+				}
+				ImGui::PopID();
+			}
 		}
+		ImGui::EndChild();
+		ImGui::TextDisabled("Selected: %s", BlueprintParentClass.c_str());
+	}
+
+	// ---- 이름 + Select / Cancel ----
+	ImGui::Spacing();
+	ImGui::AlignTextToFramePadding();
+	ImGui::TextUnformatted("Name");
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(220.0f * S);
+	ImGui::InputText("##BlueprintName", NewAssetName, sizeof(NewAssetName));
+	if (NameError)
+	{
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", NameError);
+	}
+
+	const ImGuiStyle& Style = ImGui::GetStyle();
+	const ImVec2 ButtonSize(96.0f * S, 0.0f);
+	const float ButtonsWidth = bAllClassesOpen ? ButtonSize.x * 2.0f + Style.ItemSpacing.x : ButtonSize.x;
+	ImGui::SameLine(Style.WindowPadding.x + WindowWidth - ButtonsWidth);
+	if (bAllClassesOpen)
+	{
+		UClass* Selected = FindClass(BlueprintParentClass);
+		ImGui::BeginDisabled(!CanBeBlueprintParent(Selected) || NameError != nullptr);
+		if (ImGui::Button("Select", ButtonSize))
+			Picked = Selected;
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+	}
+	const bool bCancel = ImGui::Button("Cancel", ButtonSize) || ImGui::IsKeyPressed(ImGuiKey_Escape);
+
+	if (Picked && !NameError && CanBeBlueprintParent(Picked))
+	{
+		CreateBlueprintAsset(Picked);
 		ImGui::CloseCurrentPopup();
 	}
-	ImGui::EndDisabled();
-	ImGui::SameLine();
-	if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape))
+	else if (bCancel || !bKeepOpen)
+	{
 		ImGui::CloseCurrentPopup();
+	}
 	ImGui::EndPopup();
 }

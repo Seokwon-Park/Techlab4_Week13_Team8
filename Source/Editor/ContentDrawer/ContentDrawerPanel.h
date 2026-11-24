@@ -62,6 +62,9 @@ private:
 	void DrawSearchRow();
 	void DrawAssetGrid();
 	void DrawCreatePopups();
+	// UE5 콘텐츠 브라우저의 Add / 빈 곳 우클릭 메뉴 (검색, GET, CREATE, 주요 에셋, 종류별 하위 메뉴).
+	// 열린 팝업 안에서 부른다
+	void DrawCreateMenu();
 
 	// 폴더 이동. 뒤로/앞으로 기록을 남긴다.
 	void NavigateTo(const fs::path& Path);
@@ -88,13 +91,22 @@ private:
 	char NewAssetName[64] = "NewWidget";
 	bool bOpenCreateWidget = false;
 	bool bOpenCreateParticle = false;
+	bool bOpenCreateInputAction = false;
+	bool bOpenCreateInputContext = false;
+	char CreateMenuSearch[64] = {};
 	bool bOpenNewFolder = false;
 	bool bOpenCreateBlueprint = false;
 
-	// Blueprint Class 만들기 창: 고른 부모 클래스와 "모든 클래스" 목록의 검색 칸
+	// Blueprint Class 만들기 창 (UE5 "Pick Parent Class"): ALL CLASSES 트리에서 고른 클래스와 검색 칸
 	FString BlueprintParentClass = "AActor";
 	char BlueprintClassSearch[64] = {};
 	void DrawCreateBlueprintPopup();
+	// ALL CLASSES 트리 한 단계. 더블클릭하면 OutPicked에 그 클래스를 넣는다.
+	void DrawBlueprintClassTree(UClass* Class, const TArray<UClass*>& Classes, UClass*& OutPicked);
+	// 지금 폴더에 파일로도, 클래스 이름으로도 겹치지 않는 "BP_NewBlueprint", "BP_NewBlueprint1" ...
+	void MakeUniqueBlueprintName();
+	// NewAssetName 이름으로 ParentClass를 부모로 하는 .bp를 만들고 Blueprint 에디터로 연다.
+	void CreateBlueprintAsset(UClass* ParentClass);
 
 	fs::path AssetRootPath = "Assets";
 	fs::path SceneRootPath = "Scenes";

@@ -3,6 +3,7 @@
 #include "Editor/BlueprintEditor/BlueprintEditorTab.h"
 
 #include <algorithm>
+#include <cstring>
 
 #include "Asset/AssetUtils.h"
 #include "Components/PrimitiveComponent.h"
@@ -65,6 +66,12 @@ bool FBlueprintEditor::InitializeResources()
 		return false;
 	}
 
+	// 그래프는 편집용으로 복사해 둔다. 저장할 때까지 실행 중인 게임에는 옛 그래프가 쓰인다.
+	if (std::shared_ptr<const FBPGraphSet> Saved = FBlueprint::GetGraphs(BlueprintClass))
+		Graphs = *Saved;
+	else
+		Graphs = FBPGraphSet();
+
 	SerializeTemplate(SavedBytes);
 	bDirty = false;
 	return true;
@@ -99,7 +106,14 @@ bool FBlueprintEditor::SerializeTemplate(TArray<uint8>& OutBytes) const
 		Template->Serialize(Root.EnterRecord("Defaults"));
 		Ar.Close();
 	}
-	return !Writer.IsError();
+	if (Writer.IsError())
+		return false;
+	// 그래프도 바뀌었는지 비교하도록 뒤에 붙인다.
+	const FString GraphJson = FBlueprintGraphSerializer::ToJson(Graphs);
+	const int32 Offset = OutBytes.Num();
+	OutBytes.SetNum(Offset + static_cast<int32>(GraphJson.size()));
+	std::memcpy(OutBytes.GetData() + Offset, GraphJson.data(), GraphJson.size());
+	return true;
 }
 
 bool FBlueprintEditor::Save()
@@ -109,7 +123,7 @@ bool FBlueprintEditor::Save()
 
 	FString Error;
 	const std::filesystem::path File = ResolveFile(GetAssetPath());
-	if (!FBlueprint::SaveBlueprint(File, BlueprintClass->Super, Template, Error))
+	if (!FBlueprint::SaveBlueprint(File, BlueprintClass->Super, Template, Error, &Graphs))
 	{
 		HTR_LOG(Error, "Blueprint: failed to save {} ({})", GetAssetPath(), Error);
 		const std::wstring Message = FPaths::FromUtf8("Failed to save blueprint.\n" + Error).wstring();
@@ -152,6 +166,23 @@ void FBlueprintEditor::DeleteComponent(UActorComponent* Component)
 		SelectedComponent = nullptr;
 	Template->DestroyComponent(Component);
 	NoteEdited();
+}
+
+bool FBlueprintEditor::RenameComponent(UActorComponent* Component, const char* NewName)
+{
+	if (!Template || !Component || !NewName || NewName[0] == '\0')
+		return false;
+	const FName Name(NewName);
+	if (Name == Component->GetFName())
+		return false;
+	if (Template->FindComponentByName(Name))
+	{
+		HTR_LOG(Warning, "A component named '{}' already exists in this blueprint", NewName);
+		return false;
+	}
+	Component->SetName(Name);
+	NoteEdited();
+	return true;
 }
 
 void FBlueprintEditor::FocusTemplate()

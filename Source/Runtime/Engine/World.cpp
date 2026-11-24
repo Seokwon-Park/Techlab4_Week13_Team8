@@ -14,6 +14,7 @@
 #include "GameFramework/MyPlayerController.h"
 #include "GameFramework/GameModeBase.h"
 #include "Engine/Blueprint.h"
+#include "Engine/BlueprintGraph.h"
 #include "GameFramework/GameplayInfoActors.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Input/InputSystem.h"
@@ -155,6 +156,9 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 		FBlueprint::ApplyActorDefaults(NewActor);
 		if (NewActor->GetRootComponent())
 			NewActor->GetRootComponent()->SetTransform(SpawnTransform);
+		// Construction Script는 기본값 다음, 레벨에 저장된 인스턴스 차이를 얹기 전에 돈다.
+		// 그래서 저장 -> 불러오기를 반복해도 결과가 쌓이지 않는다 (차이에는 실행 뒤 값이 들어 있다).
+		FBlueprintGraphRuntime::RunConstructionScript(NewActor);
 	}
 
 	// 월드가 재생 중일 때 생성된 액터만 별도 BeginPlay 대기열에 넣는다.

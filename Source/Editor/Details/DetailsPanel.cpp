@@ -1311,6 +1311,24 @@ namespace
 			if (CustomFont) ImGui::PopFont();
 			return false;
 		}
+		if (const FNameProperty* NameProperty = CastField<FNameProperty>(&Property))
+		{
+			FName& Value = NameProperty->GetPropertyValue(ValuePtr);
+
+			// FName은 입력할 때마다 이름 테이블에 등록되므로 편집이 끝났을 때만 바꾼다.
+			char Buffer[256] = {};
+			strncpy_s(Buffer, Value.IsNone() ? "" : Value.ToString().c_str(), sizeof(Buffer) - 1);
+			if (CustomFont) ImGui::PushFont(CustomFont);
+			const bool bChanged = ImGui::InputText(Label, Buffer, sizeof(Buffer), ImGuiInputTextFlags_EnterReturnsTrue)
+				|| (ImGui::IsItemDeactivatedAfterEdit());
+			if (CustomFont) ImGui::PopFont();
+			if (bChanged)
+			{
+				Value = Buffer[0] ? FName(Buffer) : NAME_None;
+				return true;
+			}
+			return false;
+		}
 		if (const FTransformProperty* TransformProperty = CastField<FTransformProperty>(&Property))
 		{
 			FTransform& Value = TransformProperty->GetPropertyValue(ValuePtr);
@@ -1784,9 +1802,13 @@ namespace FPropertyEditor
 		::DrawProperty(Object, Property, CustomFont);
 	}
 
-	void DrawObjectProperties(UObject* Object, ImFont* CustomFont)
+	void DrawObjectProperties(UObject* Object, ImFont* CustomFont, const char* Filter)
 	{
+		const char* PrevFilter = GPropertyFilter;
+		if (Filter)
+			GPropertyFilter = Filter;
 		DrawProperties(Object, CustomFont);
+		GPropertyFilter = PrevFilter;
 	}
 
 	void DrawActorExtras(AActor* Actor)

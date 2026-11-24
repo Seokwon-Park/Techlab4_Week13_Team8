@@ -21,7 +21,9 @@ public:
 	void SetSound(USoundBase* NewSound);
 	USoundBase* GetSound();
 
+	UFUNCTION(BlueprintCallable)
 	virtual void Play(float StartTime = 0.0f);
+	UFUNCTION(BlueprintCallable)
 	virtual void Stop();
 	bool IsPlaying() const;
 

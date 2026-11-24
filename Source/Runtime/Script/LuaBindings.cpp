@@ -1081,6 +1081,7 @@ namespace
 			else if (CastField<FIntProperty>(Property))    *static_cast<int32*>(Address) = Value.as<int32>();
 			else if (CastField<FBoolProperty>(Property))   *static_cast<bool*>(Address) = Value.as<bool>();
 			else if (CastField<FStrProperty>(Property))    *static_cast<FString*>(Address) = Value.as<std::string>();
+			else if (CastField<FNameProperty>(Property))   *static_cast<FName*>(Address) = FName(Value.as<std::string>());
 			else if (CastField<FVectorProperty>(Property)) *static_cast<FVector*>(Address) = Value.as<FVector>();
 			else throw sol::error("Property '" + Name + "' has a type Lua cannot set yet.");
 		}

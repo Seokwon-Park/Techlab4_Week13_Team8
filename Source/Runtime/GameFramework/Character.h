@@ -26,6 +26,7 @@ public:
 	virtual FVector GetVelocity() const override;
 
 	// UE ACharacter::Jump: 바닥에 있으면 CharacterMovementComponent::JumpZVelocity로 뛴다
+	UFUNCTION(BlueprintCallable)
 	virtual void Jump();
 	virtual bool CanJump() const;
 	bool IsFalling() const;

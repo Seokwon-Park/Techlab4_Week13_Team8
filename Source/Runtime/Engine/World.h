@@ -139,6 +139,8 @@ public:
 
 	// Slomo-hitstop
 	float GetEffectiveTimeDilation() const;
+	// 게임 시간 (시간 배율이 적용된 누적 초). UE의 UWorld::GetTimeSeconds.
+	float GetTimeSeconds() const { return TimeSeconds; }
 	void StartHitStop(float Duration, float Dilation);
 	// UE AWorldSettings::CinematicTimeDilation. 시퀀스 Play Rate(Slomo) 트랙이 쓴다
 	float GetCinematicTimeDilation() const { return CinematicTimeDilation; }

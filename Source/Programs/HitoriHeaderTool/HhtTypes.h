@@ -60,6 +60,7 @@ struct FFunctionInfo
 	std::string Name;
 	int Line = 0;
 	std::vector<std::string> Flags;   // FUNC_CallInEditor 등
+	std::vector<std::string> ParamNames;   // 선언에 적힌 인자 이름 (없으면 빈 문자열)
 };
 
 // UCLASS 클래스 또는 USTRUCT 구조체. 둘 다 "프로퍼티 목록을 가진 타입"이라 같은 구조를 쓴다 (UE: UStruct)

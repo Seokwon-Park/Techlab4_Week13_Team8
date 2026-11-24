@@ -14,7 +14,8 @@ namespace FPropertyEditor
 	// DetailsPanel.cpp의 DrawProperty를 그대로 옮긴다 (값이 바뀌면 PostEditChangeProperty 호출).
 	void DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont = nullptr);
 	// 기반 클래스부터 CPF_Edit 속성을 CollapsingHeader로 묶어 그린다 (DetailsPanel의 루프를 옮김).
-	void DrawObjectProperties(UObject* Object, ImFont* CustomFont = nullptr);
+	// Filter가 비어 있지 않으면 이름에 그 글자가 들어간 속성만 그린다 (Details 검색 칸).
+	void DrawObjectProperties(UObject* Object, ImFont* CustomFont = nullptr, const char* Filter = nullptr);
 
 	// Details 패널이 프로퍼티 아래에 따로 그리는 칸들. Blueprint 에디터도 같은 UI를 쓴다.
 	// 액터: Lua 스크립트 칸. 컴포넌트: 스켈레탈 메시, 애님 블루프린트, 애니메이션, 머티리얼 슬롯.

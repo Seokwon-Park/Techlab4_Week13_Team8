@@ -5,6 +5,7 @@
 #include "Field.h"
 #include "Enum.h"
 #include "Core/EngineString.h"
+#include "Core/NameTypes.h"
 #include "Math/EngineMath.h"
 #include "Math/Color.h"
 #include "Math/Transform.h"
@@ -169,6 +170,13 @@ class FStrProperty : public FStrProperty_Super
     DECLARE_FIELD(FStrProperty, FStrProperty_Super)
 };
 
+// UE 이름 그대로 FNameProperty. 이름 테이블 인덱스는 실행마다 바뀌므로 저장은 포맷터가 문자열로 한다.
+using FNameProperty_Super = TProperty_WithSerializer<FName, FProperty>;
+class FNameProperty : public FNameProperty_Super
+{
+    DECLARE_FIELD(FNameProperty, FNameProperty_Super)
+};
+
 using FTransformProperty_Super = TProperty_WithSerializer<FTransform, FProperty>;
 class FTransformProperty : public FTransformProperty_Super
 {
@@ -258,6 +266,7 @@ DEFINE_PROPERTY_TYPE(FVector2, FVector2Property)
 DEFINE_PROPERTY_TYPE(FRotator, FRotatorProperty)
 DEFINE_PROPERTY_TYPE(bool, FBoolProperty)
 DEFINE_PROPERTY_TYPE(FString, FStrProperty)
+DEFINE_PROPERTY_TYPE(FName, FNameProperty)
 DEFINE_PROPERTY_TYPE(FTransform, FTransformProperty)
 DEFINE_PROPERTY_TYPE(FColor, FColorProperty)
 DEFINE_PROPERTY_TYPE(FLinearColor, FLinearColorProperty)

@@ -20,6 +20,8 @@ public:
 	virtual void AddControllerYawInput(float Value) override {}
 	virtual void AddControllerPitchInput(float Value) override {}
 	virtual void BeginPlay() override;
+	// Super(IA_Move / IA_Look) 위에 IA_Jump(Space), IA_Attack(LMB)을 추가한다
+	virtual void SetupPlayerInputComponent(UEnhancedInputComponent* PlayerInputComponent) override;
 
 	virtual FRotator GetMovementInputRotation() const override;
 
@@ -38,4 +40,16 @@ public:
 
 	USpringArmComponent* SpringArmComponent = nullptr;
 	UCameraComponent* CameraComponent = nullptr;
+
+	UPROPERTY(EditAnywhere)
+	FString CharacterMappingContextPath = "Assets/Input/IMC_Character.inputcontext";
+	UPROPERTY(EditAnywhere)
+	FString JumpActionPath = "Assets/Input/IA_Jump.inputaction";
+	UPROPERTY(EditAnywhere)
+	FString AttackActionPath = "Assets/Input/IA_Attack.inputaction";
+
+protected:
+	UInputAction* JumpAction = nullptr;
+	UInputAction* AttackAction = nullptr;
+	UInputMappingContext* CharacterMappingContext = nullptr;
 };

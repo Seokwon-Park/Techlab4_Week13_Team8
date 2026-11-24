@@ -27,6 +27,17 @@ public:
     static void OnMouseMove(int32 x, int32 y);
     static void OnMouseWheelDelta(int32 Wheel);
 
+    // EMouseButton -> Win32 가상 키 코드 (VK_LBUTTON, VK_RBUTTON, VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2)
+    static constexpr int32 MouseButtonToVirtualKey(EMouseButton Button)
+    {
+        constexpr int32 Table[] = { 0x01, 0x02, 0x04, 0x05, 0x06 };
+        return Table[static_cast<int>(Button)];
+    }
+    static constexpr bool IsMouseVirtualKey(int32 Code)
+    {
+        return Code == 0x01 || Code == 0x02 || Code == 0x04 || Code == 0x05 || Code == 0x06;
+    }
+
     static inline int32 GetMouseX() { return MouseX; }
     static inline int32 GetMouseY() { return MouseY; }
 
