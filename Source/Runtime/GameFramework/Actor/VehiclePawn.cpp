@@ -32,7 +32,8 @@ namespace
 	PxQueryHitType::Enum FilterSuspensionHit(
 		PxFilterData, PxFilterData ShapeFilter, const void*, PxU32, PxHitFlags&)
 	{
-		if (ShapeFilter.word3 & VehicleChassisQueryBit)
+		// 트리거 박스나 캐릭터 캡슐 같은 QueryOnly Shape를 바닥으로 밟지 않는다
+		if (ShapeFilter.word3 & (VehicleChassisQueryBit | QueryOnlyShapeQueryBit))
 			return PxQueryHitType::eNONE;
 
 		return PxQueryHitType::eBLOCK;

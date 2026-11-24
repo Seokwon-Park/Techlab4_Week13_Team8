@@ -150,7 +150,7 @@ bool UCharacterMovementComponent::FindFloor(float ExtraDistance, FHitResult& Out
 {
 	if (!CanUseFloor()) return false;
 
-	// 반지름 0 Sweep = 아래 방향 레이. 메시는 AABB 윗면, 스킨드 메시는 삼각형에 닿는다
+	// 반지름 0 Sweep = 아래 방향 레이. PhysX 바디가 있으면 BodySetup 형상에, 없으면 메시 AABB 윗면이나 스킨드 메시 삼각형에 닿는다
 	const FVector Start = UpdatedComponent->GetWorldLocation();
 	const float TraceLength = GetCapsuleHalfHeight() + std::max(ExtraDistance, 0.0f);
 	return GetOwner()->GetWorld()->SweepSingle(FRay(Start, FVector(0.0f, 0.0f, -1.0f)), TraceLength, 0.0f, OutHit, GetOwner());

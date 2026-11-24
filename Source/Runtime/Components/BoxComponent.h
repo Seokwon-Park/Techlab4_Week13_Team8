@@ -15,4 +15,8 @@ public:
 	FVector GetScaledBoxExtent() const;
 	virtual FBox CalcLocalBounds() const override;
 	virtual void DrawDebug(FLineBatcher*, const FVector4&) const override;
+	virtual void PostEditChangeProperty(const FProperty& Property) override;
+
+protected:
+	virtual void UpdateBodySetup(FKAggregateGeom& AggGeom) const override;
 };
