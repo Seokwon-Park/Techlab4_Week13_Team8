@@ -3,6 +3,7 @@
 #include "SkeletalMeshEditorTab.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Render/SkeletalMesh.h"
+#include "Editor/AssetEditor/EditorManager.h"
 
 bool FSkeletalMeshEditor::InitializeResources()
 {
@@ -27,6 +28,11 @@ void FSkeletalMeshEditor::TickAfterWorld(float DeltaTime)
 	if (!UpdateBoneGizmo())
 		UpdateBonePicking();
 	SyncBoneGizmo();
+}
+
+void FSkeletalMeshEditor::OpenPhysicsAssetEditor()
+{
+	EditorManager.OpenPhysicsAssetEditor(GetAssetPath(), Mesh);
 }
 
 TUniquePtr<IEditorTab> FSkeletalMeshEditor::CreateTab()

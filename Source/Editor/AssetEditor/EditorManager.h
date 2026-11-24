@@ -43,6 +43,8 @@ public:
 
 	void OpenAnimBlueprintPreview(const FString& PreviewMeshPath);
 
+	void OpenPhysicsAssetEditor(const FString& MeshPath, class USkeletalMesh* Mesh);
+
 	// 이 경로를 연 에디터. 없으면 nullptr.
 	FAssetEditor* FindEditor(const FString& Path) const;
 
@@ -60,4 +62,13 @@ private:
 
 	void CreateAnimBlueprintPreview(const FString& PreviewMeshPath);
 	TArray<FString> PendingAnimBlueprintPreviews;
+
+	struct FPendingPhysicsAssetOpen
+	{
+		FString MeshPath;
+		class USkeletalMesh* Mesh = nullptr;
+	};
+	void CreatePhysicsAssetEditor(const FPendingPhysicsAssetOpen& Request);
+	void OpenPhysicsAssetFile(const FString& AssetPath);
+	TArray<FPendingPhysicsAssetOpen> PendingPhysicsAssetOpens;
 };

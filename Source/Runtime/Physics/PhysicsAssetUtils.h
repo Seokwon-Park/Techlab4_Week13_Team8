@@ -2,10 +2,13 @@
 
 #include "Core/NameTypes.h"
 #include "Physics/ConstraintInstance.h"
+#include "Math/Box.h"
 
 class UPhysicsAsset;
 class UPhysicsConstraintTemplate;
 class USkeletalMesh;
+class UBodySetup;
+struct FBoneInfo;
 
 enum EPhysAssetFitGeomType :uint8
 {
@@ -31,4 +34,11 @@ namespace FPhysicsAssetUtils
 	void  DestroyBody(UPhysicsAsset* PhysAsset, int32 BodyIndex);		  // 연결된 Constraint도 제거
 	int32 CreateNewConstraint(UPhysicsAsset* PhysAsset, FName InConstraintName,UPhysicsConstraintTemplate* InConstraintSetup = nullptr);
 	void  DestroyConstraint(UPhysicsAsset* PhysAsset, int32 ConstraintIndex);
+
+	// 본에 Skin Weight가 있는 정점의 본 로컬 AABB. 정점이 없으면 false
+	bool GetBoneLocalBox(const USkeletalMesh* SkelMesh, int32 BoneIndex, FBox& OutLocalBox);
+	// 본 정점을 감싸는 캡슐을 BodySetup에 추가한다. 정점이 없으면 false
+	bool CreateCollisionFromBone(UBodySetup* BodySetup, USkeletalMesh* SkelMesh, int32 BoneIndex);
+	// Child 본 원점에 놓이는 Constraint의 본 이름, 두 프레임, 각도 제한 모드를 채운다
+	void InitConstraintFromBones(FConstraintInstance& CI, const TArray<FBoneInfo>& Bones, int32 Child, int32 Parent, const FPhysAssetCreateParams& Params);
 }

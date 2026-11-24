@@ -12,6 +12,7 @@
 #include "Animation/AnimBlueprintFile.h"
 
 #include "Particles/ParticleSystemFile.h"
+#include "Physics/PhysicsAssetFile.h"
 #include "Engine/Blueprint.h"
 #include "GameFramework/Actor.h"
 #include "UObject/UObjectHash.h"
@@ -34,6 +35,7 @@ namespace
 		BlendSpace,
 		AnimBlueprint,
 		Particle,
+		PhysicsAsset,
 		Level,
 		Widget,
 		Font,
@@ -62,6 +64,7 @@ namespace
 		{ "Blend Space",        EEditorIcon::Animation,    IM_COL32(232, 176, 64, 255) },
 		{ "Anim Blueprint",     EEditorIcon::Animation,    IM_COL32(230, 120, 50, 255) },
 		{ "Particle System",    EEditorIcon::Particle,     IM_COL32(245, 245, 245, 255) },
+		{ "Physics Asset",      EEditorIcon::SkeletalMesh, IM_COL32(255, 192, 128, 255) },
 		{ "Level",              EEditorIcon::Level,        IM_COL32(255, 160, 40, 255) },
 		{ "Widget Blueprint",   EEditorIcon::Widget,       IM_COL32(80, 160, 255, 255) },
 		{ "Font",               EEditorIcon::Font,         IM_COL32(190, 190, 190, 255) },
@@ -94,6 +97,7 @@ namespace
 		if (AnimBlueprintFile::IsAnimBlueprintPath(PathString)) return EAssetCategory::AnimBlueprint;
 		if (ParticleSystemFile::IsParticleSystemPath(PathString)) return EAssetCategory::Particle;
 		if (FBlueprint::IsBlueprintPath(PathString)) return EAssetCategory::Blueprint;
+		if (PhysicsAssetFile::IsPhysicsAssetPath(PathString)) return EAssetCategory::PhysicsAsset;
 		if (FFbxMeshBake::IsBakedPath(PathString))
 			return PathString.ends_with("_Static.fbx.bin") ? EAssetCategory::StaticMesh : EAssetCategory::SkeletalMesh;
 
@@ -1064,7 +1068,7 @@ void FContentDrawerPanel::DrawAssetGrid()
 			else if ((Entry.Path.extension() == ".obj" || FFbxMeshBake::IsBakedPath(Entry.PathString)
 				|| Entry.Category == EAssetCategory::Animation || Entry.Category == EAssetCategory::BlendSpace
 				|| Entry.Category == EAssetCategory::AnimBlueprint || Entry.Category == EAssetCategory::Particle
-				|| Entry.Category == EAssetCategory::Blueprint) && OnOpenMesh)
+				|| Entry.Category == EAssetCategory::Blueprint || Entry.Category == EAssetCategory::PhysicsAsset) && OnOpenMesh)
 			{
 				OnOpenMesh(Entry.PathString);
 			}

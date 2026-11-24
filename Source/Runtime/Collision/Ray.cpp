@@ -226,3 +226,70 @@ bool RayIntersectsPlane(const FRay& Ray, const FVector& PlanePoint, const FVecto
 
     return OutT >= 0.0f;
 }
+
+bool RayIntersectsSphere(const FRay& Ray, const FVector& Center, float Radius, float& OutT)
+{
+	const FVector CenterToOrigin = Ray.Origin - Center;
+	const float HalfLinearCoeff = CenterToOrigin.Dot(Ray.Direction);
+	const float ConstantCoeff = CenterToOrigin.Dot(CenterToOrigin) - Radius * Radius;
+	const float QuarterDiscriminant = HalfLinearCoeff * HalfLinearCoeff - ConstantCoeff;
+	if (QuarterDiscriminant < 0.0f)
+	{
+		return false;
+	}
+
+	const float SqrtDiscriminant = std::sqrt(QuarterDiscriminant);
+	float HitT = -HalfLinearCoeff - SqrtDiscriminant;
+	if (HitT < 0.0f)
+	{
+		HitT = -HalfLinearCoeff + SqrtDiscriminant;   // 레이 시작점이 구 안
+	}
+	if (HitT < 0.0f)
+	{
+		return false;
+	}
+	OutT = HitT;
+	return true;
+}
+
+bool RayIntersectsCapsule(const FRay& Ray, const FVector& A, const FVector& B, float Radius, float& OutT)
+{
+	const FVector Axis = B - A;
+	const FVector AToOrigin = Ray.Origin - A;
+	const float AxisLengthSq = Axis.Dot(Axis);
+	const float AxisDotDir = Axis.Dot(Ray.Direction);
+	const float AxisDotOrigin = Axis.Dot(AToOrigin);
+	const float DirDotOrigin = Ray.Direction.Dot(AToOrigin);
+	const float OriginLengthSq = AToOrigin.Dot(AToOrigin);
+
+	// 옆면
+	const float QuadraticCoeff = AxisLengthSq - AxisDotDir * AxisDotDir;
+	if (QuadraticCoeff > SMALL_NUMBER)
+	{
+		const float HalfLinearCoeff = AxisLengthSq * DirDotOrigin - AxisDotOrigin * AxisDotDir;
+		const float ConstantCoeff = AxisLengthSq * OriginLengthSq - AxisDotOrigin * AxisDotOrigin - Radius * Radius * AxisLengthSq;
+		const float QuarterDiscriminant = HalfLinearCoeff * HalfLinearCoeff - QuadraticCoeff * ConstantCoeff;
+		if (QuarterDiscriminant < 0.0f)
+		{
+			return false;
+		}
+		const float HitT = (-HalfLinearCoeff - std::sqrt(QuarterDiscriminant)) / QuadraticCoeff;
+		const float HitAxisProjection = AxisDotOrigin + HitT * AxisDotDir;
+		if (HitAxisProjection > 0.0f && HitAxisProjection < AxisLengthSq && HitT >= 0.0f)
+		{
+			OutT = HitT;
+			return true;
+		}
+	}
+
+	// 양 끝 반구
+	float HitTA = 0.0f, HitTB = 0.0f;
+	const bool bHitA = RayIntersectsSphere(Ray, A, Radius, HitTA);
+	const bool bHitB = RayIntersectsSphere(Ray, B, Radius, HitTB);
+	if (!bHitA && !bHitB)
+	{
+		return false;
+	}
+	OutT = bHitA && bHitB ? std::min(HitTA, HitTB) : (bHitA ? HitTA : HitTB);
+	return true;
+}
