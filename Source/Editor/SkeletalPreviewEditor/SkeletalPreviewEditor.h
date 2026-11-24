@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Editor/AssetEditor/AssetEditor.h"
+#include "Editor/UnrealWidgetFwd.h"
 #include "Camera/ViewportCameraMovement.h"
 
 class USkeletalMesh;                                 
@@ -45,6 +46,10 @@ public:
 	void SetBoneVisualizerVisible(bool bVisible) { bShowBoneVisualizer = bVisible; }
 	void SetBoneVisualizerColor(const FVector4& Color) { BoneVisualizerColor = Color; }
 	void SetViewportState(uint32 Width, uint32 Height, const FViewportCameraInput& Input, const FViewportPointerInput& InPointer = {});
+
+	virtual UE::Widget::EWidgetMode GetGizmoMode() const { return UE::Widget::WM_None; }
+	virtual void SetGizmoMode(UE::Widget::EWidgetMode Mode) {}
+	virtual bool IsGizmoDragging() const { return false; }
 
 	USkeletalMesh* GetMesh() const { return Mesh; }
 	USkeletalMeshComponent* GetMeshComponent() const { return MeshComponent; }

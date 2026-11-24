@@ -10,12 +10,50 @@
 #include "Render/LineBatcher.h"
 #include "Collision/Ray.h"
 
+namespace
+{
+	constexpr float MinShapeSize = 0.5f;
+
+	// 축 하나만 끌면 그 축만 1에서 벗어나므로 1에서 가장 먼 값을 쓴다
+	float DominantScale(float A, float B)
+	{
+		return std::abs(A - 1.0f) >= std::abs(B - 1.0f) ? A : B;
+	}
+
+	// 본 스케일이 섞인 행렬일 수 있으므로 축은 정규화한다
+	void SetRefFrame(FConstraintInstance& Constraint, int32 Frame, const FMatrix& BoneLocalFrame)
+	{
+		const FVector Pos(BoneLocalFrame.M[3][0], BoneLocalFrame.M[3][1], BoneLocalFrame.M[3][2]);
+		const FVector Pri = FVector(BoneLocalFrame.M[0][0], BoneLocalFrame.M[0][1], BoneLocalFrame.M[0][2]).GetSafeNormal();
+		const FVector Sec = FVector(BoneLocalFrame.M[1][0], BoneLocalFrame.M[1][1], BoneLocalFrame.M[1][2]).GetSafeNormal();
+		if (Frame == 0)
+		{
+			Constraint.Pos1 = Pos;
+			Constraint.PriAxis1 = Pri;
+			Constraint.SecAxis1 = Sec;
+		}
+		else
+		{
+			Constraint.Pos2 = Pos;
+			Constraint.PriAxis2 = Pri;
+			Constraint.SecAxis2 = Sec;
+		}
+	}
+}
+
 bool FPhysicsAssetEditor::InitializeResources()
 {
 	if (!InitializePreview())
 	{
 		return false;
 	}
+
+	GizmoTarget = Cast<USceneComponent>(PreviewScene.AddComponent(USceneComponent::StaticClass()));
+	if (!GizmoTarget)
+	{
+		return false;
+	}
+	GizmoTarget->DetachFromParent();
 
 	PhysicsAsset = Mesh->GetPhysicsAsset();
 	if (!PhysicsAsset)
@@ -114,6 +152,9 @@ void FPhysicsAssetEditor::RevertFromDisk()
 
 void FPhysicsAssetEditor::ShutdownResources()
 {
+	PhysicsGizmo.EndDrag();
+	PhysicsGizmo.SetTarget(nullptr);
+	GizmoTarget = nullptr;
 	PhysicsAsset = nullptr;
 	SelectionType = EPhysicsAssetSelection::None;
 	SelectionIndex = INDEX_NONE;
@@ -338,6 +379,7 @@ void FPhysicsAssetEditor::DeleteConstraint(int32 ConstraintIndex)
 
 void FPhysicsAssetEditor::OnBoneSelected()
 {
+	PhysicsGizmo.EndDrag();
 	SelectionType = EPhysicsAssetSelection::None;
 	SelectionIndex = INDEX_NONE;
 	if (!PhysicsAsset || !Mesh || SelectedBoneIndex < 0)
@@ -375,6 +417,15 @@ void FPhysicsAssetEditor::OnRenderLine(FLineBatcher& LineBatcher)
 
 void FPhysicsAssetEditor::TickAfterWorld(float DeltaTime)
 {
+	if (!UpdatePhysicsGizmo())
+	{
+		UpdatePhysicsPicking();
+	}
+	SyncPhysicsGizmo();
+}
+
+void FPhysicsAssetEditor::UpdatePhysicsPicking()
+{
 	const bool bClicked = CanProcessViewportInput() && MeshComponent && PhysicsAsset &&
 		PointerInput.bHovered && PointerInput.bMousePressed && !PointerInput.bCancel &&
 		!CameraInput.bCaptured && ViewportWidth > 0 && ViewportHeight > 0;
@@ -392,6 +443,320 @@ void FPhysicsAssetEditor::TickAfterWorld(float DeltaTime)
 
 	// 아무것도 맞지 않으면 본을 고른다
 	UpdateBonePicking();
+}
+
+void FPhysicsAssetEditor::SetGizmoMode(UE::Widget::EWidgetMode Mode)
+{
+	PhysicsGizmo.EndDrag();
+	ModeTools.SetWidgetMode(Mode);
+	SyncPhysicsGizmo();
+}
+
+USkeletalBodySetup* FPhysicsAssetEditor::GetSelectedBodySetup() const
+{
+	const int32 BodyIndex = GetSelectedBodyIndex();
+	if (!PhysicsAsset || BodyIndex < 0 || BodyIndex >= PhysicsAsset->SkeletalBodySetups.Num())
+	{
+		return nullptr;
+	}
+	return PhysicsAsset->SkeletalBodySetups[BodyIndex];
+}
+
+bool FPhysicsAssetEditor::GetSelectedShapeLocal(FVector& OutCenter, FQuat& OutRotation) const
+{
+	const USkeletalBodySetup* BodySetup = GetSelectedBodySetup();
+	if (!BodySetup)
+	{
+		return false;
+	}
+
+	const FKAggregateGeom& Geom = BodySetup->AggGeom;
+	if (!Geom.SphylElems.IsEmpty())
+	{
+		OutCenter = Geom.SphylElems[0].Center;
+		OutRotation = Geom.SphylElems[0].Rotation.Quaternion();
+		return true;
+	}
+	if (!Geom.BoxElems.IsEmpty())
+	{
+		OutCenter = Geom.BoxElems[0].Center;
+		OutRotation = Geom.BoxElems[0].Rotation.Quaternion();
+		return true;
+	}
+	if (!Geom.SphereElems.IsEmpty())
+	{
+		OutCenter = Geom.SphereElems[0].Center;
+		OutRotation = FQuat::Identity();
+		return true;
+	}
+	return false;
+}
+
+UPhysicsConstraintTemplate* FPhysicsAssetEditor::GetSelectedConstraintTemplate() const
+{
+	const int32 ConstraintIndex = GetSelectedConstraintIndex();
+	if (!PhysicsAsset || ConstraintIndex < 0 || ConstraintIndex >= PhysicsAsset->ConstraintSetup.Num())
+	{
+		return nullptr;
+	}
+	return PhysicsAsset->ConstraintSetup[ConstraintIndex];
+}
+
+bool FPhysicsAssetEditor::GetShapeGizmoTransform(FTransform& OutTransform) const
+{
+	const USkeletalBodySetup* BodySetup = GetSelectedBodySetup();
+	FTransform BoneWorld;
+	FVector Center;
+	FQuat Rotation;
+	if (!BodySetup ||
+		!FPhysicsDebugDraw().GetBoneWorldTransform(MeshComponent, BodySetup->BoneName.ToString(), BoneWorld) ||
+		!GetSelectedShapeLocal(Center, Rotation))
+	{
+		return false;
+	}
+
+	OutTransform = FTransform((BoneWorld.Rotation * Rotation).Normalized(), BoneWorld.GetLocalMatrix().TransformPosition(Center));
+	return true;
+}
+
+bool FPhysicsAssetEditor::GetConstraintGizmoTransform(FTransform& OutTransform) const
+{
+	const UPhysicsConstraintTemplate* Template = GetSelectedConstraintTemplate();
+	FMatrix ParentFrameWorld, ChildFrameWorld;
+	if (!Template || ModeTools.GetWidgetMode() == UE::Widget::WM_Scale ||
+		!FPhysicsDebugDraw().GetConstraintFrames(MeshComponent, Template->DefaultInstance, ParentFrameWorld, ChildFrameWorld))
+	{
+		return false;
+	}
+
+	// 본 스케일이 프레임 축에 섞이지 않도록 위치와 회전만 쓴다
+	const FTransform ParentFrame = FTransform::FromMatrix(ParentFrameWorld);
+	OutTransform = FTransform(ParentFrame.Rotation, ParentFrame.Location);
+	return true;
+}
+
+void FPhysicsAssetEditor::SyncPhysicsGizmo()
+{
+	FTransform GizmoTransform;
+	const bool bHasTarget = MeshComponent && GizmoTarget &&
+		(SelectionType == EPhysicsAssetSelection::Constraint
+			? GetConstraintGizmoTransform(GizmoTransform)
+			: GetShapeGizmoTransform(GizmoTransform));
+	if (!bHasTarget)
+	{
+		PhysicsGizmo.SetTarget(nullptr);
+		return;
+	}
+
+	if (PhysicsGizmo.IsUsing())
+	{
+		return;
+	}
+
+	// 스케일은 1로 두고 드래그 동안 늘어난 배율만 읽는다
+	GizmoTarget->SetTransform(GizmoTransform);
+	PhysicsGizmo.SetTarget(GizmoTarget);
+}
+
+bool FPhysicsAssetEditor::BeginShapeDrag()
+{
+	USkeletalBodySetup* BodySetup = GetSelectedBodySetup();
+	FTransform BoneWorld;
+	if (!BodySetup || !FPhysicsDebugDraw().GetBoneWorldTransform(MeshComponent, BodySetup->BoneName.ToString(), BoneWorld))
+	{
+		return false;
+	}
+
+	const FMatrix BoneMatrix = BoneWorld.GetLocalMatrix();
+	if (fabsf(BoneMatrix.Determinant()) < 1e-12f)
+	{
+		return false;
+	}
+
+	DragStartGeom = BodySetup->AggGeom;
+	DragBoneWorldInverse = BoneMatrix.Inverse();
+	DragBoneWorldRotation = BoneWorld.Rotation;
+	return true;
+}
+
+bool FPhysicsAssetEditor::BeginConstraintDrag()
+{
+	UPhysicsConstraintTemplate* Template = GetSelectedConstraintTemplate();
+	FTransform ParentFrame;
+	FMatrix ParentFrameWorld, ChildFrameWorld;
+	if (!Template || !GetConstraintGizmoTransform(ParentFrame) ||
+		!FPhysicsDebugDraw().GetConstraintFrames(MeshComponent, Template->DefaultInstance, ParentFrameWorld, ChildFrameWorld))
+	{
+		return false;
+	}
+
+	const int32 ParentBone = FindBoneIndexByName(Template->DefaultInstance.ConstraintBone2);
+	const int32 ChildBone = FindBoneIndexByName(Template->DefaultInstance.ConstraintBone1);
+	if (ParentBone == INDEX_NONE || ChildBone == INDEX_NONE)
+	{
+		return false;
+	}
+
+	const FMatrix ParentBoneWorld = MeshComponent->GetBoneWorldMatrix(ParentBone);
+	const FMatrix ChildBoneWorld = MeshComponent->GetBoneWorldMatrix(ChildBone);
+	if (fabsf(ParentBoneWorld.Determinant()) < 1e-12f || fabsf(ChildBoneWorld.Determinant()) < 1e-12f)
+	{
+		return false;
+	}
+
+	DragStartConstraint = Template->DefaultInstance;
+	DragBoneWorldInverse = ParentBoneWorld.Inverse();
+	DragChildBoneWorldInverse = ChildBoneWorld.Inverse();
+	DragChildFrameRelative = ChildFrameWorld * ParentFrame.GetLocalMatrix().Inverse();
+	return true;
+}
+
+bool FPhysicsAssetEditor::UpdatePhysicsGizmo()
+{
+	if (!CanProcessViewportInput() || !PhysicsGizmo.GetTarget())
+	{
+		PhysicsGizmo.EndDrag();
+		return false;
+	}
+
+	const bool bConstraint = SelectionType == EPhysicsAssetSelection::Constraint;
+	if (PointerInput.bCancel)
+	{
+		if (PhysicsGizmo.IsUsing())
+		{
+			if (UPhysicsConstraintTemplate* Template = bConstraint ? GetSelectedConstraintTemplate() : nullptr)
+			{
+				Template->DefaultInstance = DragStartConstraint;
+			}
+			else if (USkeletalBodySetup* BodySetup = GetSelectedBodySetup())
+			{
+				BodySetup->AggGeom = DragStartGeom;
+			}
+		}
+		PhysicsGizmo.EndDrag();
+		return false;
+	}
+
+	const bool bWasUsing = PhysicsGizmo.IsUsing();
+	if ((!PointerInput.bHovered && !bWasUsing) || CameraInput.bCaptured)
+	{
+		PhysicsGizmo.EndDrag();
+		return false;
+	}
+
+	SyncPhysicsGizmo();
+	const int32 Width = static_cast<int32>(ViewportClient->GetWidth());
+	const int32 Height = static_cast<int32>(ViewportClient->GetHeight());
+	const FVector2 MousePosition(PointerInput.MouseUV.X * Width, PointerInput.MouseUV.Y * Height);
+	const FRay MouseRay = ViewportClient->DeprojectScreenToWorld(MousePosition);
+
+	const bool bUpdateDrag = bWasUsing || (PointerInput.bMousePressed && PointerInput.bMouseDown);
+	PhysicsGizmo.Update(MouseRay, MousePosition, ViewportClient->GetViewProjectionMatrix(),
+		Width, Height, bUpdateDrag, ViewportClient->GetViewLocation(), !ViewportClient->IsPerspective());
+
+	if (!bWasUsing && PhysicsGizmo.IsUsing() && !(bConstraint ? BeginConstraintDrag() : BeginShapeDrag()))
+	{
+		PhysicsGizmo.EndDrag();
+		return true;
+	}
+
+	if (PhysicsGizmo.IsUsing())
+	{
+		bConstraint ? ApplyConstraintTransform() : ApplyShapeTransform();
+		if (!PointerInput.bMouseDown)
+		{
+			PhysicsGizmo.EndDrag();
+		}
+	}
+
+	return bWasUsing || PhysicsGizmo.IsUsing() || PhysicsGizmo.GetHoveredAxis() >= 0;
+}
+
+void FPhysicsAssetEditor::ApplyConstraintTransform()
+{
+	UPhysicsConstraintTemplate* Template = GetSelectedConstraintTemplate();
+	if (!Template)
+	{
+		return;
+	}
+
+	// 부모 프레임을 기즈모로 옮기고, 자식 프레임은 드래그 시작 때의 상대 위치를 유지한다
+	const FMatrix ParentFrameWorld = GizmoTarget->GetWorldMatrix();
+	const FMatrix ChildFrameWorld = DragChildFrameRelative * ParentFrameWorld;
+	SetRefFrame(Template->DefaultInstance, 1, ParentFrameWorld * DragBoneWorldInverse);
+	SetRefFrame(Template->DefaultInstance, 0, ChildFrameWorld * DragChildBoneWorldInverse);
+	MarkDirty();
+}
+
+void FPhysicsAssetEditor::ApplyShapeTransform()
+{
+	USkeletalBodySetup* BodySetup = GetSelectedBodySetup();
+	if (!BodySetup)
+	{
+		return;
+	}
+
+	// 기즈모 배율은 드래그 시작부터 누적이므로 매번 시작 값에서 다시 계산한다
+	FKAggregateGeom& Geom = BodySetup->AggGeom;
+	Geom = DragStartGeom;
+
+	const UE::Widget::EWidgetMode Mode = ModeTools.GetWidgetMode();
+	const FVector Center = DragBoneWorldInverse.TransformPosition(GizmoTarget->GetWorldLocation());
+	const FRotator Rotation = (DragBoneWorldRotation.Inverse() *
+		GizmoTarget->GetRelativeRotation().Quaternion()).Normalized().ToFRotator();
+	const FVector Scale = GizmoTarget->GetRelativeScale3D();
+
+	if (!Geom.SphylElems.IsEmpty())
+	{
+		FKSphylElem& Elem = Geom.SphylElems[0];
+		if (Mode == UE::Widget::WM_Translate)
+		{
+			Elem.Center = Center;
+		}
+		else if (Mode == UE::Widget::WM_Rotate)
+		{
+			Elem.Rotation = Rotation;
+		}
+		else if (Mode == UE::Widget::WM_Scale)
+		{
+			const float TotalHeight = (Elem.Length + Elem.Radius * 2.0f) * Scale.Z;
+			Elem.Radius = std::max(Elem.Radius * DominantScale(Scale.X, Scale.Y), MinShapeSize);
+			Elem.Length = std::max(TotalHeight - Elem.Radius * 2.0f, 0.0f);
+		}
+	}
+	else if (!Geom.BoxElems.IsEmpty())
+	{
+		FKBoxElem& Elem = Geom.BoxElems[0];
+		if (Mode == UE::Widget::WM_Translate)
+		{
+			Elem.Center = Center;
+		}
+		else if (Mode == UE::Widget::WM_Rotate)
+		{
+			Elem.Rotation = Rotation;
+		}
+		else if (Mode == UE::Widget::WM_Scale)
+		{
+			Elem.X = std::max(Elem.X * Scale.X, MinShapeSize);
+			Elem.Y = std::max(Elem.Y * Scale.Y, MinShapeSize);
+			Elem.Z = std::max(Elem.Z * Scale.Z, MinShapeSize);
+		}
+	}
+	else if (!Geom.SphereElems.IsEmpty())
+	{
+		FKSphereElem& Elem = Geom.SphereElems[0];
+		if (Mode == UE::Widget::WM_Translate)
+		{
+			Elem.Center = Center;
+		}
+		else if (Mode == UE::Widget::WM_Scale)
+		{
+			const float SphereScale = DominantScale(DominantScale(Scale.X, Scale.Y), Scale.Z);
+			Elem.Radius = std::max(Elem.Radius * SphereScale, MinShapeSize);
+		}
+	}
+
+	MarkDirty();
 }
 
 bool FPhysicsAssetEditor::PickPhysics(const FRay& Ray, EPhysicsAssetSelection& OutType, int32& OutIndex) const

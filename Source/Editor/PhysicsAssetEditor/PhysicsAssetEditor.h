@@ -1,9 +1,14 @@
 #pragma once
 
 #include "Editor/SkeletalPreviewEditor/SkeletalPreviewEditor.h"
+#include "Editor/Gizmo/Gizmo.h"
+#include "Editor/EditorModeManager.h"
+#include "Physics/AggregateGeom.h"
+#include "Physics/ConstraintInstance.h"
 
 class UPhysicsAsset;
 class UPhysicsConstraintTemplate;
+class USkeletalBodySetup;
 
 enum class EPhysicsAssetSelection : uint8 { None, Body, Constraint };
 
@@ -24,6 +29,11 @@ public:
 	const char* GetEditorTypeName() const override { return "PhysicsAsset"; }
 
 	void OnRenderLine(FLineBatcher& LineBatcher) override;
+
+	const FGizmo* GetPreviewGizmo() const override { return PhysicsGizmo.GetTarget() ? &PhysicsGizmo : nullptr; }
+	UE::Widget::EWidgetMode GetGizmoMode() const override { return ModeTools.GetWidgetMode(); }
+	void SetGizmoMode(UE::Widget::EWidgetMode Mode) override;
+	bool IsGizmoDragging() const override { return PhysicsGizmo.IsUsing(); }
 
 	UPhysicsAsset* GetPhysicsAsset() const { return PhysicsAsset; }
 
@@ -55,8 +65,24 @@ protected:
 	void ShutdownResources() override;
 	void OnBoneSelected() override;
 	void TickAfterWorld(float DeltaTime) override;
+	bool IsViewportInteractionBusy() const override { return PhysicsGizmo.IsUsing(); }
+	void CancelViewportInteraction() override { PhysicsGizmo.EndDrag(); }
 
 private:
+	void UpdatePhysicsPicking();
+	USkeletalBodySetup* GetSelectedBodySetup() const;
+	// 선택한 바디의 첫 Shape (Sphyl, Box, Sphere 순)의 본 로컬 위치와 회전
+	bool GetSelectedShapeLocal(FVector& OutCenter, FQuat& OutRotation) const;
+	UPhysicsConstraintTemplate* GetSelectedConstraintTemplate() const;
+	bool GetShapeGizmoTransform(FTransform& OutTransform) const;
+	// 부모 쪽 프레임(Frame2) 위치. 크기 모드에서는 기즈모를 숨긴다
+	bool GetConstraintGizmoTransform(FTransform& OutTransform) const;
+	void SyncPhysicsGizmo();
+	bool UpdatePhysicsGizmo();
+	bool BeginShapeDrag();
+	bool BeginConstraintDrag();
+	void ApplyShapeTransform();
+	void ApplyConstraintTransform();
 	// 레이에 맞은 Body·Constraint 중 가장 가까운 것. Constraint가 맞으면 Body보다 우선한다
 	bool PickPhysics(const struct FRay& Ray, EPhysicsAssetSelection& OutType, int32& OutIndex) const;
 	FString GetSaveFilePath() const;
@@ -75,4 +101,15 @@ private:
 	UPhysicsAsset* PhysicsAsset = nullptr;
 	EPhysicsAssetSelection SelectionType = EPhysicsAssetSelection::None;
 	int32 SelectionIndex = INDEX_NONE;
+
+	USceneComponent* GizmoTarget = nullptr;
+	// PhysicsGizmo가 생성자에서 포인터를 받으므로 먼저 선언해야 한다
+	FEditorModeTools ModeTools;
+	FGizmo PhysicsGizmo{ &ModeTools };
+	FKAggregateGeom DragStartGeom;
+	FConstraintInstance DragStartConstraint;
+	FMatrix DragBoneWorldInverse;
+	FQuat DragBoneWorldRotation;
+	FMatrix DragChildBoneWorldInverse;
+	FMatrix DragChildFrameRelative;
 };
