@@ -28,8 +28,6 @@ public:
 		, MeshPath(InMeshPath)
 	{
 		Mesh = &InMesh;
-		// FBX는 cm로 들어오므로 레벨의 스켈레탈 메시 액터처럼 줄여야 중력(m/s²)과 크기 비율이 맞는다
-		PreviewScale = CmToWorld;
 		CameraSpeed = 1.0f;
 	}
 
@@ -88,6 +86,9 @@ protected:
 	void CancelViewportInteraction() override { PhysicsGizmo.EndDrag(); MouseHandle.ReleaseComponent(); }
 
 private:
+	// 바인드 박스 대각선이 이보다 크면 cm 값으로 본다. 사람 크기 메시는 cm면 200 안팎, m면 2 안팎이다
+	static constexpr float CentimeterMeshMinSize = 10.0f;
+
 	void UpdatePhysicsPicking();
 	USkeletalBodySetup* GetSelectedBodySetup() const;
 	// 선택한 Shape. 바디만 선택했으면 첫 Shape (Sphyl, Box, Sphere 순)

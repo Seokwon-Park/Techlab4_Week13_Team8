@@ -133,6 +133,9 @@ void FSkeletalPreviewEditor::FocusMesh()
 		.SphereRadius = Extent.Size()
 	};
 
+	// 작은 메시는 가까이 다가가면 기본 NearClip(0.1)에 잘리므로 크기에 비례해 줄인다
+	ViewportClient->SetNearClip(FMath::Clamp(Bound.SphereRadius * 0.01f, 0.001f, 0.1f));
+
 	// AABB로 ViewportClient의 카메라를 메시에 포커싱
 	ViewportClient->FocusOnBounds(Bound);
 }
