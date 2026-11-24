@@ -20,4 +20,6 @@ private:
 
 	FPhysicsAssetEditor& PhysicsEditor;
 	FEditorCommand SaveCommand;
+	FEditorCommand SimulateCommand;
+	FEditorCommand StopSimulationCommand;
 };

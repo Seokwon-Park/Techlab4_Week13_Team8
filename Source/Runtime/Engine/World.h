@@ -114,6 +114,8 @@ public:
 	FScene& GetScene() { return Scene; }
 	FPhysicsScene* GetPhysicsScene() const { return PhysicsScene.get(); }
 	FTickTaskManager& GetTickTaskManager() { return TickTaskManager; }
+
+	bool bShouldSimulatePhysics = false;
 	FCoroutineScheduler& GetCoroutineScheduler() { return CoroutineScheduler; }
 
 	const FRenderStats& GetRenderStats() const { return RenderStats; }

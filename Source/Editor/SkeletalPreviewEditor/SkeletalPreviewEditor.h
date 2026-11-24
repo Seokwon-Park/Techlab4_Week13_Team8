@@ -29,6 +29,10 @@ struct FViewportPointerInput
 	bool bMousePressed = false;
 	bool bMouseDown = false;
 	bool bCancel = false;
+	bool bRightMousePressed = false;
+	bool bRightMouseDown = false;
+	bool bCtrlDown = false;
+	bool bShiftDown = false;
 };
 
 class FSkeletalPreviewEditor : public FAssetEditor
@@ -41,7 +45,7 @@ public:
 	void OnRenderLine(FLineBatcher& LineBatcher) override;
 
 	void FocusMesh();
-	void SetCameraSpeed(float Speed) { CameraSpeed = FMath::Clamp(Speed, 1.0f, 150.0f); }
+	void SetCameraSpeed(float Speed) { CameraSpeed = FMath::Clamp(Speed, 0.1f, 150.0f); }
 	void SelectBone(int32 BoneIndex);        // 선택만 바꾸고 OnBoneSelected() 호출
 	void SetBoneVisualizerVisible(bool bVisible) { bShowBoneVisualizer = bVisible; }
 	void SetBoneVisualizerColor(const FVector4& Color) { BoneVisualizerColor = Color; }
@@ -50,6 +54,7 @@ public:
 	virtual UE::Widget::EWidgetMode GetGizmoMode() const { return UE::Widget::WM_None; }
 	virtual void SetGizmoMode(UE::Widget::EWidgetMode Mode) {}
 	virtual bool IsGizmoDragging() const { return false; }
+	virtual bool IsViewportInteractionBusy() const { return false; }
 
 	USkeletalMesh* GetMesh() const { return Mesh; }
 	USkeletalMeshComponent* GetMeshComponent() const { return MeshComponent; }
@@ -69,11 +74,12 @@ protected:
 
 	virtual void TickBeforeWorld(float DeltaTime) {}
 	virtual void TickAfterWorld(float DeltaTime) { UpdateBonePicking(); }
-	virtual bool IsViewportInteractionBusy() const { return false; }
 	virtual void OnBoneSelected() {}
 	virtual void CancelViewportInteraction() {}   // FocusMesh 첫 줄에서 호출. 메시 에디터는 BoneGizmo.EndDrag()
 
 	bool CanProcessViewportInput() const;
+	// BindAABB를 컴포넌트 월드 행렬로 옮긴 박스. PreviewScale이 반영된 월드 크기다
+	FBox GetPreviewBounds() const;
 	void UpdateBonePicking();
 	int32 PickBone(const FVector2& MousePosition) const;
 
@@ -82,6 +88,8 @@ protected:
 
 	USkeletalMesh* Mesh = nullptr;
 	USkeletalMeshComponent* MeshComponent = nullptr;
+	// InitializePreview에서 MeshComponent의 상대 스케일로 쓴다
+	float PreviewScale = 1.0f;
 
 	FViewportCameraInput CameraInput;
 	FViewportPointerInput PointerInput;

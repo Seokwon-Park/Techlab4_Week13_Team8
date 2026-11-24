@@ -124,7 +124,7 @@ void FSkeletalPreviewEditor::FocusMesh()
 	}
 
 	// 메시의 AABB를 가져와서 BoxSphereBounds로 변환
-	const FBox& Box = Mesh->GetRenderData().LODRenderData[0].BindAABB;
+	const FBox Box = GetPreviewBounds();
 	const FVector Extent = (Box.Max - Box.Min) * 0.5f;
 	FBoxSphereBounds Bound
 	{
@@ -148,9 +148,10 @@ bool FSkeletalPreviewEditor::InitializePreview()
 	MeshComponent = Cast<USkeletalMeshComponent>(PreviewScene.AddComponent(USkeletalMeshComponent::StaticClass()));
 	if (!MeshComponent) return false;
 	MeshComponent->SetSkeletalMesh(Mesh);
+	MeshComponent->SetRelativeScale3D(FVector(PreviewScale, PreviewScale, PreviewScale));
 	MeshComponent->RefreshBoneTransformsNow();
 
-	const FBox& MeshBox = LODs[0].BindAABB;                       // 멤버였던 MeshBox
+	const FBox MeshBox = GetPreviewBounds();
 	BoneSphereSize = FMath::Max((MeshBox.Max - MeshBox.Min).Size() * 0.0025f, 0.001f);
 
 	BuildBoneItems();
@@ -166,6 +167,12 @@ void FSkeletalPreviewEditor::ShutdownResources()
 	FAssetEditor::ShutdownResources();
 }
 
+
+FBox FSkeletalPreviewEditor::GetPreviewBounds() const
+{
+	const FBox& BindBox = Mesh->GetRenderData().LODRenderData[0].BindAABB;
+	return MeshComponent ? BindBox.GetWorldAABB(MeshComponent->GetWorldMatrix()) : BindBox;
+}
 
 bool FSkeletalPreviewEditor::CanProcessViewportInput() const
 {

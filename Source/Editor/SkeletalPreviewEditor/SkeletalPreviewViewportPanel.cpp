@@ -61,12 +61,16 @@ void FSkeletalPreviewViewportPanel::DrawContent()
         .bMousePressed = bHovered && !bCameraDragging && ImGui::IsMouseClicked(ImGuiMouseButton_Left),
         .bMouseDown = bMouseDown,
         .bCancel = ImGui::IsKeyPressed(ImGuiKey_Escape, false),
+        .bRightMousePressed = bHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right),
+        .bRightMouseDown = bCameraDragging,
+        .bCtrlDown = IO.KeyCtrl,
+        .bShiftDown = IO.KeyShift,
     };
 
     const FViewportCameraInput CameraInput
     {
-        .bCaptured = bFocused && ImGui::IsItemActive() && bCameraDragging && !bMouseDown && !Editor.IsGizmoDragging(),
-        .bAllowWheel = bHovered && !bMouseDown && !Editor.IsGizmoDragging(),
+        .bCaptured = bFocused && ImGui::IsItemActive() && bCameraDragging && !bMouseDown && !Editor.IsViewportInteractionBusy(),
+        .bAllowWheel = bHovered && !bMouseDown && !Editor.IsViewportInteractionBusy(),
         .bForward = ImGui::IsKeyDown(ImGuiKey_W),
         .bBackward = ImGui::IsKeyDown(ImGuiKey_S),
         .bRight = ImGui::IsKeyDown(ImGuiKey_D),

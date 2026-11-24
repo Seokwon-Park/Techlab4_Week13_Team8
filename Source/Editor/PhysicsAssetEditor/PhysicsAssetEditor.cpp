@@ -9,6 +9,11 @@
 #include "Render/SkeletalMesh.h"
 #include "Render/LineBatcher.h"
 #include "Collision/Ray.h"
+#include "Engine/World.h"
+#include "Physics/PhysicsScene.h"
+#include "Physics/PhysXConversion.h"
+
+#include <PxSceneLock.h>
 
 namespace
 {
@@ -18,6 +23,14 @@ namespace
 	FVector ClampShapeScale(const FVector& Scale)
 	{
 		return FVector(std::max(Scale.X, MinShapeScale), std::max(Scale.Y, MinShapeScale), std::max(Scale.Z, MinShapeScale));
+	}
+
+	// 컴포넌트 스케일과 본 스케일이 곱해지면 행렬식 자체가 아주 작아지므로 축 길이 곱에 대한 비율로 본다
+	bool IsInvertibleFrame(const FMatrix& M)
+	{
+		const float AxisProduct = FVector(M.M[0][0], M.M[0][1], M.M[0][2]).Size() *
+			FVector(M.M[1][0], M.M[1][1], M.M[1][2]).Size() * FVector(M.M[2][0], M.M[2][1], M.M[2][2]).Size();
+		return AxisProduct > 0.0f && std::abs(M.Determinant()) > AxisProduct * 1e-4f;
 	}
 
 	// 축 하나만 끌면 그 축만 1에서 벗어나므로 1에서 가장 먼 값을 쓴다
@@ -96,7 +109,7 @@ FString FPhysicsAssetEditor::GetSaveFilePath() const
 
 bool FPhysicsAssetEditor::Save()
 {
-	if (!PhysicsAsset)
+	if (bSimulating || !PhysicsAsset)
 	{
 		return false;
 	}
@@ -117,6 +130,8 @@ bool FPhysicsAssetEditor::Save()
 
 bool FPhysicsAssetEditor::ConfirmClose()
 {
+	// RevertFromDisk가 바디 배열을 바꾸기 전에 인스턴스와 짝이 끊기지 않게 먼저 멈춘다
+	StopSimulation();
 	if (!bDirty)
 	{
 		return true;
@@ -158,6 +173,7 @@ void FPhysicsAssetEditor::RevertFromDisk()
 
 void FPhysicsAssetEditor::ShutdownResources()
 {
+	StopSimulation();
 	PhysicsGizmo.EndDrag();
 	PhysicsGizmo.SetTarget(nullptr);
 	GizmoTarget = nullptr;
@@ -282,7 +298,7 @@ void FPhysicsAssetEditor::InitConstraintSetup(UPhysicsConstraintTemplate* Templa
 void FPhysicsAssetEditor::MakeNewBody(int32 BoneIndex)
 {
 	const TArray<FBoneInfo>& Bones = Mesh->GetRefSkeleton();
-	if (!PhysicsAsset || BoneIndex < 0 || BoneIndex >= Bones.Num())
+	if (bSimulating || !PhysicsAsset || BoneIndex < 0 || BoneIndex >= Bones.Num())
 	{
 		return;
 	}
@@ -348,7 +364,7 @@ void FPhysicsAssetEditor::MakeNewBody(int32 BoneIndex)
 
 void FPhysicsAssetEditor::DeleteBody(int32 BodyIndex)
 {
-	if (!PhysicsAsset || BodyIndex < 0 || BodyIndex >= PhysicsAsset->SkeletalBodySetups.Num())
+	if (bSimulating || !PhysicsAsset || BodyIndex < 0 || BodyIndex >= PhysicsAsset->SkeletalBodySetups.Num())
 	{
 		return;
 	}
@@ -386,7 +402,7 @@ void FPhysicsAssetEditor::DeleteBody(int32 BodyIndex)
 
 void FPhysicsAssetEditor::DeleteConstraint(int32 ConstraintIndex)
 {
-	if (!PhysicsAsset || ConstraintIndex < 0 || ConstraintIndex >= PhysicsAsset->ConstraintSetup.Num())
+	if (bSimulating || !PhysicsAsset || ConstraintIndex < 0 || ConstraintIndex >= PhysicsAsset->ConstraintSetup.Num())
 	{
 		return;
 	}
@@ -398,7 +414,7 @@ void FPhysicsAssetEditor::DeleteConstraint(int32 ConstraintIndex)
 
 void FPhysicsAssetEditor::AddShape(int32 BodyIndex, EAggCollisionShape::Type ShapeType)
 {
-	if (!PhysicsAsset || BodyIndex < 0 || BodyIndex >= PhysicsAsset->SkeletalBodySetups.Num())
+	if (bSimulating || !PhysicsAsset || BodyIndex < 0 || BodyIndex >= PhysicsAsset->SkeletalBodySetups.Num())
 	{
 		return;
 	}
@@ -454,7 +470,7 @@ void FPhysicsAssetEditor::AddShape(int32 BodyIndex, EAggCollisionShape::Type Sha
 
 void FPhysicsAssetEditor::DeleteShape(int32 BodyIndex, EAggCollisionShape::Type ShapeType, int32 ShapeIndex)
 {
-	if (!PhysicsAsset || BodyIndex < 0 || BodyIndex >= PhysicsAsset->SkeletalBodySetups.Num())
+	if (bSimulating || !PhysicsAsset || BodyIndex < 0 || BodyIndex >= PhysicsAsset->SkeletalBodySetups.Num())
 	{
 		return;
 	}
@@ -531,15 +547,216 @@ void FPhysicsAssetEditor::OnRenderLine(FLineBatcher& LineBatcher)
 	{
 		DebugDraw.DrawPhysicsAssetConstraints(&LineBatcher, MeshComponent, *PhysicsAsset, GetSelectedConstraintIndex(), ConstraintDrawSize);
 	}
+
+	if (bSimulating)
+	{
+		const FVector4 FloorColor(0.5f, 0.5f, 0.5f, 1.0f);
+		constexpr int32 FloorLines = 20;
+		const float Z = FloorBox.Max.Z;
+		for (int32 i = 0; i <= FloorLines; ++i)
+		{
+			const float T = static_cast<float>(i) / FloorLines;
+			const float X = FloorBox.Min.X + (FloorBox.Max.X - FloorBox.Min.X) * T;
+			const float Y = FloorBox.Min.Y + (FloorBox.Max.Y - FloorBox.Min.Y) * T;
+			LineBatcher.AddLine(FVector(X, FloorBox.Min.Y, Z), FVector(X, FloorBox.Max.Y, Z), FloorColor);
+			LineBatcher.AddLine(FVector(FloorBox.Min.X, Y, Z), FVector(FloorBox.Max.X, Y, Z), FloorColor);
+		}
+
+		if (MouseHandle.IsGrabbing())
+		{
+			const FVector4 GrabColor(1.0f, 0.2f, 0.2f, 1.0f);
+			const FBox Bounds = GetPreviewBounds();
+			LineBatcher.AddLine(MouseHandle.GetGrabbedLocation(), MouseHandle.GetTargetLocation(), GrabColor);
+			LineBatcher.AddSphere(MouseHandle.GetTargetLocation(), (Bounds.Max - Bounds.Min).Size() * 0.005f, GrabColor, 8);
+		}
+	}
+}
+
+void FPhysicsAssetEditor::ToggleSimulation()
+{
+	bSimulating ? StopSimulation() : StartSimulation();
+}
+
+void FPhysicsAssetEditor::StartSimulation()
+{
+	UWorld* World = PreviewScene.GetWorld();
+	FPhysicsScene* Scene = World ? World->GetPhysicsScene() : nullptr;
+	if (bSimulating || !MeshComponent || !PhysicsAsset || !Scene)
+	{
+		return;
+	}
+
+	PhysicsGizmo.EndDrag();
+	PreSimulationComponentWorld = MeshComponent->GetWorldMatrix();
+
+	// 인스턴스는 에디터를 열 때 만들어져 그 뒤의 에셋 편집이 빠져 있다
+	MeshComponent->RecreatePhysicsState();
+	if (MeshComponent->Bodies.IsEmpty())
+	{
+		HTR_LOG(Warning, "Cannot simulate: no physics bodies were created for {}", GetAssetPath());
+		return;
+	}
+
+	CreateSimulationFloor(*Scene);
+	MeshComponent->SetSimulatePhysics(true);
+	Scene->ResetStepTime();
+	World->bShouldSimulatePhysics = true;
+	bSimulating = true;
+}
+
+void FPhysicsAssetEditor::StopSimulation()
+{
+	if (!bSimulating)
+	{
+		return;
+	}
+	bSimulating = false;
+	MouseHandle.ReleaseComponent();
+
+	if (UWorld* World = PreviewScene.GetWorld())
+	{
+		World->bShouldSimulatePhysics = false;
+	}
+	FloorBody.TermBody();
+
+	if (MeshComponent)
+	{
+		// SetSimulatePhysics(false)가 컴포넌트를 세워 옮기므로 그 뒤에 원위치로 덮어쓴다
+		MeshComponent->SetSimulatePhysics(false);
+		MeshComponent->SetWorldTransform(PreSimulationComponentWorld, false);
+		MeshComponent->ResetPose();
+		MeshComponent->RefreshBoneTransformsNow();
+	}
+}
+
+void FPhysicsAssetEditor::CreateSimulationFloor(FPhysicsScene& Scene)
+{
+	if (!FloorBodySetup)
+	{
+		FloorBodySetup = NewObject<UBodySetup>(Mesh);
+		FloorBodySetup->AggGeom.BoxElems.Add(FKBoxElem());
+	}
+
+	// 바인드 포즈 바운드의 바닥면에 메시보다 훨씬 넓은 판을 깐다
+	const FBox Bounds = MeshComponent->CalcBounds();
+	const float MeshSize = (Bounds.Max - Bounds.Min).Size();
+	FKBoxElem& Box = FloorBodySetup->AggGeom.BoxElems[0];
+	Box.X = MeshSize * 10.0f;
+	Box.Y = MeshSize * 10.0f;
+	Box.Z = MeshSize * 0.1f;
+
+	const FVector HalfExtent(Box.X * 0.5f, Box.Y * 0.5f, Box.Z * 0.5f);
+	const FVector Center((Bounds.Min.X + Bounds.Max.X) * 0.5f, (Bounds.Min.Y + Bounds.Max.Y) * 0.5f, Bounds.Min.Z - HalfExtent.Z);
+	FloorBox = FBox{ Center - HalfExtent, Center + HalfExtent };
+	if (!FloorBody.InitBody(*FloorBodySetup, FTransform(FRotator(0, 0, 0), Center), nullptr, Scene, EPhysicsBodyType::Static))
+	{
+		HTR_LOG(Warning, "Failed to create the simulation floor");
+	}
 }
 
 void FPhysicsAssetEditor::TickAfterWorld(float DeltaTime)
 {
+	if (bSimulating)
+	{
+		PhysicsGizmo.EndDrag();
+		PhysicsGizmo.SetTarget(nullptr);
+		UpdateGrab();
+		return;
+	}
+
 	if (!UpdatePhysicsGizmo())
 	{
 		UpdatePhysicsPicking();
 	}
 	SyncPhysicsGizmo();
+}
+
+void FPhysicsAssetEditor::UpdateGrab()
+{
+	if (MouseHandle.IsGrabbing())
+	{
+		if (!PointerInput.bRightMouseDown || PointerInput.bCancel || !CanProcessViewportInput())
+		{
+			MouseHandle.ReleaseComponent();
+			return;
+		}
+
+		if (CameraInput.Wheel != 0.0f)
+		{
+			const FBox Bounds = GetPreviewBounds();
+			const float Step = (Bounds.Max - Bounds.Min).Size() * 0.02f;
+			GrabDepth = std::max(GrabDepth + CameraInput.Wheel / 120.0f * Step, Step);
+		}
+		MoveGrab();
+		return;
+	}
+
+	const bool bGrabPressed = CanProcessViewportInput() && MeshComponent && PhysicsAsset &&
+		PointerInput.bRightMousePressed && (PointerInput.bCtrlDown || PointerInput.bShiftDown);
+	if (!bGrabPressed)
+	{
+		return;
+	}
+
+	UWorld* World = PreviewScene.GetWorld();
+	FPhysicsScene* Scene = World ? World->GetPhysicsScene() : nullptr;
+	physx::PxScene* NativeScene = Scene ? Scene->GetPxScene() : nullptr;
+	if (!NativeScene)
+	{
+		return;
+	}
+
+	const FVector2 MousePosition(PointerInput.MouseUV.X * ViewportWidth, PointerInput.MouseUV.Y * ViewportHeight);
+	const FRay Ray = ViewportClient->DeprojectScreenToWorld(MousePosition);
+	const physx::PxVec3 Origin = U2PVector(Ray.Origin);
+	const physx::PxVec3 UnitDir = U2PVector(Ray.Direction.GetSafeNormal());
+	if (!Origin.isFinite() || !UnitDir.isNormalized())
+	{
+		return;
+	}
+
+	// 바닥은 정적 액터라 eDYNAMIC만 검사하면 바디만 맞는다
+	physx::PxRaycastBuffer Hits;
+	{
+		const physx::PxSceneReadLock ReadLock(*NativeScene);
+		if (!NativeScene->raycast(Origin, UnitDir, 1.0e6f, Hits, physx::PxHitFlag::eDEFAULT,
+			physx::PxQueryFilterData(physx::PxQueryFlag::eDYNAMIC)) || !Hits.hasBlock)
+		{
+			return;
+		}
+	}
+
+	int32 BodyIndex = INDEX_NONE;
+	for (int32 i = 0; i < MeshComponent->Bodies.Num(); ++i)
+	{
+		if (MeshComponent->Bodies[i] && MeshComponent->Bodies[i]->GetRigidDynamic() == Hits.block.actor)
+		{
+			BodyIndex = i;
+			break;
+		}
+	}
+	const FVector HitLocation = P2UVector(Hits.block.position);
+	if (BodyIndex != INDEX_NONE && MouseHandle.GrabComponentAtLocation(*Scene, *MeshComponent->Bodies[BodyIndex], HitLocation))
+	{
+		const FVector Forward = ViewportClient->GetViewRotation().Quaternion().GetForwardVector();
+		GrabDepth = (HitLocation - ViewportClient->GetViewLocation()).Dot(Forward);
+	}
+}
+
+void FPhysicsAssetEditor::MoveGrab()
+{
+	const FVector2 MousePosition(PointerInput.MouseUV.X * ViewportWidth, PointerInput.MouseUV.Y * ViewportHeight);
+	const FRay Ray = ViewportClient->DeprojectScreenToWorld(MousePosition);
+	const FVector Forward = ViewportClient->GetViewRotation().Quaternion().GetForwardVector();
+	const float RayDepth = Ray.Direction.Dot(Forward);
+	if (RayDepth < 1e-4f)
+	{
+		return;
+	}
+
+	// 잡은 점과 같은 깊이의 카메라 평면에 마우스 레이를 투영한다 (직교 뷰도 같은 식)
+	const float T = (GrabDepth - (Ray.Origin - ViewportClient->GetViewLocation()).Dot(Forward)) / RayDepth;
+	MouseHandle.SetTargetLocation(Ray.PointAt(T));
 }
 
 void FPhysicsAssetEditor::UpdatePhysicsPicking()
@@ -724,7 +941,7 @@ bool FPhysicsAssetEditor::BeginShapeDrag()
 	}
 
 	const FMatrix BoneMatrix = BoneWorld.GetLocalMatrix();
-	if (fabsf(BoneMatrix.Determinant()) < 1e-12f)
+	if (!IsInvertibleFrame(BoneMatrix))
 	{
 		return false;
 	}
@@ -755,7 +972,7 @@ bool FPhysicsAssetEditor::BeginConstraintDrag()
 
 	const FMatrix ParentBoneWorld = MeshComponent->GetBoneWorldMatrix(ParentBone);
 	const FMatrix ChildBoneWorld = MeshComponent->GetBoneWorldMatrix(ChildBone);
-	if (fabsf(ParentBoneWorld.Determinant()) < 1e-12f || fabsf(ChildBoneWorld.Determinant()) < 1e-12f)
+	if (!IsInvertibleFrame(ParentBoneWorld) || !IsInvertibleFrame(ChildBoneWorld))
 	{
 		return false;
 	}
@@ -946,10 +1163,21 @@ bool FPhysicsAssetEditor::PickPhysics(const FRay& Ray, EPhysicsAssetSelection& O
 		}
 	}
 
-	if (!bShowBodies)
+	float BodyT = 0.0f;
+	if (bShowBodies && PickBody(Ray, OutIndex, OutShapeType, OutShapeIndex, BodyT))
 	{
-		return false;
+		OutType = EPhysicsAssetSelection::Body;
+		return true;
 	}
+	return false;
+}
+
+bool FPhysicsAssetEditor::PickBody(const FRay& Ray, int32& OutBodyIndex, EAggCollisionShape::Type& OutShapeType,
+	int32& OutShapeIndex, float& OutT) const
+{
+	FPhysicsDebugDraw DebugDraw;
+	float NearestT = FLT_MAX;
+	OutBodyIndex = INDEX_NONE;
 
 	for (int32 BodyIndex = 0; BodyIndex < PhysicsAsset->SkeletalBodySetups.Num(); ++BodyIndex)
 	{
@@ -967,8 +1195,7 @@ bool FPhysicsAssetEditor::PickPhysics(const FRay& Ray, EPhysicsAssetSelection& O
 			if (bHit && T < NearestT)
 			{
 				NearestT = T;
-				OutType = EPhysicsAssetSelection::Body;
-				OutIndex = BodyIndex;
+				OutBodyIndex = BodyIndex;
 				OutShapeType = ShapeType;
 				OutShapeIndex = ShapeIndex;
 			}
@@ -1005,5 +1232,6 @@ bool FPhysicsAssetEditor::PickPhysics(const FRay& Ray, EPhysicsAssetSelection& O
 		}
 	}
 
-	return OutType != EPhysicsAssetSelection::None;
+	OutT = NearestT;
+	return OutBodyIndex != INDEX_NONE;
 }

@@ -5,10 +5,14 @@
 #include "Editor/EditorModeManager.h"
 #include "Physics/AggregateGeom.h"
 #include "Physics/ConstraintInstance.h"
+#include "Physics/BodyInstance.h"
+#include "Physics/PhysicsHandle.h"
 
 class UPhysicsAsset;
 class UPhysicsConstraintTemplate;
+class UBodySetup;
 class USkeletalBodySetup;
+class FPhysicsScene;
 
 enum class EPhysicsAssetSelection : uint8 { None, Body, Constraint };
 
@@ -24,6 +28,9 @@ public:
 		, MeshPath(InMeshPath)
 	{
 		Mesh = &InMesh;
+		// FBX는 cm로 들어오므로 레벨의 스켈레탈 메시 액터처럼 줄여야 중력(m/s²)과 크기 비율이 맞는다
+		PreviewScale = CmToWorld;
+		CameraSpeed = 1.0f;
 	}
 
 	const char* GetEditorTypeName() const override { return "PhysicsAsset"; }
@@ -41,6 +48,10 @@ public:
 	bool ConfirmClose() override;
 	void MarkDirty() { bDirty = true; }
 	bool Save();
+
+	// 시작할 때 에셋으로 바디를 다시 만들고, 멈추면 컴포넌트 위치와 포즈를 되돌린다
+	void ToggleSimulation();
+	bool IsSimulating() const { return bSimulating; }
 
 	void SelectBody(int32 BodyIndex);
 	void SelectShape(int32 BodyIndex, EAggCollisionShape::Type ShapeType, int32 ShapeIndex);
@@ -73,8 +84,8 @@ protected:
 	void ShutdownResources() override;
 	void OnBoneSelected() override;
 	void TickAfterWorld(float DeltaTime) override;
-	bool IsViewportInteractionBusy() const override { return PhysicsGizmo.IsUsing(); }
-	void CancelViewportInteraction() override { PhysicsGizmo.EndDrag(); }
+	bool IsViewportInteractionBusy() const override { return PhysicsGizmo.IsUsing() || MouseHandle.IsGrabbing(); }
+	void CancelViewportInteraction() override { PhysicsGizmo.EndDrag(); MouseHandle.ReleaseComponent(); }
 
 private:
 	void UpdatePhysicsPicking();
@@ -95,6 +106,8 @@ private:
 	// 레이에 맞은 Body·Constraint 중 가장 가까운 것. Constraint가 맞으면 Body보다 우선한다
 	bool PickPhysics(const struct FRay& Ray, EPhysicsAssetSelection& OutType, int32& OutIndex,
 		EAggCollisionShape::Type& OutShapeType, int32& OutShapeIndex) const;
+	bool PickBody(const struct FRay& Ray, int32& OutBodyIndex, EAggCollisionShape::Type& OutShapeType,
+		int32& OutShapeIndex, float& OutT) const;
 	FString GetSaveFilePath() const;
 	void ClearSelection();
 	bool IsBoneChildOf(int32 BoneIndex, int32 AncestorBoneIndex) const;
@@ -104,9 +117,25 @@ private:
 	// bKeepProfile이면 각도 제한 설정은 그대로 두고 본과 프레임만 다시 잡는다
 	void InitConstraintSetup(UPhysicsConstraintTemplate* Template, int32 ChildBodyIndex, int32 ParentBodyIndex, bool bKeepProfile);
 	void RevertFromDisk();
+	void StartSimulation();
+	void StopSimulation();
+	void CreateSimulationFloor(FPhysicsScene& Scene);
+	// Ctrl/Shift + 우클릭 드래그로 MouseHandle을 잡고 옮긴다
+	void UpdateGrab();
+	void MoveGrab();
 
 	FString MeshPath;
 	bool bDirty = false;
+
+	bool bSimulating = false;
+	FMatrix PreSimulationComponentWorld;
+	UBodySetup* FloorBodySetup = nullptr;
+	FBodyInstance FloorBody;
+	FBox FloorBox;
+
+	FPhysicsHandle MouseHandle;
+	// 카메라 전방 축 기준 깊이. 마우스는 이 깊이의 카메라 평면 위에서 움직인다
+	float GrabDepth = 0.0f;
 
 	UPhysicsAsset* PhysicsAsset = nullptr;
 	EPhysicsAssetSelection SelectionType = EPhysicsAssetSelection::None;

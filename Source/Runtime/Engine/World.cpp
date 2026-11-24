@@ -346,6 +346,16 @@ void UWorld::PreviewWorldTick(float DeltaTime)
 
 		Comp->TickComponent(DeltaTime);
 	}
+
+	// 컴포넌트 Tick 뒤에 스텝을 돌려야 PostPhysics의 바디 -> 본 반영이 같은 프레임에 끝난다
+	if (bShouldSimulatePhysics && PhysicsScene)
+	{
+		const float GravityZ = IsWorldGravityOverridden()
+			? GetWorldGravityZ() : FPhysicsSettings::Get().DefaultGravityZ;
+		PhysicsScene->SetGravityZ(GravityZ);
+		PhysicsScene->Tick(DeltaTime);
+		TickTaskManager.RunTickGroup(ETickingGroup::PostPhysics, DeltaTime);
+	}
 }
 
 void UWorld::ClearWorld()

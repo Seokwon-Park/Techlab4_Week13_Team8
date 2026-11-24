@@ -14,4 +14,11 @@ void FPhysicsAssetSettingsPanel::DrawContent()
 
 	ImGui::SeparatorText("Constraints");
 	ImGui::SliderFloat("Constraint Draw Size", &Editor.ConstraintDrawSize, 0.0f, 4.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+
+	ImGui::SeparatorText("Viewport");
+	float CameraSpeed = Editor.GetCameraSpeed();
+	if (ImGui::SliderFloat("Camera Speed", &CameraSpeed, 0.1f, 20.0f, "%.1f", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic))
+	{
+		Editor.SetCameraSpeed(CameraSpeed);
+	}
 }

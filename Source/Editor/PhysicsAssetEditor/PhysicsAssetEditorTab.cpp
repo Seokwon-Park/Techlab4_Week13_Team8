@@ -22,7 +22,22 @@ FPhysicsAssetEditorTab::FPhysicsAssetEditorTab(FPhysicsAssetEditor& InEditor)
 	SaveCommand.IconId = EEditorIcon::Save;
 	SaveCommand.Shortcut = { EKeyCode::S, true, false, false };
 	SaveCommand.Execute = [this] { PhysicsEditor.Save(); };
-	SaveCommand.CanExecute = [this] { return PhysicsEditor.IsDirty(); };
+	SaveCommand.CanExecute = [this] { return PhysicsEditor.IsDirty() && !PhysicsEditor.IsSimulating(); };
+
+	// 같은 자리에 Simulate / Stop 중 지금 쓸 수 있는 하나만 보인다
+	SimulateCommand.Label = "Simulate";
+	SimulateCommand.Tooltip = "Simulate (ragdoll test)";
+	SimulateCommand.IconId = EEditorIcon::Play;
+	SimulateCommand.IconTint = { 0.40f, 0.80f, 0.30f, 1.0f };
+	SimulateCommand.Execute = [this] { PhysicsEditor.ToggleSimulation(); };
+	SimulateCommand.IsVisible = [this] { return !PhysicsEditor.IsSimulating(); };
+
+	StopSimulationCommand.Label = "Stop";
+	StopSimulationCommand.Tooltip = "Stop simulation";
+	StopSimulationCommand.IconId = EEditorIcon::Stop;
+	StopSimulationCommand.IconTint = { 0.95f, 0.42f, 0.48f, 1.0f };
+	StopSimulationCommand.Execute = [this] { PhysicsEditor.ToggleSimulation(); };
+	StopSimulationCommand.IsVisible = [this] { return PhysicsEditor.IsSimulating(); };
 }
 
 void FPhysicsAssetEditorTab::OnRender(bool bActive)
@@ -38,6 +53,9 @@ void FPhysicsAssetEditorTab::OnRender(bool bActive)
 void FPhysicsAssetEditorTab::DrawToolbar()
 {
 	EditorCommandUI::ToolbarButton("PhysicsAssetSave", SaveCommand);
+	ImGui::SameLine();
+	EditorCommandUI::ToolbarButton("PhysicsAssetSimulate", SimulateCommand);
+	EditorCommandUI::ToolbarButton("PhysicsAssetStopSimulation", StopSimulationCommand);
 	ImGui::Separator();
 
 	const ImGuiFocusedFlags FocusFlags = ImGuiFocusedFlags_RootAndChildWindows | ImGuiFocusedFlags_DockHierarchy;

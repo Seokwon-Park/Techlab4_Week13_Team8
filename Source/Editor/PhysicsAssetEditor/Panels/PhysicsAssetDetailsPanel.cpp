@@ -85,6 +85,12 @@ void FPhysicsAssetDetailsPanel::DrawContent()
 		return;
 	}
 
+	if (Editor.IsSimulating())
+	{
+		ImGui::TextDisabled("Stop the simulation to edit.");
+	}
+	ImGui::BeginDisabled(Editor.IsSimulating());
+
 	const int32 BodyIndex = Editor.GetSelectedBodyIndex();
 	const int32 ConstraintIndex = Editor.GetSelectedConstraintIndex();
 	bool bEdited = false;
@@ -100,6 +106,7 @@ void FPhysicsAssetDetailsPanel::DrawContent()
 	{
 		ImGui::TextDisabled("Select a body or constraint.");
 	}
+	ImGui::EndDisabled();
 
 	if (bEdited)
 	{
