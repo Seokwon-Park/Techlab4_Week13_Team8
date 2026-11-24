@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "SkeletalMeshDetailsPanel.h"
 #include "Editor/SkeletalMeshEditor/SkeletalMeshEditor.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Math/Transform.h"
 #include "Physics/PhysicsAsset.h"
 #include "Physics/PhysicsAssetFile.h"
@@ -176,6 +177,36 @@ void FSkeletalMeshDetailsPanel::DrawClothBinding()
 	const bool bApply = ImGui::Button("Apply Cloth Binding");
 	ImGui::EndDisabled();
 
+	// 적용된 Cloth의 프리뷰 실행·정지·초기화 버튼
+	USkeletalMeshComponent* PreviewComponent = Editor.GetMeshComponent();
+	const bool bRunning = PreviewComponent && PreviewComponent->HasClothSimulation();
+
+	ImGui::BeginDisabled(!PreviewComponent || Mesh->GetClothSectionBindings().IsEmpty());
+	const bool bToggle = ImGui::Button(bRunning ? "Stop" : "Simulate");
+	ImGui::SameLine();
+	ImGui::BeginDisabled(!bRunning);
+	const bool bReset = ImGui::Button("Reset");
+	ImGui::EndDisabled();
+	ImGui::EndDisabled();
+
+	if (bToggle && bRunning)
+	{
+		PreviewComponent->StopClothPreview();
+		ClothBindingMessage.clear();
+	}
+	else if (bToggle || bReset)
+	{
+		if (PreviewComponent->RestartClothPreview())
+		{
+			Editor.SetClothPaintMode(false);
+			ClothBindingMessage.clear();
+		}
+		else
+		{
+			ClothBindingMessage = "Cloth preview failed. Check the Output Log and CPU skinning.";
+		}
+	}
+
 	if (!ClothBindingMessage.empty())
 	{
 		ImGui::TextWrapped("%s", ClothBindingMessage.c_str());
@@ -193,7 +224,7 @@ void FSkeletalMeshDetailsPanel::DrawClothBinding()
 	}
 
 	ClothBindingMessage = Editor.ApplyClothBinding()
-		? "Cloth binding applied. Start PIE to simulate."
+		? "Cloth binding applied. Click Simulate to preview."
 		: "Select a valid section with unshared render vertices.";
 }
 

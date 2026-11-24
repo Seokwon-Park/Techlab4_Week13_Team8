@@ -34,6 +34,7 @@
 #include <NvCloth/PhaseConfig.h>
 #include <NvClothExt/ClothFabricCooker.h>
 #include <limits>
+#include <algorithm>
 #include "Physics/PhysicsSettings.h"
 #include <NvCloth/Factory.h>
 #include <NvCloth/Solver.h>
@@ -485,16 +486,25 @@ void USkeletalMeshComponent::OnSkeletalMeshChanged()
 		BoneSpaceTransforms.Add(Bone.LocalBindPose);
 	RefreshClothSolver();
 }
-void USkeletalMeshComponent::RefreshClothSolver()
+void USkeletalMeshComponent::RefreshClothSolver(bool bForPreview)
 {
 	UWorld* World = GetWorld();
 	const USkeletalMesh* Mesh = GetSkeletalMesh();
-	if (!IsRegistered() || !HasBegunPlay() || !World || !World->IsGameWorld() || !Mesh)
+
+	const bool bValidWorld = World && (bForPreview ? World->GetWorldType() == EWorldType::EditorPreview
+		: World->IsGameWorld() && HasBegunPlay());
+
+	if (!IsRegistered() || !bValidWorld || !Mesh)
 	{
 		ReleaseClothSolver();
 		return;
 	}
-	if (ClothSourceMesh == Mesh){ return; }
+
+	// 게임 경로에서 동일 메시의 Solver 재사용
+	if (!bForPreview && ClothSourceMesh == Mesh)
+	{
+		return;
+	}
 
 	ReleaseClothSolver();
 	const auto& Bindings = Mesh->GetClothSectionBindings();
@@ -510,7 +520,7 @@ void USkeletalMeshComponent::RefreshClothSolver()
 
 	for (const FClothSectionBinding& Binding : Bindings)
 	{
-		FClothInstance Instance = CreateClothInstance(*Factory, LOD, Binding, GravityZ);
+		FClothInstance Instance = CreateClothInstance(*Factory, LOD, Binding, GravityZ, bForPreview);
 		if (!Instance.Cloth)
 		{
 			HTR_LOG(Warning, "Failed to create cloth for section {}", Binding.SectionIndex);
@@ -535,16 +545,23 @@ void USkeletalMeshComponent::RefreshClothSolver()
 	ClothInstances = std::move(NewCloths);
 	ClothSolver = std::move(NewSolver);
 	ClothSourceMesh = Mesh;
-	ClothTickFunction.RegisterTickFunction(World->GetTickTaskManager());
+	if (!bForPreview)
+	{
+		ClothTickFunction.RegisterTickFunction(World->GetTickTaskManager());
+	}
 }
 // 바인딩과 렌더 섹션으로부터 Cloth 인스턴스 생성
 USkeletalMeshComponent::FClothInstance USkeletalMeshComponent::CreateClothInstance(
 	nv::cloth::Factory& Factory, const FSkeletalMeshLODRenderData& LOD,
-	const FClothSectionBinding& Binding, float GravityZ) const
+	const FClothSectionBinding& Binding, float GravityZ, bool bForPreview) const
 {
 	const FSkeletalMeshSection& Section = LOD.Sections[Binding.SectionIndex];
 	FClothInstance Instance;
-	Instance.SimulationScale = GetWorldScale3D();
+
+	// FBX 프리뷰 정점의 센티미터-미터 변환
+	constexpr float FbxCentimetersToMeters = 0.01f;
+
+	Instance.SimulationScale = GetWorldScale3D() * (bForPreview ? FbxCentimetersToMeters : 1.0f);
 	const FVector & Scale = Instance.SimulationScale;
 	if (Scale.X <= 0.0f || Scale.Y <= 0.0f || Scale.Z <= 0.0f)
 	{
@@ -600,7 +617,7 @@ USkeletalMeshComponent::FClothInstance USkeletalMeshComponent::CreateClothInstan
 	}
 
 	// 거리 맵을 네이티브 입자 순서로 변환하고 고정점의 반경을 0으로 설정
-	if (!Binding.MaxDistanceByRenderVertex.IsEmpty())
+	if (bForPreview||!Binding.MaxDistanceByRenderVertex.IsEmpty())
 	{
 		constexpr float UnboundedRadius = (std::numeric_limits<float>::max)();
 		Instance.MotionConstraintRadii.Init(UnboundedRadius, ParticleCount);
@@ -676,7 +693,7 @@ void USkeletalMeshComponent::ReleaseClothSolver()
 	ClothVertexPositions.Reset();
 	ClothSolver.reset();
 	ClothSourceMesh = nullptr;
-
+	ClothPreviewAccumulatedSeconds = 0.0;
 }
 // 현재 본 포즈에 맞춘 Cloth 입자별 제약 구 갱신
 void USkeletalMeshComponent::UpdateClothMotionConstraints()
@@ -760,6 +777,53 @@ void USkeletalMeshComponent::UpdateClothVertexPositions()
 		}
 	}
 }
+bool USkeletalMeshComponent::RestartClothPreview()
+{
+	const UWorld* World = GetWorld();
+	const FSkeletalMeshObject* MeshObject = GetMeshObject();
+
+	// 프리뷰 월드와 Cloth 정점 갱신을 지원하는 스키닝 경로 확인
+	if (!World || World->GetWorldType() != EWorldType::EditorPreview || !MeshObject
+		|| MeshObject->GetBoneMatrixBuffer())
+	{
+		return false;
+	}
+
+	RefreshClothSolver(true);
+	RefreshBoneTransformsNow();
+	return HasClothSimulation();
+}
+void USkeletalMeshComponent::StopClothPreview()
+{
+	if (!HasClothSimulation()){	return; }
+	// 변형 결과 제거와 현재 본 포즈의 렌더 버퍼 복원
+	ReleaseClothSolver();
+	RefreshBoneTransformsNow();
+}
+void USkeletalMeshComponent::TickClothPreview(float DeltaTime)
+{
+	if (!HasClothSimulation() || DeltaTime <= 0.0f)
+	{
+		return;
+	}
+
+	// 뷰어 프레임 시간의 고정 스텝 변환과 따라잡기 상한
+	const FPhysicsSettings& Settings = FPhysicsSettings::Get();
+	const double FixedStepSeconds = Settings.FixedStepSeconds;
+	ClothPreviewAccumulatedSeconds = std::min(
+		ClothPreviewAccumulatedSeconds + static_cast<double>(DeltaTime),
+		FixedStepSeconds * Settings.MaxStepsPerTick);
+
+	int32 StepCount = 0;
+	while (StepCount < Settings.MaxStepsPerTick
+		&& ClothPreviewAccumulatedSeconds >= FixedStepSeconds)
+	{
+		ClothPreviewAccumulatedSeconds -= FixedStepSeconds;
+		++StepCount;
+	}
+
+	AdvanceCloth(StepCount, static_cast<float>(FixedStepSeconds));
+}
 void USkeletalMeshComponent::TickClothing()
 {
 	const UWorld* World = GetWorld();
@@ -769,10 +833,12 @@ void USkeletalMeshComponent::TickClothing()
 		return;
 	}
 
-	// 해당 프레임의 완료 횟수와 공용 고정 간격
-	const int32 StepCount = PhysicsScene->GetLastTickStepCount();
-	const float StepDelta = static_cast<float>(FPhysicsSettings::Get().FixedStepSeconds);
+	// 완료된 게임 월드 물리 스텝의 Cloth 전달
+	AdvanceCloth(PhysicsScene->GetLastTickStepCount(),	static_cast<float>(FPhysicsSettings::Get().FixedStepSeconds));
+}
 
+void USkeletalMeshComponent::AdvanceCloth(int32 StepCount, float StepDelta)
+{
 	// 첫 결과 또는 완료된 물리 스텝의 결과 갱신
 	bool bUpdateClothVertices = ClothVertexPositions.IsEmpty();
 	if (StepCount > 0 || bUpdateClothVertices)

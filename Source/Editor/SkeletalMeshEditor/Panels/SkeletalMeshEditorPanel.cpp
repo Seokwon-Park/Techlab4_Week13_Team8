@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "SkeletalMeshEditorPanel.h"
 #include "Editor/SkeletalMeshEditor/SkeletalMeshEditor.h"
+#include "Components/SkeletalMeshComponent.h"
 
 FSkeletalMeshEditorPanel::FSkeletalMeshEditorPanel(FSkeletalMeshEditor& InEditor, const char* InName)
 	: Editor(InEditor)

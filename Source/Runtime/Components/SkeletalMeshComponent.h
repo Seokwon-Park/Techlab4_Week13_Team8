@@ -76,6 +76,12 @@ public:
 	void ResetPose();
 	void RefreshBoneTransformsNow();
 
+	// 스켈레탈 메쉬 뷰어 관련 함수
+	bool RestartClothPreview();
+	void StopClothPreview();
+	void TickClothPreview(float DeltaTime);
+	bool HasClothSimulation() const { return ClothSolver.get() != nullptr; }
+
 	using Super::Serialize;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
 
@@ -185,7 +191,7 @@ private:
 
 	FClothInstance CreateClothInstance(nv::cloth::Factory& Factory,
 		const FSkeletalMeshLODRenderData& LOD, const FClothSectionBinding& Binding,
-		float GravityZ) const;
+		float GravityZ,bool bForPreview = false) const;
 	void UpdateClothMotionConstraints();
 	void UpdateClothVertexPositions();
 	const TArray<FClothVertexPosition>* GetClothVertexPositions() const override
@@ -193,7 +199,11 @@ private:
 		return &ClothVertexPositions;
 	}
 
-	void RefreshClothSolver();
+	// 프리뷰 고정 스텝의 잔여 시간
+	double ClothPreviewAccumulatedSeconds = 0.0;
+
+	void RefreshClothSolver(bool bForPreview = false);
 	void ReleaseClothSolver();
 	void TickClothing();
+	void AdvanceCloth(int32 StepCount, float StepDelta);
 };

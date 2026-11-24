@@ -28,6 +28,10 @@ void FSkeletalMeshEditor::ShutdownResources()
 
 void FSkeletalMeshEditor::TickAfterWorld(float DeltaTime)
 {
+	if (bViewportVisible && MeshComponent)
+	{
+		MeshComponent->TickClothPreview(DeltaTime);
+	}
 	if (bClothPaintMode)
 	{
 		UpdateClothPaintStroke();
@@ -81,8 +85,12 @@ void FSkeletalMeshEditor::SelectClothSection(int32 SectionIndex)
 
 void FSkeletalMeshEditor::SetClothPaintMode(bool bEnabled)
 {
-	// 본 기즈모와 Cloth 브러시 사이의 입력 소유권 전환
+	// 브러시 활성화 전 스키닝 포즈 복원
 	CancelViewportInteraction();
+	if (bEnabled && MeshComponent)
+	{
+		MeshComponent->StopClothPreview();
+	}
 	bClothPaintMode = bEnabled;
 }
 
@@ -119,7 +127,17 @@ bool FSkeletalMeshEditor::ApplyClothBinding()
 		}
 	}
 	Bindings.Add(std::move(NewBinding));
-	return Mesh->SetClothSectionBindings(std::move(Bindings));
+	// 바인딩 반영 성공 시 실행 중인 프리뷰 재생성
+	if (!Mesh->SetClothSectionBindings(std::move(Bindings)))
+	{
+		return false;
+	}
+
+	if (MeshComponent && MeshComponent->HasClothSimulation())
+	{
+		MeshComponent->RestartClothPreview();
+	}
+	return true;
 }
 
 void FSkeletalMeshEditor::UpdateClothPaintStroke()
