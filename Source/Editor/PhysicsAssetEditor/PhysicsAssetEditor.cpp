@@ -62,6 +62,12 @@ namespace
 
 bool FPhysicsAssetEditor::InitializeResources()
 {
+	// cm 값으로 들어온 메시는 레벨에서처럼 0.01로 줄여야 중력(m/s²)과 크기 비율이 맞는다.
+	// 이미 m 크기인 메시(레벨에 스케일 1 근처로 놓는 메시)는 그대로 둔다
+	const auto& LODs = Mesh->GetRenderData().LODRenderData;
+	const float MeshSize = LODs.IsEmpty() ? 0.0f : (LODs[0].BindAABB.Max - LODs[0].BindAABB.Min).Size();
+	PreviewScale = MeshSize > CentimeterMeshMinSize ? CmToWorld : 1.0f;
+
 	if (!InitializePreview())
 	{
 		return false;
