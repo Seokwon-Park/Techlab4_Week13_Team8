@@ -118,7 +118,7 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 			const uint64 StartCycles = bMeasureStepTime ? FPlatformTime::GetCycles64() : 0;
 			Scene->simulate(StepDelta);
 			bFetchedResults = Scene->fetchResults(true);
-			if (bMeasureStepTime)
+			if (bMeasureStepTime && bFetchedResults)
 			{
 				const uint64 ElapsedCycles = FPlatformTime::GetCycles64() - StartCycles;
 				LastTickStepTimeMs += FPlatformTime::ToMilliseconds64(ElapsedCycles);
@@ -128,7 +128,7 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 		if (!bFetchedResults)
 		{
 			HTR_LOG(Error, "PxScene::fetchResults failed");
-			ResetStepTime();
+			AccumulatedSeconds = 0.0;
 			return;
 		}
 		SyncComponentsToBodies();

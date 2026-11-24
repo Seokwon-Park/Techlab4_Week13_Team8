@@ -27,6 +27,10 @@
 #include "Engine/World.h"
 #include <extensions/PxDefaultSimulationFilterShader.h>   // PxSetGroup, PxSetGroupCollisionFlag
 #include <PxRigidDynamic.h>
+#include "Physics/NvClothSDK.h"
+#include "Physics/PhysicsSettings.h"
+#include <NvCloth/Factory.h>
+#include <NvCloth/Solver.h>
 
 namespace
 {
@@ -456,13 +460,91 @@ void USkeletalMeshComponent::SerializeSingleAnimation(FStructuredArchive::FRecor
 		NewInstance->SetPlayRate(Rate);
 	}
 }
-
+void USkeletalMeshComponent::OnRegister()
+{
+	Super::OnRegister();
+	RefreshClothSolver();
+}
+void USkeletalMeshComponent::OnUnregister()
+{
+	ReleaseClothSolver();
+	Super::OnUnregister();
+}
 void USkeletalMeshComponent::OnSkeletalMeshChanged()
 {
 	bBlueprintReloadRequested = !AnimBlueprintPath.empty();
 	BoneSpaceTransforms.Reset();
 	for (const FBoneInfo& Bone : GetBones())
 		BoneSpaceTransforms.Add(Bone.LocalBindPose);
+	RefreshClothSolver();
+}
+void USkeletalMeshComponent::RefreshClothSolver()
+{
+	UWorld* World = GetWorld();
+	if (!IsRegistered() || !World || !World->IsGameWorld() || !GetSkeletalMesh())
+	{
+		ReleaseClothSolver();
+		return;
+	}
+
+	// 컴포넌트별 Solver의 중복 생성 방지
+	if (ClothSolver)
+	{
+		return;
+	}
+
+	nv::cloth::Factory* Factory = NvClothSDK::GetFactory();
+	if (!Factory)
+	{
+		return;
+	}
+
+	ClothSolver.reset(Factory->createSolver());
+	if (!ClothSolver)
+	{
+		HTR_LOG(Warning, "Failed to create skeletal mesh cloth solver");
+		return;
+	}
+
+	// Solver 생성 완료 후 월드 틱 등록
+	ClothTickFunction.RegisterTickFunction(World->GetTickTaskManager());
+}
+void USkeletalMeshComponent::ReleaseClothSolver()
+{
+	ClothTickFunction.UnRegisterTickFunction();
+	ClothSolver.reset();
+}
+void USkeletalMeshComponent::TickClothing()
+{
+	const UWorld* World = GetWorld();
+	const FPhysicsScene* PhysicsScene = World ? World->GetPhysicsScene() : nullptr;
+	if (!ClothSolver || !HasBegunPlay() || !PhysicsScene)
+	{
+		return;
+	}
+
+	// 해당 프레임의 완료 횟수와 공용 고정 간격
+	const int32 StepCount = PhysicsScene->GetLastTickStepCount();
+	const float StepDelta = static_cast<float>(FPhysicsSettings::Get().FixedStepSeconds);
+
+	for (int32 StepIndex = 0; StepIndex < StepCount; ++StepIndex)
+	{
+		// 계산 대상이 있는 스텝의 시작
+		if (!ClothSolver->beginSimulation(StepDelta))
+		{
+			return;
+		}
+
+		// 현재 스텝의 전체 청크 순차 계산
+		const int32 ChunkCount = ClothSolver->getSimulationChunkCount();
+		for (int32 ChunkIndex = 0; ChunkIndex < ChunkCount; ++ChunkIndex)
+		{
+			ClothSolver->simulateChunk(ChunkIndex);
+		}
+
+		// 모든 청크 계산 이후의 스텝 완료
+		ClothSolver->endSimulation();
+	}
 }
 void USkeletalMeshComponent::OnCreatePhysicsState()
 {
@@ -750,6 +832,9 @@ USkeletalMeshComponent::USkeletalMeshComponent()
 	EndPhysicsTickFunction.Target = this;
 	EndPhysicsTickFunction.bCanEverTick = true;
 	EndPhysicsTickFunction.TickGroup = ETickingGroup::PostPhysics;
+	ClothTickFunction.Target = this;
+	ClothTickFunction.bCanEverTick = true;
+	ClothTickFunction.TickGroup = ETickingGroup::PostUpdateWork;
 }
 
 USkeletalMeshComponent::~USkeletalMeshComponent()
@@ -884,4 +969,11 @@ UAnimGraphInstance* USkeletalMeshComponent::CreateAnimGraph()
 void FSkeletalMeshComponentEndPhysicsTickFunction::ExecuteTick(float DeltaTime)
 {
 	if (Target) Target->EndPhysicsTickComponent(DeltaTime);
+}
+void FSkeletalMeshComponentClothTickFunction::ExecuteTick(float /*DeltaTime*/)
+{
+	if (Target)
+	{
+		Target->TickClothing();
+	}
 }

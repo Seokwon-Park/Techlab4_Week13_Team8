@@ -25,6 +25,7 @@ namespace NvClothSDK
 	// 프로세스 공용 어서션 콜백과 CPU Factory
 	static FNvClothAssertHandler GAssertHandler;
 	static nv::cloth::Factory* GFactory = nullptr;
+
 	// PhysX 콜백 등록과 CPU Factory 생성
 	void Initialize()
 	{
@@ -57,5 +58,11 @@ namespace NvClothSDK
 		NvClothDestroyFactory(GFactory);
 		GFactory = nullptr;
 		HTR_LOG(Info, "NvCloth CPU Factory released");
+	}
+
+	// 월드 Solver 생성용 비소유 Factory 반환
+	nv::cloth::Factory* GetFactory()
+	{
+		return GFactory;
 	}
 }

@@ -24,6 +24,19 @@ class FPhysicsScene;
 class UPhysicsAsset;
 class USkeletalMeshComponent;
 
+// 네이티브 Cloth Solver의 전방 선언
+namespace nv::cloth
+{
+	class Solver;
+}
+
+// 본 포즈 확정 이후 실행되는 Cloth 전용 틱
+struct FSkeletalMeshComponentClothTickFunction : public FTickFunction
+{
+	USkeletalMeshComponent* Target = nullptr;
+	void ExecuteTick(float DeltaTime) override;
+};
+
 struct FSkeletalMeshComponentEndPhysicsTickFunction : public FTickFunction
 {
 	USkeletalMeshComponent* Target = nullptr;
@@ -116,7 +129,8 @@ protected:
 
 	void RefreshBoneTransforms() override;
 	void OnSkeletalMeshChanged() override;
-
+	void OnRegister() override;
+	void OnUnregister() override;
 	void OnCreatePhysicsState() override;
 	void OnDestroyPhysicsState() override;
 	void InstantiatePhysicsAssetBodies_Internal(const UPhysicsAsset& PhysAsset, FPhysicsScene& PhysScene);
@@ -149,4 +163,12 @@ private:
 
 	FTransform PendingRootMotion;           // 월드 공간 누적값
 	bool bHasPendingRootMotion = false;
+
+	friend struct FSkeletalMeshComponentClothTickFunction;
+	TUniquePtr<nv::cloth::Solver> ClothSolver;
+	FSkeletalMeshComponentClothTickFunction ClothTickFunction;
+
+	void RefreshClothSolver();
+	void ReleaseClothSolver();
+	void TickClothing();
 };
