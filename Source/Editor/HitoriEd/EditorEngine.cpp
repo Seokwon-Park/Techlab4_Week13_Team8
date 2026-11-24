@@ -83,6 +83,7 @@ namespace
 // 툴바 Add / Cinematics 메뉴로 만드는 액터들
 #include "GameFramework/Actor/ParticleActor.h"
 #include "GameFramework/Actor/StaticMeshActor.h"
+#include "GameFramework/Actor/VehiclePawn.h"
 #include "GameFramework/Actor/DirectionalLightActor.h"
 #include "GameFramework/Actor/SkyLightActor.h"
 #include "GameFramework/Actor/DecalActor.h"
@@ -522,6 +523,7 @@ void UEditorEngine::InitCommands()
 		SpawnEntry("Basic", "Static Mesh Actor", AStaticMeshActor::StaticClass()),
 		SpawnEntry("Basic", "Text Render Actor", ATextRenderActor::StaticClass()),
 		SpawnEntry("Basic", "Character", ACharacter::StaticClass()),
+		SpawnEntry("Basic", "Vehicle Pawn", AVehiclePawn::StaticClass()),
 		SpawnEntry("Lights", "Directional Light", ADirectionalLightActor::StaticClass()),
 		SpawnEntry("Lights", "Point Light", APointLightActor::StaticClass()),
 		SpawnEntry("Lights", "Spot Light", ASpotLightActor::StaticClass()),
