@@ -1,6 +1,9 @@
 #pragma once
 
 #include "Core/Delegate/Delegate.h"
+#include "Containers/Array.h"
+#include <geometry/PxGeometryHelpers.h>
+#include <cstdint>
 #include <memory>
 
 class AActor;
@@ -19,6 +22,15 @@ namespace physx
 	class PxQuat;
 	class PxRigidActor;
 }
+
+// 씬 읽기 잠금 안에서 복사한 단순 충돌 형상
+struct FPhysicsOverlapShape
+{
+	physx::PxGeometryHolder Geometry;
+	physx::PxTransform WorldPose;
+	float DistanceSquared;
+	std::uintptr_t ShapeOrder; // 같은 거리에서의 실행 중 정렬 기준
+};
 
 DECLARE_DELEGATE(FPhysicsStepDelegate, float);
 
@@ -67,6 +79,10 @@ public:
 	bool SweepCapsule(const FRay& WorldRay, float MaxDistance, float Radius, float HalfHeight,
 		const FQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor = nullptr,
 		bool bBlockingOnly = false) const;
+
+	// 검색 박스와 겹치는 물리 형상의 거리순 조회
+	void GatherSimulationShapes(const physx::PxBoxGeometry& Box, const physx::PxTransform& Pose,
+		const AActor* IgnoreActor, TArray<FPhysicsOverlapShape>& OutShapes) const;
 
 	// 물리 계산 전후 Delegate
 	FPhysicsStepDelegate OnPreStep;

@@ -998,6 +998,124 @@ void USkeletalMeshComponent::UploadClothBodyCollision()
 	ActiveClothCollisionBody = ClothCollisionBody;
 }
 
+void USkeletalMeshComponent::RemoveClothWorldCollision(nv::cloth::Cloth& Cloth) const
+{
+	// 직전 프레임 몸통 배열의 끝 인덱스
+	const uint32 BodySpheres = static_cast<uint32>(ClothCollisionSpheres.Num());
+	const uint32 BodyPlanes = static_cast<uint32>(ClothCollisionPlanes.Num());
+	const uint32 BodyCapsules = static_cast<uint32>(ClothCollisionCapsuleIndices.Num() / 2);
+	const uint32 BodyConvexes = static_cast<uint32>(ClothCollisionConvexMasks.Num());
+
+	// 월드 캡슐과 볼록체의 참조 우선 해제
+	if (Cloth.getNumCapsules() > BodyCapsules)
+	{
+		Cloth.setCapsules({}, BodyCapsules, Cloth.getNumCapsules());
+	}
+	if (Cloth.getNumConvexes() > BodyConvexes)
+	{
+		Cloth.setConvexes({}, BodyConvexes, Cloth.getNumConvexes());
+	}
+	if (Cloth.getNumSpheres() > BodySpheres)
+	{
+		Cloth.setSpheres({}, BodySpheres, Cloth.getNumSpheres());
+	}
+	if (Cloth.getNumPlanes() > BodyPlanes)
+	{
+		Cloth.setPlanes({}, BodyPlanes, Cloth.getNumPlanes());
+	}
+}
+
+void USkeletalMeshComponent::AppendClothWorldCollision(nv::cloth::Cloth& Cloth, const physx::PxTransform& ClothToWorld,
+	const TArray<FPhysicsOverlapShape>& Shapes) const
+{
+	const physx::PxTransform WorldToCloth = ClothToWorld.getInverse();
+	// 몸통 뒤의 남은 슬롯에만 기록할 월드 충돌 데이터
+	const uint32 SphereBase = Cloth.getNumSpheres();
+	const uint32 PlaneBase = Cloth.getNumPlanes();
+	physx::PxVec4 Spheres[MaxClothCollisionSpheres];
+	physx::PxVec4 Planes[MaxClothCollisionPlanes];
+	uint32 CapsuleIndices[MaxClothCollisionSpheres];
+	uint32 ConvexMasks[MaxClothCollisionPlanes / ClothBoxPlaneCount];
+	uint32 SphereCount = 0;
+	uint32 PlaneCount = 0;
+	uint32 CapsuleIndexCount = 0;
+	uint32 ConvexCount = 0;
+
+	for (const FPhysicsOverlapShape& Shape : Shapes)
+	{
+		const physx::PxTransform Local = WorldToCloth * Shape.WorldPose;
+		switch (Shape.Geometry.getType())
+		{
+		case physx::PxGeometryType::eSPHERE:
+		{
+			if (SphereBase + SphereCount < MaxClothCollisionSpheres)
+			{
+				Spheres[SphereCount++] = physx::PxVec4(Local.p, Shape.Geometry.sphere().radius);
+			}
+			break;
+		}
+		case physx::PxGeometryType::eCAPSULE:
+		{
+			if (SphereBase + SphereCount + 2 <= MaxClothCollisionSpheres)
+			{
+				// PhysX 캡슐 로컬 X축의 양 끝 구와 절대 슬롯 번호
+				const auto& Capsule = Shape.Geometry.capsule();
+				const physx::PxVec3 Offset = Local.q.getBasisVector0() * Capsule.halfHeight;
+				const uint32 FirstSphere = SphereBase + SphereCount;
+				Spheres[SphereCount++] = physx::PxVec4(Local.p - Offset, Capsule.radius);
+				Spheres[SphereCount++] = physx::PxVec4(Local.p + Offset, Capsule.radius);
+				CapsuleIndices[CapsuleIndexCount++] = FirstSphere;
+				CapsuleIndices[CapsuleIndexCount++] = FirstSphere + 1;
+			}
+			break;
+		}
+		case physx::PxGeometryType::eBOX:
+		{
+			if (PlaneBase + PlaneCount + ClothBoxPlaneCount <= MaxClothCollisionPlanes)
+			{
+				// 회전된 박스의 바깥쪽 평면 여섯 개와 절대 평면 마스크
+				const uint32 FirstPlane = PlaneBase + PlaneCount;
+				const auto& Extents = Shape.Geometry.box().halfExtents;
+				const physx::PxMat33 Axes(Local.q);
+				for (uint32 Axis = 0; Axis < 3; ++Axis)
+				{
+					const physx::PxVec3& Normal = Axes[Axis];
+					const float Projection = Normal.dot(Local.p);
+					Planes[PlaneCount++] = physx::PxVec4(Normal, -Projection - Extents[Axis]);
+					Planes[PlaneCount++] = physx::PxVec4(-Normal, Projection - Extents[Axis]);
+				}
+				ConvexMasks[ConvexCount++] = ((1u << ClothBoxPlaneCount) - 1u) << FirstPlane;
+			}
+			break;
+		}
+		default:
+		{
+			break;
+		}
+		}
+	}
+
+	// 실제 슬롯 생성 이후의 캡슐 인덱스와 평면 마스크 연결
+	if (SphereCount > 0)
+	{
+		Cloth.setSpheres({Spheres, Spheres + SphereCount}, SphereBase, SphereBase);
+	}
+	if (PlaneCount > 0)
+	{
+		Cloth.setPlanes({Planes, Planes + PlaneCount}, PlaneBase, PlaneBase);
+	}
+	if (CapsuleIndexCount > 0)
+	{
+		const uint32 First = Cloth.getNumCapsules();
+		Cloth.setCapsules({CapsuleIndices, CapsuleIndices + CapsuleIndexCount}, First, First);
+	}
+	if (ConvexCount > 0)
+	{
+		const uint32 First = Cloth.getNumConvexes();
+		Cloth.setConvexes({ConvexMasks, ConvexMasks + ConvexCount}, First, First);
+	}
+}
+
 void USkeletalMeshComponent::DrawClothBodyCollision(FLineBatcher& LineBatcher) const
 {
 	if (ClothInstances.IsEmpty())
@@ -1144,17 +1262,83 @@ void USkeletalMeshComponent::TickClothing()
 
 void USkeletalMeshComponent::AdvanceCloth(int32 StepCount, float StepDelta)
 {
+	if (ClothInstances.IsEmpty())
+	{
+		return;
+	}
+
 	// 첫 결과 또는 완료된 물리 스텝의 결과 갱신
 	bool bUpdateClothVertices = ClothVertexPositions.IsEmpty();
 	if (StepCount > 0 || bUpdateClothVertices)
 	{
 		UpdateClothMotionConstraints();
-		// 현재 본 포즈의 몸통 충돌 형상 변환과 전달
+		// 이전 몸통 개수로 월드 슬롯을 분리한 뒤 새 몸통 갱신
+		for (FClothInstance& Instance : ClothInstances)
+		{
+			RemoveClothWorldCollision(*Instance.Cloth);
+		}
 		BuildClothBodyCollision();
 		UploadClothBodyCollision();
 	}
+	const UWorld* World = GetWorld();
+	const physx::PxVec3 TargetLocation = U2PVector(GetWorldLocation());
+	const FQuat TargetRotation = GetWorldRotation().Quaternion();
+	// 같은 컴포넌트에서 생성되고 함께 이동하는 모든 섹션의 공통 기준 자세
+	const nv::cloth::Cloth& FirstCloth = *ClothInstances[0].Cloth;
+	const physx::PxVec3 StartLocation = FirstCloth.getTranslation();
+	const FQuat StartRotation = P2UQuat(FirstCloth.getRotation());
+	const auto GetStepPose = [&](int32 StepIndex)
+	{
+		const float Alpha = static_cast<float>(StepIndex + 1) / static_cast<float>(StepCount);
+		return physx::PxTransform(TargetLocation + (StartLocation - TargetLocation) * (1.0f - Alpha),
+			U2PQuat(FMath::Slerp(StartRotation, TargetRotation, Alpha)));
+	};
+
+	TArray<TArray<FPhysicsOverlapShape>> WorldShapes;
+	const FPhysicsScene* PhysicsScene = bCollideClothWithEnvironment && World && World->IsGameWorld()
+		? World->GetPhysicsScene() : nullptr;
+	if (PhysicsScene && StepCount > 0)
+	{
+		// 이동·회전하는 섹션의 스텝별 바운드를 합쳐 프레임당 한 번 검색
+		constexpr float QueryPaddingMeters = 0.10f;
+		WorldShapes.SetNum(ClothInstances.Num());
+		for (int32 Section = 0; Section < ClothInstances.Num(); ++Section)
+		{
+			const nv::cloth::Cloth& Cloth = *ClothInstances[Section].Cloth;
+			const auto LocalBounds = physx::PxBounds3::centerExtents(Cloth.getBoundingBoxCenter(), Cloth.getBoundingBoxScale());
+			auto WorldBounds = physx::PxBounds3::empty();
+			for (int32 Step = 0; Step < StepCount; ++Step)
+			{
+				WorldBounds.include(physx::PxBounds3::transformFast(GetStepPose(Step), LocalBounds));
+			}
+			const physx::PxBoxGeometry Box(WorldBounds.getExtents() + physx::PxVec3(QueryPaddingMeters));
+			PhysicsScene->GatherSimulationShapes(Box, physx::PxTransform(WorldBounds.getCenter()), GetOwner(), WorldShapes[Section]);
+		}
+	}
 	for (int32 StepIndex = 0; StepIndex < StepCount; ++StepIndex)
 	{
+		if (!WorldShapes.IsEmpty())
+		{
+			// 강체의 월드 자세를 해당 고정 스텝의 Cloth 좌표계로 변환
+			const physx::PxTransform StepPose = GetStepPose(StepIndex);
+			for (int32 Section = 0; Section < ClothInstances.Num(); ++Section)
+			{
+				nv::cloth::Cloth& Cloth = *ClothInstances[Section].Cloth;
+				const bool bUpdateWorldShapes = StepIndex == 0
+					|| Cloth.getTranslation() != StepPose.p || !(Cloth.getRotation() == StepPose.q);
+				Cloth.setTranslation(StepPose.p);
+				Cloth.setRotation(StepPose.q);
+				if (bUpdateWorldShapes && !WorldShapes[Section].IsEmpty())
+				{
+					if (StepIndex > 0)
+					{
+						RemoveClothWorldCollision(Cloth);
+					}
+					AppendClothWorldCollision(Cloth, StepPose, WorldShapes[Section]);
+				}
+			}
+		}
+
 		// 계산 대상이 있는 스텝의 시작
 		if (!ClothSolver->beginSimulation(StepDelta))
 		{

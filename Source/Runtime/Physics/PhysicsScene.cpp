@@ -11,15 +11,33 @@
 #include "Core/StatOverlay.h"
 #include "Core/Windows/WindowsPlatformTime.h"
 #include "Components/PrimitiveComponent.h"
+#include "GameFramework/Actor.h"
 #include <cmath>
 #include <limits>
 #include <geometry/PxGeometryQuery.h>
+#include <extensions/PxShapeExt.h>
 #include <algorithm>
 #include <PxPhysics.h>
 #include <PxScene.h>
 #include <PxSceneDesc.h>
 #include <PxSceneLock.h>
 #include "Physics/PhysXSimEventCallback.h"
+
+// 고정 크기 버퍼로 나뉘어 전달되는 전체 겹침 결과 수집
+struct FSimulationOverlapBuffer final : physx::PxOverlapCallback
+{
+	using physx::PxOverlapCallback::PxOverlapCallback;
+	TArray<physx::PxOverlapHit> Hits;
+
+	physx::PxAgain processTouches(const physx::PxOverlapHit* Buffer, physx::PxU32 Count) override
+	{
+		for (physx::PxU32 Index = 0; Index < Count; ++Index)
+		{
+			Hits.Add(Buffer[Index]);
+		}
+		return true;
+	}
+};
 
 FPhysicsScene::FPhysicsScene()
 {
@@ -146,6 +164,67 @@ UPrimitiveComponent* FPhysicsScene::FindHitComponent(const physx::PxRigidActor* 
 	// userData의 바디 역참조
 	const auto* Body = Actor ? static_cast<const FBodyInstance*>(Actor->userData) : nullptr;
 	return Body ? Body->OwnerComponent : nullptr;
+}
+
+void FPhysicsScene::GatherSimulationShapes(const physx::PxBoxGeometry& Box,
+	const physx::PxTransform& Pose, const AActor* IgnoreActor, TArray<FPhysicsOverlapShape>& OutShapes) const
+{
+	OutShapes.Reset();
+	if (!Scene || !Box.isValid() || !Pose.isValid())
+	{
+		return;
+	}
+
+	{
+		// 겹침 검색과 네이티브 형상 복사까지의 읽기 잠금
+		const physx::PxSceneReadLock ReadLock(*Scene);
+		physx::PxOverlapHit Buffer[32];
+		FSimulationOverlapBuffer Result(Buffer, 32);
+		const physx::PxQueryFilterData Filter(physx::PxQueryFlag::eSTATIC
+			| physx::PxQueryFlag::eDYNAMIC | physx::PxQueryFlag::eNO_BLOCK);
+		Scene->overlap(Box, Pose, Result, Filter);
+
+		for (const physx::PxOverlapHit& Hit : Result.Hits)
+		{
+			const auto Flags = Hit.shape->getFlags();
+			if (!Flags.isSet(physx::PxShapeFlag::eSIMULATION_SHAPE)
+				|| Flags.isSet(physx::PxShapeFlag::eTRIGGER_SHAPE)
+				|| Hit.actor->getActorFlags().isSet(physx::PxActorFlag::eDISABLE_SIMULATION))
+			{
+				continue;
+			}
+
+			const UPrimitiveComponent* Component = FindHitComponent(Hit.actor);
+			const AActor* Owner = Component ? Component->GetOwner() : nullptr;
+			if (!Owner || Owner == IgnoreActor || !Owner->GetActorEnableCollision())
+			{
+				continue;
+			}
+
+			const auto Type = Hit.shape->getGeometryType();
+			if (Type != physx::PxGeometryType::eSPHERE && Type != physx::PxGeometryType::eCAPSULE
+				&& Type != physx::PxGeometryType::eBOX)
+			{
+				continue;
+			}
+
+			// 강체의 최신 자세와 형상 오프셋을 합친 월드 자세
+			const auto Geometry = Hit.shape->getGeometry();
+			const auto WorldPose = physx::PxShapeExt::getGlobalPose(*Hit.shape, *Hit.actor);
+			const float DistanceSquared = physx::PxGeometryQuery::pointDistance(Pose.p, Geometry.any(), WorldPose);
+			OutShapes.Add({Geometry, WorldPose, DistanceSquared, reinterpret_cast<std::uintptr_t>(Hit.shape)});
+		}
+	}
+
+	// 검색 중심에서 가장 가까운 형상 표면을 우선하는 순서
+	std::sort(OutShapes.begin(), OutShapes.end(), [](const FPhysicsOverlapShape& A, const FPhysicsOverlapShape& B)
+	{
+		if (A.DistanceSquared == B.DistanceSquared)
+		{
+			return A.ShapeOrder < B.ShapeOrder;
+		}
+		return A.DistanceSquared < B.DistanceSquared;
+	});
 }
 
 bool FPhysicsScene::Raycast(const FRay& WorldRay, float MaxDistance, FHitResult& OutHit,

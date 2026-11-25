@@ -20,9 +20,15 @@ class UAnimGraphInstance;
 
 struct FBodyInstance;
 struct FConstraintInstance;
+struct FPhysicsOverlapShape;
 class FPhysicsScene;
 class UPhysicsAsset;
 class USkeletalMeshComponent;
+
+namespace physx
+{
+	class PxTransform;
+}
 
 // 네이티브 Cloth Solver의 전방 선언
 namespace nv::cloth
@@ -86,6 +92,10 @@ public:
 	// Cloth 충돌에 사용할 PhysicsAsset 바디 이름
 	UPROPERTY(EditAnywhere)
 	FString ClothCollisionBody;
+
+	// 게임 월드의 정적·이동 강체와 천의 충돌
+	UPROPERTY(EditAnywhere)
+	bool bCollideClothWithEnvironment = false;
 
 	// Solver에 전달한 몸통 충돌 형상의 프리뷰 표시
 	void DrawClothBodyCollision(FLineBatcher& LineBatcher) const;
@@ -213,6 +223,9 @@ private:
 
 	void BuildClothBodyCollision();
 	void UploadClothBodyCollision();
+	void RemoveClothWorldCollision(nv::cloth::Cloth& Cloth) const;
+	void AppendClothWorldCollision(nv::cloth::Cloth& Cloth, const physx::PxTransform& ClothToWorld,
+		const TArray<FPhysicsOverlapShape>& Shapes) const;
 
 	FClothInstance CreateClothInstance(nv::cloth::Factory& Factory,
 		const FSkeletalMeshLODRenderData& LOD, const FClothSectionBinding& Binding,
