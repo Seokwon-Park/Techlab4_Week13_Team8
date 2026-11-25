@@ -17,6 +17,9 @@ public:
 private:
 	bool StartBuildAndPackage(const std::filesystem::path& Root, const FString& Config); // 기존 Start 본문 (Package.bat 실행)
 	bool StartCopyOnly(const std::filesystem::path& Root);                               // 배포본: 복사만
+	// 사전 빌드 게임이 사용하는 구성의 런타임 DLL 복사
+	bool CopyGameRuntimeDlls(const std::filesystem::path& Root, const std::filesystem::path& GameExe,
+		const std::filesystem::path& Out);
 
 	std::thread CopyThread;
 	std::atomic<bool> bCopyDone{ false };
