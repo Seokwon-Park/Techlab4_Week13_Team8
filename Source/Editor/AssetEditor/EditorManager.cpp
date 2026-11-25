@@ -474,25 +474,30 @@ void FEditorManager::OpenPhysicsAssetFile(const FString& AssetPath)
 		return;
 	}
 
-	// 메시에 이미 연결된 에셋은 저장 안 한 편집이 있을 수 있으므로 그대로 둔다
-	if (!Mesh->PhysicsAsset)
+	// 메시에 연결된 에셋이 아직 없으면 이 파일을 연결한다.
+	// 이미 다른 파일이 연결돼 있으면(같은 메시의 변형 에셋) 연결은 그대로 두고 이 파일만 따로 편집한다
+	if (!Mesh->GetPhysicsAsset())
 	{
 		Mesh->PhysicsAsset = Loaded;
 		Mesh->PhysicsAssetPath = FilePath;
 	}
-
-	CreatePhysicsAssetEditor({ MeshPath, Mesh });
+	const bool bMeshAsset = Mesh->PhysicsAsset == Loaded
+		|| [&] { std::error_code Ec; return std::filesystem::equivalent(Mesh->PhysicsAssetPath, FilePath, Ec); }();
+	if (bMeshAsset)
+		CreatePhysicsAssetEditor({ MeshPath, Mesh });
+	else
+		CreatePhysicsAssetEditor({ MeshPath, Mesh, Loaded, FilePath });
 }
 
 void FEditorManager::CreatePhysicsAssetEditor(const FPendingPhysicsAssetOpen& Request)
 {
-	if (FAssetEditor* Existing = FindEditor(FPhysicsAssetEditor::MakeDocumentKey(Request.MeshPath)))
+	if (FAssetEditor* Existing = FindEditor(Request.Asset ? Request.AssetPath : FPhysicsAssetEditor::MakeDocumentKey(Request.MeshPath)))
 	{
 		Existing->Activate();
 		return;
 	}
 
-	TUniquePtr<FAssetEditor> Editor = MakeUnique<FPhysicsAssetEditor>(EditorEngine, *this, Request.MeshPath, *Request.Mesh);
+	TUniquePtr<FAssetEditor> Editor = MakeUnique<FPhysicsAssetEditor>(EditorEngine, *this, Request.MeshPath, *Request.Mesh, Request.Asset, Request.AssetPath);
 	if (!Editor->Initialize())
 	{
 		Editor->Shutdown();

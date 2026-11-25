@@ -60,6 +60,7 @@ struct FMeshDrawBatch
 	bool bUseObjectSlots = true;
 	bool bBindViewConstants = true;
 	bool bForceWireframe = false;
+	bool bTwoSided = false;
 	TArray<FItem> Items;
 };
 

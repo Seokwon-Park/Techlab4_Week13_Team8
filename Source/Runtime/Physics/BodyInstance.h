@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Math/Transform.h"
+#include "Math/Box.h"
 
 class FPhysicsScene;
 class UPrimitiveComponent;
@@ -76,6 +77,15 @@ struct FBodyInstance
     // Shape 크기에 구워 넣은 스케일. PhysX 자세에는 스케일이 없어서 따로 보관한다
     const FVector& GetScale3D() const { return Scale3D; }
     void SetLinearVelocity(const FVector& NewVel, bool bAddToCurrent);
+
+    // 시뮬레이션 중인 동적 바디에만 적용된다
+    void AddImpulseAtPosition(const FVector& Impulse, const FVector& Position);
+    void AddForceAtPosition(const FVector& Force, const FVector& Position);
+    bool IsInstanceSimulatingPhysics() const;
+    FVector GetUnrealWorldVelocity() const;
+    float GetBodyMass() const;
+    // 모든 형상을 감싸는 월드 AABB. 바디가 없으면 Min > Max인 빈 박스
+    FBox GetBodyBounds() const;
 
 private:
     friend class FPhysicsScene;

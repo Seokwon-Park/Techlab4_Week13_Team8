@@ -7,6 +7,8 @@
 ACharacter::ACharacter()
 {
 	CapsuleComponent = CreateDefaultSubobject<UCapsuleComponent>("CapsuleComponent");
+	// Shape 컴포넌트 기본값(QueryOnly)과 달리 시뮬레이션 바디가 캐릭터에 막히게 한다
+	CapsuleComponent->BodyInstance.CollisionEnabled = ECollisionEnabled::QueryAndPhysics;
 	SetRootComponent(CapsuleComponent);
 
 	SkeletalMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>("SkeletalMeshComponent");

@@ -23,10 +23,13 @@ public:
 	// SkeletalMesh 에디터와 같은 메시 경로라 접미사로 구분한다
 	static FString MakeDocumentKey(const FString& MeshPath) { return MeshPath + ".physicsasset"; }
 
+	// InAsset을 주면 메시에 연결된 에셋 대신 그 에셋(InAssetPath 파일)을 편집한다
 	FPhysicsAssetEditor(UEditorEngine& InEditorEngine, FEditorManager& InEditorManager,
-		const FString& InMeshPath, USkeletalMesh& InMesh)
-		: FSkeletalPreviewEditor(InEditorEngine, InEditorManager, MakeDocumentKey(InMeshPath))
+		const FString& InMeshPath, USkeletalMesh& InMesh, UPhysicsAsset* InAsset = nullptr, const FString& InAssetPath = FString())
+		: FSkeletalPreviewEditor(InEditorEngine, InEditorManager, InAsset ? InAssetPath : MakeDocumentKey(InMeshPath))
 		, MeshPath(InMeshPath)
+		, StandaloneAsset(InAsset)
+		, StandaloneAssetPath(InAssetPath)
 	{
 		Mesh = &InMesh;
 		CameraSpeed = 1.0f;
@@ -135,6 +138,9 @@ private:
 	void MoveGrab();
 
 	FString MeshPath;
+	// 메시에 연결되지 않은 에셋 파일을 열었을 때만 채운다
+	UPhysicsAsset* StandaloneAsset = nullptr;
+	FString StandaloneAssetPath;
 	bool bDirty = false;
 
 	bool bSimulating = false;

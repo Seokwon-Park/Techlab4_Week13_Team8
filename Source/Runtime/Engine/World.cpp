@@ -799,6 +799,8 @@ bool UWorld::SweepSingleLegacy(const FRay& WorldRay, float MaxDistance, float Ra
 			if (bSkipPhysicsBodies && Component->HasValidPhysicsBody()) continue;
 
 			const FBox Bounds = Component->CalcBounds();
+			// NaN 바운드는 아래 슬랩 비교가 전부 거짓이 되어 거리 0 충돌로 판정된다
+			if (!std::isfinite(Bounds.Min.X + Bounds.Min.Y + Bounds.Min.Z + Bounds.Max.X + Bounds.Max.Y + Bounds.Max.Z)) continue;
 			const FVector Min = Bounds.Min - Extent, Max = Bounds.Max + Extent;
 			float Enter = 0.0f, Exit = NearestT;
 			FVector Normal = -WorldRay.Direction;
