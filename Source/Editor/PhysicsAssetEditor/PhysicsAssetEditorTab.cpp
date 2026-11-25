@@ -38,6 +38,11 @@ FPhysicsAssetEditorTab::FPhysicsAssetEditorTab(FPhysicsAssetEditor& InEditor)
 	StopSimulationCommand.IconTint = { 0.95f, 0.42f, 0.48f, 1.0f };
 	StopSimulationCommand.Execute = [this] { PhysicsEditor.ToggleSimulation(); };
 	StopSimulationCommand.IsVisible = [this] { return PhysicsEditor.IsSimulating(); };
+
+	RegenerateAllBodiesCommand.Label = "Regenerate All Bodies";
+	RegenerateAllBodiesCommand.Tooltip = "Delete all bodies and constraints and generate them again";
+	RegenerateAllBodiesCommand.Execute = [this] { PhysicsEditor.RegenerateAllBodies(); };
+	RegenerateAllBodiesCommand.CanExecute = [this] { return !PhysicsEditor.IsSimulating(); };
 }
 
 void FPhysicsAssetEditorTab::OnRender(bool bActive)
@@ -56,6 +61,8 @@ void FPhysicsAssetEditorTab::DrawToolbar()
 	ImGui::SameLine();
 	EditorCommandUI::ToolbarButton("PhysicsAssetSimulate", SimulateCommand);
 	EditorCommandUI::ToolbarButton("PhysicsAssetStopSimulation", StopSimulationCommand);
+	ImGui::SameLine();
+	EditorCommandUI::ToolbarButton("PhysicsAssetRegenerateAll", RegenerateAllBodiesCommand);
 	ImGui::Separator();
 
 	const ImGuiFocusedFlags FocusFlags = ImGuiFocusedFlags_RootAndChildWindows | ImGuiFocusedFlags_DockHierarchy;
