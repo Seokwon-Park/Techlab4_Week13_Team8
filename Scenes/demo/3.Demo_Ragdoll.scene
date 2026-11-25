@@ -3169,848 +3169,7 @@
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    }
-                                },
-                                "bAutoActivate": true,
-                                "bHiddenInGame": false,
-                                "bVisible": true
-                            }
-                        },
-                        {
-                            "Class": "UStaticMeshComponent",
-                            "Name": "UStaticMeshComponent",
-                            "OverrideMaterials": [
-                                {
-                                    "Base": "DefaultMaterial",
-                                    "Instance": {
-                                        "BaseColor": {
-                                            "X": 0.75,
-                                            "Y": 0.75,
-                                            "Z": 0.74,
-                                            "W": 1.0
-                                        },
-                                        "BlendState": "Opaque",
-                                        "FlipNormalY": false,
-                                        "PSOType": 0,
-                                        "Properties": {},
-                                        "SamplerState": "LinearClamp",
-                                        "Shininess": 16.0,
-                                        "SpecularColor": {
-                                            "X": 0.08,
-                                            "Y": 0.08,
-                                            "Z": 0.08
-                                        },
-                                        "Textures": [
-                                            "WhiteTexture",
-                                            "FlatNormalTexture"
-                                        ],
-                                        "UVScrollSpeed": [
-                                            0.0,
-                                            0.0
-                                        ]
-                                    }
-                                },
-                                {
-                                    "Base": "DefaultMaterial",
-                                    "Instance": {
-                                        "BaseColor": {
-                                            "X": 0.75,
-                                            "Y": 0.75,
-                                            "Z": 0.74,
-                                            "W": 1.0
-                                        },
-                                        "BlendState": "Opaque",
-                                        "FlipNormalY": false,
-                                        "PSOType": 0,
-                                        "Properties": {},
-                                        "SamplerState": "LinearClamp",
-                                        "Shininess": 16.0,
-                                        "SpecularColor": {
-                                            "X": 0.08,
-                                            "Y": 0.08,
-                                            "Z": 0.08
-                                        },
-                                        "Textures": [
-                                            "WhiteTexture",
-                                            "FlatNormalTexture"
-                                        ],
-                                        "UVScrollSpeed": [
-                                            0.0,
-                                            0.0
-                                        ]
-                                    }
-                                },
-                                {
-                                    "Base": "DefaultMaterial",
-                                    "Instance": {
-                                        "BaseColor": {
-                                            "X": 0.04,
-                                            "Y": 0.22,
-                                            "Z": 0.55,
-                                            "W": 1.0
-                                        },
-                                        "BlendState": "Opaque",
-                                        "FlipNormalY": false,
-                                        "PSOType": 0,
-                                        "Properties": {},
-                                        "SamplerState": "LinearClamp",
-                                        "Shininess": 16.0,
-                                        "SpecularColor": {
-                                            "X": 0.08,
-                                            "Y": 0.08,
-                                            "Z": 0.08
-                                        },
-                                        "Textures": [
-                                            "WhiteTexture",
-                                            "FlatNormalTexture"
-                                        ],
-                                        "UVScrollSpeed": [
-                                            0.0,
-                                            0.0
-                                        ]
-                                    }
-                                },
-                                {
-                                    "Base": "DefaultMaterial",
-                                    "Instance": {
-                                        "BaseColor": {
-                                            "X": 0.015,
-                                            "Y": 0.025,
-                                            "Z": 0.06,
-                                            "W": 1.0
-                                        },
-                                        "BlendState": "Opaque",
-                                        "FlipNormalY": false,
-                                        "PSOType": 0,
-                                        "Properties": {},
-                                        "SamplerState": "LinearClamp",
-                                        "Shininess": 16.0,
-                                        "SpecularColor": {
-                                            "X": 0.08,
-                                            "Y": 0.08,
-                                            "Z": 0.08
-                                        },
-                                        "Textures": [
-                                            "WhiteTexture",
-                                            "FlatNormalTexture"
-                                        ],
-                                        "UVScrollSpeed": [
-                                            0.0,
-                                            0.0
-                                        ]
-                                    }
-                                }
-                            ],
-                            "Parent": "DefaultSceneRoot",
-                            "ParentActor": "",
-                            "Properties": {
-                                "StaticMesh": "Assets/FBX/SM_Base/SM_Base_Static.fbx.bin",
-                                "Transform": {
-                                    "Location": {
-                                        "X": 0.0,
-                                        "Y": 0.0,
-                                        "Z": 0.0
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 0.01,
-                                        "Y": 0.01,
-                                        "Z": 0.01
-                                    }
-                                },
-                                "TranslucencySortPriority": 0,
-                                "bAutoActivate": true,
-                                "bBlockComponent": true,
-                                "bCastShadow": true,
-                                "bGenerateOverlapEvents": true,
-                                "bHiddenInGame": false,
-                                "bReceiveShadow": true,
-                                "bReceivesDecals": true,
-                                "bSimulatePhysics": false,
-                                "bVisible": true,
-                                "bUseCCD": false
-                            }
-                        }
-                    ],
-                    "Name": "Booth",
-                    "Properties": {
-                        "ScriptPath": "",
-                        "bActorEnableCollision": false
-                    }
-                },
-                {
-                    "Class": "AStaticMeshActor",
-                    "Components": [
-                        {
-                            "Class": "USceneComponent",
-                            "Name": "DefaultSceneRoot",
-                            "Parent": "",
-                            "ParentActor": "",
-                            "Properties": {
-                                "Transform": {
-                                    "Location": {
-                                        "X": -5.9,
-                                        "Y": 0.0,
-                                        "Z": -0.266
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    }
-                                },
-                                "bAutoActivate": true,
-                                "bHiddenInGame": false,
-                                "bVisible": true
-                            }
-                        },
-                        {
-                            "Class": "UStaticMeshComponent",
-                            "Name": "UStaticMeshComponent",
-                            "OverrideMaterials": [
-                                {
-                                    "Base": "DefaultMaterial",
-                                    "Instance": {
-                                        "BaseColor": {
-                                            "X": 0.3,
-                                            "Y": 0.32,
-                                            "Z": 0.36,
-                                            "W": 1.0
-                                        },
-                                        "BlendState": "Opaque",
-                                        "FlipNormalY": false,
-                                        "PSOType": 0,
-                                        "Properties": {},
-                                        "SamplerState": "LinearClamp",
-                                        "Shininess": 16.0,
-                                        "SpecularColor": {
-                                            "X": 1.0,
-                                            "Y": 1.0,
-                                            "Z": 1.0
-                                        },
-                                        "Textures": [
-                                            "WhiteTexture",
-                                            "FlatNormalTexture"
-                                        ],
-                                        "UVScrollSpeed": [
-                                            0.0,
-                                            0.0
-                                        ]
-                                    }
-                                }
-                            ],
-                            "Parent": "DefaultSceneRoot",
-                            "ParentActor": "",
-                            "Properties": {
-                                "StaticMesh": "Cube",
-                                "Transform": {
-                                    "Location": {
-                                        "X": 0.0,
-                                        "Y": 0.0,
-                                        "Z": 0.0
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 3.9,
-                                        "Y": 5.2,
-                                        "Z": 1.0
-                                    }
-                                },
-                                "TranslucencySortPriority": 0,
-                                "bAutoActivate": true,
-                                "bBlockComponent": true,
-                                "bCastShadow": false,
-                                "bGenerateOverlapEvents": true,
-                                "bHiddenInGame": false,
-                                "bReceiveShadow": true,
-                                "bReceivesDecals": true,
-                                "bSimulatePhysics": false,
-                                "bVisible": false,
-                                "bUseCCD": false
-                            }
-                        }
-                    ],
-                    "Name": "BoothFloorCollision",
-                    "Properties": {
-                        "ScriptPath": "",
-                        "bActorEnableCollision": true
-                    }
-                },
-                {
-                    "Class": "AStaticMeshActor",
-                    "Components": [
-                        {
-                            "Class": "USceneComponent",
-                            "Name": "DefaultSceneRoot",
-                            "Parent": "",
-                            "ParentActor": "",
-                            "Properties": {
-                                "Transform": {
-                                    "Location": {
-                                        "X": -8.100000000000001,
-                                        "Y": 0.0,
-                                        "Z": 2.234
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    }
-                                },
-                                "bAutoActivate": true,
-                                "bHiddenInGame": false,
-                                "bVisible": true
-                            }
-                        },
-                        {
-                            "Class": "UStaticMeshComponent",
-                            "Name": "UStaticMeshComponent",
-                            "OverrideMaterials": [
-                                {
-                                    "Base": "DefaultMaterial",
-                                    "Instance": {
-                                        "BaseColor": {
-                                            "X": 0.3,
-                                            "Y": 0.32,
-                                            "Z": 0.36,
-                                            "W": 1.0
-                                        },
-                                        "BlendState": "Opaque",
-                                        "FlipNormalY": false,
-                                        "PSOType": 0,
-                                        "Properties": {},
-                                        "SamplerState": "LinearClamp",
-                                        "Shininess": 16.0,
-                                        "SpecularColor": {
-                                            "X": 1.0,
-                                            "Y": 1.0,
-                                            "Z": 1.0
-                                        },
-                                        "Textures": [
-                                            "WhiteTexture",
-                                            "FlatNormalTexture"
-                                        ],
-                                        "UVScrollSpeed": [
-                                            0.0,
-                                            0.0
-                                        ]
-                                    }
-                                }
-                            ],
-                            "Parent": "DefaultSceneRoot",
-                            "ParentActor": "",
-                            "Properties": {
-                                "StaticMesh": "Cube",
-                                "Transform": {
-                                    "Location": {
-                                        "X": 0.0,
-                                        "Y": 0.0,
-                                        "Z": 0.0
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 0.4,
-                                        "Y": 5.2,
-                                        "Z": 4.0
-                                    }
-                                },
-                                "TranslucencySortPriority": 0,
-                                "bAutoActivate": true,
-                                "bBlockComponent": true,
-                                "bCastShadow": false,
-                                "bGenerateOverlapEvents": true,
-                                "bHiddenInGame": false,
-                                "bReceiveShadow": true,
-                                "bReceivesDecals": true,
-                                "bSimulatePhysics": false,
-                                "bVisible": false,
-                                "bUseCCD": false
-                            }
-                        }
-                    ],
-                    "Name": "BoothBackCollision",
-                    "Properties": {
-                        "ScriptPath": "",
-                        "bActorEnableCollision": true
-                    }
-                },
-                {
-                    "Class": "AStaticMeshActor",
-                    "Components": [
-                        {
-                            "Class": "USceneComponent",
-                            "Name": "DefaultSceneRoot",
-                            "Parent": "",
-                            "ParentActor": "",
-                            "Properties": {
-                                "Transform": {
-                                    "Location": {
-                                        "X": -5.9,
-                                        "Y": -2.75,
-                                        "Z": 2.234
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    }
-                                },
-                                "bAutoActivate": true,
-                                "bHiddenInGame": false,
-                                "bVisible": true
-                            }
-                        },
-                        {
-                            "Class": "UStaticMeshComponent",
-                            "Name": "UStaticMeshComponent",
-                            "OverrideMaterials": [
-                                {
-                                    "Base": "DefaultMaterial",
-                                    "Instance": {
-                                        "BaseColor": {
-                                            "X": 0.3,
-                                            "Y": 0.32,
-                                            "Z": 0.36,
-                                            "W": 1.0
-                                        },
-                                        "BlendState": "Opaque",
-                                        "FlipNormalY": false,
-                                        "PSOType": 0,
-                                        "Properties": {},
-                                        "SamplerState": "LinearClamp",
-                                        "Shininess": 16.0,
-                                        "SpecularColor": {
-                                            "X": 1.0,
-                                            "Y": 1.0,
-                                            "Z": 1.0
-                                        },
-                                        "Textures": [
-                                            "WhiteTexture",
-                                            "FlatNormalTexture"
-                                        ],
-                                        "UVScrollSpeed": [
-                                            0.0,
-                                            0.0
-                                        ]
-                                    }
-                                }
-                            ],
-                            "Parent": "DefaultSceneRoot",
-                            "ParentActor": "",
-                            "Properties": {
-                                "StaticMesh": "Cube",
-                                "Transform": {
-                                    "Location": {
-                                        "X": 0.0,
-                                        "Y": 0.0,
-                                        "Z": 0.0
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 3.9,
-                                        "Y": 0.3,
-                                        "Z": 4.0
-                                    }
-                                },
-                                "TranslucencySortPriority": 0,
-                                "bAutoActivate": true,
-                                "bBlockComponent": true,
-                                "bCastShadow": false,
-                                "bGenerateOverlapEvents": true,
-                                "bHiddenInGame": false,
-                                "bReceiveShadow": true,
-                                "bReceivesDecals": true,
-                                "bSimulatePhysics": false,
-                                "bVisible": false,
-                                "bUseCCD": false
-                            }
-                        }
-                    ],
-                    "Name": "BoothSideCollision",
-                    "Properties": {
-                        "ScriptPath": "",
-                        "bActorEnableCollision": true
-                    }
-                },
-                {
-                    "Class": "AStaticMeshActor",
-                    "Components": [
-                        {
-                            "Class": "USceneComponent",
-                            "Name": "DefaultSceneRoot",
-                            "Parent": "",
-                            "ParentActor": "",
-                            "Properties": {
-                                "Transform": {
-                                    "Location": {
-                                        "X": -5.9,
-                                        "Y": 2.75,
-                                        "Z": 2.234
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    }
-                                },
-                                "bAutoActivate": true,
-                                "bHiddenInGame": false,
-                                "bVisible": true
-                            }
-                        },
-                        {
-                            "Class": "UStaticMeshComponent",
-                            "Name": "UStaticMeshComponent",
-                            "OverrideMaterials": [
-                                {
-                                    "Base": "DefaultMaterial",
-                                    "Instance": {
-                                        "BaseColor": {
-                                            "X": 0.3,
-                                            "Y": 0.32,
-                                            "Z": 0.36,
-                                            "W": 1.0
-                                        },
-                                        "BlendState": "Opaque",
-                                        "FlipNormalY": false,
-                                        "PSOType": 0,
-                                        "Properties": {},
-                                        "SamplerState": "LinearClamp",
-                                        "Shininess": 16.0,
-                                        "SpecularColor": {
-                                            "X": 1.0,
-                                            "Y": 1.0,
-                                            "Z": 1.0
-                                        },
-                                        "Textures": [
-                                            "WhiteTexture",
-                                            "FlatNormalTexture"
-                                        ],
-                                        "UVScrollSpeed": [
-                                            0.0,
-                                            0.0
-                                        ]
-                                    }
-                                }
-                            ],
-                            "Parent": "DefaultSceneRoot",
-                            "ParentActor": "",
-                            "Properties": {
-                                "StaticMesh": "Cube",
-                                "Transform": {
-                                    "Location": {
-                                        "X": 0.0,
-                                        "Y": 0.0,
-                                        "Z": 0.0
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 3.9,
-                                        "Y": 0.3,
-                                        "Z": 4.0
-                                    }
-                                },
-                                "TranslucencySortPriority": 0,
-                                "bAutoActivate": true,
-                                "bBlockComponent": true,
-                                "bCastShadow": false,
-                                "bGenerateOverlapEvents": true,
-                                "bHiddenInGame": false,
-                                "bReceiveShadow": true,
-                                "bReceivesDecals": true,
-                                "bSimulatePhysics": false,
-                                "bVisible": false,
-                                "bUseCCD": false
-                            }
-                        }
-                    ],
-                    "Name": "BoothSideCollision_2",
-                    "Properties": {
-                        "ScriptPath": "",
-                        "bActorEnableCollision": true
-                    }
-                },
-                {
-                    "Class": "ATextRenderActor",
-                    "Components": [
-                        {
-                            "Class": "USceneComponent",
-                            "Name": "DefaultSceneRoot",
-                            "Parent": "",
-                            "Properties": {
-                                "Transform": {
-                                    "Location": {
-                                        "X": 0.0,
-                                        "Y": 0.0,
-                                        "Z": 0.0
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    }
-                                },
-                                "bAutoActivate": true,
-                                "bHiddenInGame": false,
-                                "bVisible": true
-                            },
-                            "ParentActor": ""
-                        },
-                        {
-                            "Class": "UTextRenderComponent",
-                            "Name": "TextRenderComponent",
-                            "Parent": "DefaultSceneRoot",
-                            "Properties": {
-                                "Font": "Assets/Fonts/CookieRun.json",
-                                "Text": "3.A  애니메이션 ↔ 래그돌",
-                                "TextSize": 0.42,
-                                "Transform": {
-                                    "Location": {
-                                        "X": -7.6000000000000005,
-                                        "Y": 0.0,
-                                        "Z": 3.234
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 180.0
-                                    },
-                                    "Scale": {
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    }
-                                },
-                                "bAutoActivate": true,
-                                "bHiddenInGame": false,
-                                "bVisible": true
-                            },
-                            "ParentActor": ""
-                        }
-                    ],
-                    "Name": "BoothLabel",
-                    "Properties": {
-                        "bActorEnableCollision": true
-                    }
-                },
-                {
-                    "Class": "ATextRenderActor",
-                    "Components": [
-                        {
-                            "Class": "USceneComponent",
-                            "Name": "DefaultSceneRoot",
-                            "Parent": "",
-                            "Properties": {
-                                "Transform": {
-                                    "Location": {
-                                        "X": 0.0,
-                                        "Y": 0.0,
-                                        "Z": 0.0
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    }
-                                },
-                                "bAutoActivate": true,
-                                "bHiddenInGame": false,
-                                "bVisible": true
-                            },
-                            "ParentActor": ""
-                        },
-                        {
-                            "Class": "UTextRenderComponent",
-                            "Name": "TextRenderComponent",
-                            "Parent": "DefaultSceneRoot",
-                            "Properties": {
-                                "Font": "Assets/Fonts/CookieRun.json",
-                                "Text": "T 키: SetSimulatePhysics 토글. 켜면 쓰러지고, 끄면 다시 선다",
-                                "TextSize": 0.2,
-                                "Transform": {
-                                    "Location": {
-                                        "X": -7.6000000000000005,
-                                        "Y": 0.0,
-                                        "Z": 2.684
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 180.0
-                                    },
-                                    "Scale": {
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    }
-                                },
-                                "bAutoActivate": true,
-                                "bHiddenInGame": false,
-                                "bVisible": true
-                            },
-                            "ParentActor": ""
-                        }
-                    ],
-                    "Name": "BoothDesc",
-                    "Properties": {
-                        "bActorEnableCollision": true
-                    }
-                },
-                {
-                    "Class": "ASkeletalMeshActor",
-                    "Components": [
-                        {
-                            "Class": "USceneComponent",
-                            "Name": "DefaultSceneRoot",
-                            "Parent": "",
-                            "ParentActor": "",
-                            "Properties": {
-                                "Transform": {
-                                    "Location": {
-                                        "X": -5.7,
-                                        "Y": 0.0,
-                                        "Z": 0.234
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 0.01,
-                                        "Y": 0.01,
-                                        "Z": 0.01
-                                    }
-                                },
-                                "bAutoActivate": true,
-                                "bHiddenInGame": false,
-                                "bVisible": true
-                            }
-                        },
-                        {
-                            "BonePose": [],
-                            "Class": "USkeletalMeshComponent",
-                            "Name": "USkeletalMeshComponent",
-                            "OverrideMaterials": [],
-                            "Parent": "DefaultSceneRoot",
-                            "ParentActor": "",
-                            "Properties": {
-                                "AnimBlueprintPath": "",
-                                "AnimInstance": null,
-                                "BlendSpaceInput": 300.0,
-                                "SkeletalMesh": "Assets/FBX/Mixamo_Idle/Mixamo_Idle.fbx.bin",
-                                "Transform": {
-                                    "Location": {
-                                        "X": 0.0,
-                                        "Y": 0.0,
-                                        "Z": 0.0
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 0.0
-                                    },
-                                    "Scale": {
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    }
-                                },
-                                "TranslucencySortPriority": 0,
-                                "bAutoActivate": true,
-                                "bBlockComponent": false,
-                                "bCastShadow": true,
-                                "bGenerateOverlapEvents": true,
-                                "bHiddenInGame": false,
-                                "bReceiveShadow": true,
-                                "bReceivesDecals": true,
-                                "bSimulatePhysics": false,
-                                "bVisible": true,
-                                "PhysicsAssetOverride": ""
-                            }
-                        }
-                    ],
-                    "Name": "Toggle",
-                    "Properties": {
-                        "ScriptPath": "Scripts/demo_ragdoll_toggle.lua",
-                        "bActorEnableCollision": true
-                    }
-                },
-                {
-                    "Class": "AStaticMeshActor",
-                    "Components": [
-                        {
-                            "Class": "USceneComponent",
-                            "Name": "DefaultSceneRoot",
-                            "Parent": "",
-                            "ParentActor": "",
-                            "Properties": {
-                                "Transform": {
-                                    "Location": {
-                                        "X": 5.4,
-                                        "Y": 0.0,
-                                        "Z": 0.0
-                                    },
-                                    "Rotation": {
-                                        "Pitch": 0.0,
-                                        "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -4200,14 +3359,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.9,
-                                        "Y": -6.123233995736766e-17,
+                                        "X": -5.9,
+                                        "Y": 0.0,
                                         "Z": -0.266
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -4307,14 +3466,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 8.100000000000001,
-                                        "Y": -3.3065463576978537e-16,
+                                        "X": -8.100000000000001,
+                                        "Y": 0.0,
                                         "Z": 2.234
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -4414,14 +3573,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.9,
-                                        "Y": 2.75,
+                                        "X": -5.9,
+                                        "Y": -2.75,
                                         "Z": 2.234
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -4521,14 +3680,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.9,
-                                        "Y": -2.75,
+                                        "X": -5.9,
+                                        "Y": 2.75,
                                         "Z": 2.234
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -4634,7 +3793,7 @@
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -4654,7 +3813,7 @@
                             "Parent": "DefaultSceneRoot",
                             "Properties": {
                                 "Font": "Assets/Fonts/CookieRun.json",
-                                "Text": "3.B  선 채로 시작",
+                                "Text": "3.A  선 채로 시작",
                                 "TextSize": 0.42,
                                 "Transform": {
                                     "Location": {
@@ -4702,7 +3861,7 @@
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -4764,14 +3923,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.7,
-                                        "Y": -3.6739403974420595e-17,
+                                        "X": -5.7,
+                                        "Y": 0.0,
                                         "Z": 0.234
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 0.01,
@@ -4844,14 +4003,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -5.4,
-                                        "Y": 7.0,
+                                        "X": 5.4,
+                                        "Y": 0.0,
                                         "Z": 0.0
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -5041,14 +4200,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -5.9,
-                                        "Y": 7.0,
+                                        "X": 5.9,
+                                        "Y": 0.0,
                                         "Z": -0.266
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -5148,14 +4307,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -8.100000000000001,
-                                        "Y": 7.0,
+                                        "X": 8.100000000000001,
+                                        "Y": 0.0,
                                         "Z": 2.234
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -5255,14 +4414,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -5.9,
-                                        "Y": 4.25,
+                                        "X": 5.9,
+                                        "Y": 2.75,
                                         "Z": 2.234
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -5362,14 +4521,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -5.9,
-                                        "Y": 9.75,
+                                        "X": 5.9,
+                                        "Y": -2.75,
                                         "Z": 2.234
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -5469,13 +4628,13 @@
                                 "Transform": {
                                     "Location": {
                                         "X": 0.0,
-                                        "Y": 0.0,
+                                        "Y": 7,
                                         "Z": 0.0
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -5495,7 +4654,7 @@
                             "Parent": "DefaultSceneRoot",
                             "Properties": {
                                 "Font": "Assets/Fonts/CookieRun.json",
-                                "Text": "3.C  높은 곳에서 낙하",
+                                "Text": "3.B  높은 곳에서 낙하",
                                 "TextSize": 0.42,
                                 "Transform": {
                                     "Location": {
@@ -5537,13 +4696,13 @@
                                 "Transform": {
                                     "Location": {
                                         "X": 0.0,
-                                        "Y": 0.0,
+                                        "Y": 7,
                                         "Z": 0.0
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -5605,14 +4764,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -6.4,
-                                        "Y": 7.0,
+                                        "X": 6.4,
+                                        "Y": 0.0,
                                         "Z": 5.234
                                     },
                                     "Rotation": {
                                         "Pitch": 20.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 0.01,
@@ -5685,14 +4844,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.4,
-                                        "Y": 7.0,
+                                        "X": -5.4,
+                                        "Y": 7,
                                         "Z": 0.0
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -5882,14 +5041,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.9,
-                                        "Y": 7.0,
+                                        "X": -5.9,
+                                        "Y": 7,
                                         "Z": -0.266
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -5989,14 +5148,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 8.100000000000001,
-                                        "Y": 7.0,
+                                        "X": -8.100000000000001,
+                                        "Y": 7,
                                         "Z": 2.234
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -6096,14 +5255,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.9,
-                                        "Y": 9.75,
+                                        "X": -5.9,
+                                        "Y": 4.25,
                                         "Z": 2.234
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -6203,14 +5362,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.9,
-                                        "Y": 4.25,
+                                        "X": -5.9,
+                                        "Y": 9.75,
                                         "Z": 2.234
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -6310,13 +5469,13 @@
                                 "Transform": {
                                     "Location": {
                                         "X": 0.0,
-                                        "Y": 0.0,
+                                        "Y": 14,
                                         "Z": 0.0
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -6336,7 +5495,7 @@
                             "Parent": "DefaultSceneRoot",
                             "Properties": {
                                 "Font": "Assets/Fonts/CookieRun.json",
-                                "Text": "3.D  계단",
+                                "Text": "3.C  계단",
                                 "TextSize": 0.42,
                                 "Transform": {
                                     "Location": {
@@ -6378,13 +5537,13 @@
                                 "Transform": {
                                     "Location": {
                                         "X": 0.0,
-                                        "Y": 0.0,
+                                        "Y": 14,
                                         "Z": 0.0
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -6446,14 +5605,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.800000000000001,
-                                        "Y": 8.6,
+                                        "X": -5.800000000000001,
+                                        "Y": 5.4,
                                         "Z": 0.984
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -6553,14 +5712,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.800000000000001,
-                                        "Y": 8.0,
+                                        "X": -5.800000000000001,
+                                        "Y": 6,
                                         "Z": 0.834
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -6660,14 +5819,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.800000000000001,
-                                        "Y": 7.4,
+                                        "X": -5.800000000000001,
+                                        "Y": 6.6,
                                         "Z": 0.6839999999999999
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -6767,14 +5926,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.800000000000001,
-                                        "Y": 6.800000000000001,
+                                        "X": -5.800000000000001,
+                                        "Y": 7.199999999999999,
                                         "Z": 0.534
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -6874,14 +6033,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.800000000000001,
-                                        "Y": 6.2,
+                                        "X": -5.800000000000001,
+                                        "Y": 7.8,
                                         "Z": 0.384
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 180.0
+                                        "Yaw": 0
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -6981,14 +6140,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": 5.800000000000001,
-                                        "Y": 8.6,
+                                        "X": -5.800000000000001,
+                                        "Y": 5.4,
                                         "Z": 1.734
                                     },
                                     "Rotation": {
                                         "Pitch": -15.0,
                                         "Roll": 0.0,
-                                        "Yaw": 450.0
+                                        "Yaw": 270
                                     },
                                     "Scale": {
                                         "X": 0.01,
@@ -7061,14 +6220,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -5.4,
-                                        "Y": 14.0,
+                                        "X": 5.4,
+                                        "Y": 7,
                                         "Z": 0.0
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -7258,14 +6417,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -5.9,
-                                        "Y": 14.0,
+                                        "X": 5.9,
+                                        "Y": 7,
                                         "Z": -0.266
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -7365,14 +6524,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -8.100000000000001,
-                                        "Y": 14.0,
+                                        "X": 8.100000000000001,
+                                        "Y": 7,
                                         "Z": 2.234
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -7472,14 +6631,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -5.9,
-                                        "Y": 11.25,
+                                        "X": 5.9,
+                                        "Y": 9.75,
                                         "Z": 2.234
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -7579,14 +6738,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -5.9,
-                                        "Y": 16.75,
+                                        "X": 5.9,
+                                        "Y": 4.25,
                                         "Z": 2.234
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -7686,13 +6845,13 @@
                                 "Transform": {
                                     "Location": {
                                         "X": 0.0,
-                                        "Y": 0.0,
+                                        "Y": 21,
                                         "Z": 0.0
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -7712,7 +6871,7 @@
                             "Parent": "DefaultSceneRoot",
                             "Properties": {
                                 "Font": "Assets/Fonts/CookieRun.json",
-                                "Text": "3.E  Kinematic 장애물",
+                                "Text": "3.D  Kinematic 장애물",
                                 "TextSize": 0.42,
                                 "Transform": {
                                     "Location": {
@@ -7754,13 +6913,13 @@
                                 "Transform": {
                                     "Location": {
                                         "X": 0.0,
-                                        "Y": 0.0,
+                                        "Y": 21,
                                         "Z": 0.0
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -7822,14 +6981,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -5.9,
-                                        "Y": 14.4,
+                                        "X": 5.9,
+                                        "Y": 6.6,
                                         "Z": 0.634
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": 180
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -7929,14 +7088,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -5.5,
-                                        "Y": 13.5,
+                                        "X": 5.5,
+                                        "Y": 7.5,
                                         "Z": 0.834
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 20.0
+                                        "Yaw": 200
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -8036,14 +7195,14 @@
                             "Properties": {
                                 "Transform": {
                                     "Location": {
-                                        "X": -5.7,
-                                        "Y": 13.0,
+                                        "X": 5.7,
+                                        "Y": 8,
                                         "Z": 2.834
                                     },
                                     "Rotation": {
                                         "Pitch": -90.0,
                                         "Roll": 0.0,
-                                        "Yaw": 270.0
+                                        "Yaw": 90
                                     },
                                     "Scale": {
                                         "X": 0.01,
