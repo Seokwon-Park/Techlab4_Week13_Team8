@@ -10,6 +10,7 @@
 #include "Math/Frustum.h"
 #include "Math/BVH.h"
 #include "Render/Renderer.h"
+#include "Render/DecalData.h"
 #include "Render/SkyLightEnvironment.h"
 #include "Render/LightRenderData.h"
 #include "Render/LightSceneInfo.h"
@@ -30,6 +31,9 @@ public:
 	void AddDecal(UDecalComponent* Component);
 	void RemoveDecal(UDecalComponent* Component);
 	void RemoveAllDecals();
+	void AddTireMark(const FTireMark& Mark);
+	const TArray<FTireMark>& GetTireMarks() const { return TireMarks; }
+	UTexture2D* TireMarkTexture = nullptr;
 
 	const class FAmbientLightSceneProxy* GetActiveAmbientLight(bool bGameView) const { return nullptr; }
 	FAmbientLightRenderData GetSkyAmbientLight(bool bGameView) const;
@@ -81,6 +85,8 @@ public:
 	TArray<UDecalComponent*>			  Decals;
 
 private:
+	TArray<FTireMark> TireMarks;
+	int32 NextTireMark = 0;
 	void RecordShadowInvalidation(const FAABB& Bounds);
 	void InvalidateAllShadows();
 

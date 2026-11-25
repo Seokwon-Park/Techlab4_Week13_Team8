@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Containers/Array.h"
+#include "Math/Vector.h"
 #include <PxSimulationEventCallback.h>
 
 class FPhysicsScene;
@@ -55,6 +56,9 @@ private:
     {
         FComponentPair Components;
         EEvent Type;
+        FVector LocalPoints[2];
+        FVector LocalNormals[2];
+        float ContactImpulse = 0.0f;
     };
 
     void onContact(const physx::PxContactPairHeader& Header,
@@ -72,7 +76,7 @@ private:
     void AddTriggerPair(const physx::PxTriggerPair& Pair);
     void RemoveTriggerPair(const physx::PxTriggerPair& Pair);
     void QueueChangedOverlapEvents();
-    void DispatchTo(EEvent Type, UPrimitiveComponent& Self, UPrimitiveComponent& Other) const;
+    void DispatchTo(const FPendingEvent& Event, int32 Side, UPrimitiveComponent& Self, UPrimitiveComponent& Other) const;
 
     const FPhysicsScene& Scene;
     TArray<FOverlapState> ActiveOverlaps;

@@ -39,9 +39,17 @@ void UStaticMeshComponent::SetStaticMesh(UStaticMesh* InStaticMesh)
 		return;
 
 	StaticMesh = InStaticMesh;
+	RenderMeshOverride = nullptr;
 	ClearOverrideMaterials();
 	MarkRenderStateDirty();
 	OnTransformDirty();
+}
+
+void UStaticMeshComponent::SetRenderMeshOverride(UStaticMesh* InMesh)
+{
+	if (RenderMeshOverride == InMesh) return;
+	RenderMeshOverride = InMesh;
+	MarkRenderStateDirty();
 }
 
 void UStaticMeshComponent::SetRenderTransformOverride(const FTransform& WorldTransform)
@@ -100,7 +108,7 @@ void UStaticMeshComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const 
 void UStaticMeshComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, uint32 LODIndex)
 {
     const FPrimitiveSceneProxy* Proxy = GetSceneProxy();
-    if (!StaticMesh || !Proxy) return;
+    if (!Proxy || !Proxy->GetMesh()) return;
     const FMeshRenderState* State = Proxy->GetRenderState();
     if (!State) return;
     if (LODIndex >= State->LODCount) LODIndex = 0;
@@ -110,7 +118,7 @@ void UStaticMeshComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, uint32
         const FCachedMeshSection& Section = State->Sections[LOD.FirstSection + I];
         FRenderPacket& Packet = RenderQueue.AddDefaulted_GetRef();
         Packet.Proxy = Proxy;
-        Packet.Mesh = StaticMesh;
+        Packet.Mesh = Proxy->GetMesh();
         Packet.Material = Section.Material;
         Packet.StartIndex = Section.StartIndex;
         Packet.IndexCount = Section.IndexCount;

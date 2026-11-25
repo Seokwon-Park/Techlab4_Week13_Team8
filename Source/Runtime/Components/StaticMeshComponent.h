@@ -20,7 +20,8 @@ public:
 	// 메시가 바뀌면 슬롯 구성이 달라지므로 덮어쓰기를 비운다
 	void SetStaticMesh(UStaticMesh* InStaticMesh);
 	UStaticMesh* GetStaticMesh() const { return StaticMesh; }
-	virtual UStaticMesh* GetRenderMesh() const override { return StaticMesh; }
+	virtual UStaticMesh* GetRenderMesh() const override { return RenderMeshOverride ? RenderMeshOverride : StaticMesh; }
+	void SetRenderMeshOverride(UStaticMesh* InMesh);
 	const FTransform* GetRenderTransformOverride() const { return RenderTransformOverride.get(); }
 	void SetRenderTransformOverride(const FTransform& WorldTransform);
 	void ClearRenderTransformOverride();
@@ -38,6 +39,7 @@ public:
 	UBodySetup* GetBodySetup() override { return StaticMesh ? StaticMesh->GetBodySetup() : nullptr; }
 
 private:
+	UStaticMesh* RenderMeshOverride = nullptr;
 	TUniquePtr<FTransform> RenderTransformOverride;
 	UPROPERTY(EditAnywhere)
 	UStaticMesh* StaticMesh = nullptr;

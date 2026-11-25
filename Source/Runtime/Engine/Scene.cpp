@@ -189,6 +189,20 @@ void FScene::RemoveDecal(UDecalComponent* Component)
 void FScene::RemoveAllDecals()
 {
 	Decals.Reset();
+	TireMarks.Reset();
+	NextTireMark = 0;
+	TireMarkTexture = nullptr;
+}
+
+void FScene::AddTireMark(const FTireMark& Mark)
+{
+	if (TireMarks.Num() < FTireMark::MaxCount)
+	{
+		TireMarks.Add(Mark);
+		return;
+	}
+	TireMarks[NextTireMark] = Mark;
+	NextTireMark = (NextTireMark + 1) % FTireMark::MaxCount;
 }
 
 FAmbientLightRenderData FScene::GetSkyAmbientLight(bool bGameView) const

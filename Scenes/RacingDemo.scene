@@ -37,6 +37,7 @@
                 "bBlockComponent": false,
                 "bCastShadow": true,
                 "bGenerateOverlapEvents": false,
+                "bReceivesDecals": false,
                 "bReceiveShadow": true,
                 "bSimulatePhysics": true
               },
@@ -66,6 +67,7 @@
                   }
                 },
                 "bVisible": true,
+                "bReceivesDecals": false,
                 "StaticMesh": "FBX/AvanteN_Wheel_FL/AvanteN_Wheel_FL_Static.fbx.bin"
               },
               "OverrideMaterials": []
@@ -94,6 +96,7 @@
                   }
                 },
                 "bVisible": true,
+                "bReceivesDecals": false,
                 "StaticMesh": "FBX/AvanteN_Wheel_FR/AvanteN_Wheel_FR_Static.fbx.bin"
               },
               "OverrideMaterials": []
@@ -122,6 +125,7 @@
                   }
                 },
                 "bVisible": true,
+                "bReceivesDecals": false,
                 "StaticMesh": "FBX/AvanteN_Wheel_RL/AvanteN_Wheel_RL_Static.fbx.bin"
               },
               "OverrideMaterials": []
@@ -150,6 +154,7 @@
                   }
                 },
                 "bVisible": true,
+                "bReceivesDecals": false,
                 "StaticMesh": "FBX/AvanteN_Wheel_RR/AvanteN_Wheel_RR_Static.fbx.bin"
               },
               "OverrideMaterials": []
@@ -157,7 +162,38 @@
           ],
           "Properties": {
             "ScriptPath": "",
-            "bActorEnableCollision": true
+            "bActorEnableCollision": true,
+            "bRacingDemo": true
+          }
+        },
+        {
+          "Class": "AVehiclePawn",
+          "Name": "RacingDemoOpponent",
+          "Components": [
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "Chassis",
+              "Parent": "",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": { "X": -10, "Y": -48.3, "Z": 1.1 },
+                  "Rotation": { "Pitch": 0, "Roll": 0, "Yaw": 0 },
+                  "Scale": { "X": 1, "Y": 1, "Z": 1 }
+                },
+                "StaticMesh": "FBX/RacingDemoOpponent/RacingDemoOpponent_Static.fbx.bin",
+                "bGenerateOverlapEvents": false,
+                "bReceivesDecals": false,
+                "bSimulatePhysics": true
+              },
+              "OverrideMaterials": []
+            }
+          ],
+          "Properties": {
+            "bActorEnableCollision": true,
+            "bRacingDemo": true,
+            "bRacingOpponent": true,
+            "bUseIntegratedWheelMesh": true
           }
         },
         {
