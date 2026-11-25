@@ -57,6 +57,24 @@ void UPrimitiveComponent::SetSimulatePhysics(bool bSimulate)
 	BodyInstance.SetInstanceSimulatePhysics(bSimulate);
 }
 
+void UPrimitiveComponent::SetGenerateOverlapEvents(bool bEnabled)
+{
+	if (bGenerateOverlapEvents != bEnabled)
+	{
+		bGenerateOverlapEvents = bEnabled;
+		UpdateCollisionSettings();
+	}
+}
+
+void UPrimitiveComponent::SetBlockComponent(bool bEnabled)
+{
+	if (bBlockComponent != bEnabled)
+	{
+		bBlockComponent = bEnabled;
+		UpdateCollisionSettings();
+	}
+}
+
 void UPrimitiveComponent::UpdateCollisionSettings()
 {
 	BodyInstance.UpdateCollisionSettings();
@@ -153,6 +171,10 @@ void UPrimitiveComponent::PostEditChangeProperty(const FProperty& Property)
 
 	if (Property.Name == "bSimulatePhysics")
 		SetSimulatePhysics(bSimulatePhysics);
+	if (Property.Name == "bGenerateOverlapEvents" || Property.Name == "bBlockComponent")
+	{
+		UpdateCollisionSettings();
+	}
 }
 
 void UPrimitiveComponent::SetCastShadow(bool NewValue)

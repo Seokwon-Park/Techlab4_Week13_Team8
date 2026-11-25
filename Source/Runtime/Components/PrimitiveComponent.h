@@ -106,6 +106,8 @@ public:
 	UPROPERTY(EditAnywhere)
 	bool bBlockComponent = false;
 	// 실행 중 충돌 응답 변경과 네이티브 형상 동기화
+	void SetGenerateOverlapEvents(bool bEnabled);
+	void SetBlockComponent(bool bEnabled);
 	virtual void UpdateCollisionSettings();
 
 	UPROPERTY(EditAnywhere)

@@ -159,6 +159,11 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 	SimulationEvents->DispatchPending();
 }
 
+void FPhysicsScene::RefreshOverlapEvents(const UPrimitiveComponent* Component)
+{
+	SimulationEvents->RefreshOverlapEvents(Component);
+}
+
 float FPhysicsScene::GetInterpolationAlpha() const
 {
 	const double StepSeconds = FPhysicsSettings::Get().FixedStepSeconds;

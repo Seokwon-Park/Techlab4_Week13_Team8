@@ -19,6 +19,7 @@ public:
 
     // 물리 스텝 종료 후 대기 이벤트 전달
     void DispatchPending();
+    void RefreshOverlapEvents(const UPrimitiveComponent* Component);
 
 private:
     enum class EEvent { Hit, BeginOverlap, EndOverlap };
@@ -46,6 +47,7 @@ private:
         FComponentPair Components;
         TArray<FShapePair> ShapePairs;
         bool bWasOverlapping = false;
+        bool bRefreshEvents = false;
     };
 
     struct FPendingEvent
@@ -68,9 +70,11 @@ private:
         const physx::PxRigidActor* ActorB) const;
     void AddTriggerPair(const physx::PxTriggerPair& Pair);
     void RemoveTriggerPair(const physx::PxTriggerPair& Pair);
+    void QueueChangedOverlapEvents();
     void DispatchTo(EEvent Type, UPrimitiveComponent& Self, UPrimitiveComponent& Other) const;
 
     const FPhysicsScene& Scene;
     TArray<FOverlapState> ActiveOverlaps;
+    bool bOverlapSettingsChanged = false;
     TArray<FPendingEvent> PendingEvents;
 };

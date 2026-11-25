@@ -221,6 +221,8 @@ void FBodyInstance::ApplyCollisionSettings(physx::PxRigidActor& RigidActor, cons
     const AActor* Owner = Component ? Component->GetOwner() : nullptr;
     const bool bEnabled = !Owner || Owner->GetActorEnableCollision();
     const bool bQueryOnly = CollisionEnabled == ECollisionEnabled::QueryOnly;
+    const bool bTrigger = bEnabled && bQueryOnly && Component && !Component->bBlockComponent
+        && Component->bGenerateOverlapEvents;
     const PxU32 ShapeCount = RigidActor.getNbShapes();
     for (PxU32 Index = 0; Index < ShapeCount; ++Index)
     {
@@ -237,6 +239,10 @@ void FBodyInstance::ApplyCollisionSettings(physx::PxRigidActor& RigidActor, cons
             if (!bQueryOnly)
             {
                 Flags |= PxShapeFlag::eSIMULATION_SHAPE;
+            }
+            else if (bTrigger)
+            {
+                Flags |= PxShapeFlag::eTRIGGER_SHAPE;
             }
         }
         if (Flags != Shape->getFlags())
@@ -260,6 +266,7 @@ void FBodyInstance::UpdateCollisionSettings()
     {
         const physx::PxSceneWriteLock WriteLock(*Scene->GetPxScene());
         ApplyCollisionSettings(*Actor, OwnerComponent);
+        Scene->RefreshOverlapEvents(OwnerComponent);
     }
 }
 

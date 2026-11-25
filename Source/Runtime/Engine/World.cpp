@@ -1272,7 +1272,11 @@ void UWorld::UpdateOverlaps()
 				B->BeginComponentOverlap(A);
 
 				// 지금은 “처음 막혔을 때 한 번” Hit를 보내는 정책
-				if (A->bBlockComponent && B->bBlockComponent)
+				// 고체 두 개의 Hit는 PhysX 접촉 콜백에서 전달
+				const bool bNativeHit = A->HasValidPhysicsBody() && B->HasValidPhysicsBody()
+					&& A->BodyInstance.CollisionEnabled == ECollisionEnabled::QueryAndPhysics
+					&& B->BodyInstance.CollisionEnabled == ECollisionEnabled::QueryAndPhysics;
+				if (A->bBlockComponent && B->bBlockComponent && !bNativeHit)
 				{
 					A->DispatchHit(B);
 					B->DispatchHit(A);

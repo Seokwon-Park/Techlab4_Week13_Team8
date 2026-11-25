@@ -60,6 +60,8 @@ public:
 	int32 GetLastTickStepCount() const { return LastTickStepCount; }
 	double GetLastTickStepTimeMs() const { return LastTickStepTimeMs; }
 	float GetInterpolationAlpha() const;
+	// 겹쳐 있는 고체의 이벤트 허용 상태 변경 전달
+	void RefreshOverlapEvents(const UPrimitiveComponent* Component);
 	// 바디 생성과 차량 쿼리용 비소유 씬 접근
 	physx::PxScene* GetPxScene() const { return Scene; }
 
