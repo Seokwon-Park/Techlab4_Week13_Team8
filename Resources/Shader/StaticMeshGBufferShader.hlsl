@@ -89,9 +89,11 @@ PS_INPUT mainVS(VS_INPUT Input)
     return Output;
 }
 
-GBUFFER_OUTPUT mainPS(PS_INPUT Input)
+GBUFFER_OUTPUT mainPS(PS_INPUT Input, bool bFrontFace : SV_IsFrontFace)
 {
     GBUFFER_OUTPUT Output;
+    // 뒷면 픽셀은 Two Sided 머티리얼에서만 들어온다
+    if (!bFrontFace) Input.WorldNormal = -Input.WorldNormal;
 
     float4 TextureColor = ColorTexture.Sample(ColorSampler, Input.UV + UVOffset);
     // 색 텍스처는 UNORM으로 읽히므로 sRGB 값을 선형 조명 공간으로 변환한다.

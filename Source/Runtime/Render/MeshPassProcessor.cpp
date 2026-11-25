@@ -140,6 +140,8 @@ namespace
 				Batch.MaterialStages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
 			}
 		}
+		// 그림자 깊이 패스는 전용 래스터라이저 상태(깊이 클립 설정)를 그대로 쓴다
+		Batch.bTwoSided = Material->bTwoSided && Pass != EMeshPassType::ShadowDepth;
 		Batch.Sampler = Material->SamplerState;
 		Batch.Textures.Reserve(Material->Textures.Num());
 		for (int32 Index = 0; Index < Material->Textures.Num(); ++Index)

@@ -70,6 +70,9 @@ private:
 	{
 		FString MeshPath;
 		class USkeletalMesh* Mesh = nullptr;
+		// 메시에 연결된 에셋이 아닌 파일을 열 때 편집할 에셋과 그 경로
+		class UPhysicsAsset* Asset = nullptr;
+		FString AssetPath;
 	};
 	void CreatePhysicsAssetEditor(const FPendingPhysicsAssetOpen& Request);
 	void OpenPhysicsAssetFile(const FString& AssetPath);

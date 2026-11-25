@@ -79,16 +79,51 @@ void FPhysicsAssetUtils::InitConstraintFromBones(FConstraintInstance& CI, const 
 	CI.ConstraintBone1 = FName(Bones[Child].Name);
 	CI.ConstraintBone2 = FName(Bones[Parent].Name);
 
-	CI.Pos1 = FVector::ZeroVector;
-	CI.PriAxis1 = FVector(1, 0, 0);
-	CI.SecAxis1 = FVector(0, 1, 0);
+	// Twist 축은 자식 본이 뻗은 방향(그 본의 자식들 쪽 평균)이다.
+	// 본 로컬 X를 그대로 쓰면 본이 Y나 Z로 뻗는 스켈레톤(Mixamo 등)에서 Twist와 Swing이 뒤바뀐다
+	FVector Twist = FVector::ZeroVector;
+	for (int32 b = 0; b < Bones.Num(); ++b)
+	{
+		if (Bones[b].ParentIndex == Child && Bones[b].LocalBindPose.Location.SizeSquared() > 1e-8f)
+			Twist = Twist + Bones[b].LocalBindPose.Location.GetSafeNormal();
+	}
+	if (Twist.SizeSquared() < 1e-6f)
+	{
+		// 끝 본은 부모에서 자기로 오는 방향을 자기 로컬 공간으로 옮겨 쓴다
+		const FVector FromParent = Bones[Child].LocalBindPose.Location;
+		const FMatrix ToChild = Bones[Child].LocalBindPose.GetLocalMatrix().Inverse();
+		Twist = FVector(
+			FromParent.X * ToChild[0][0] + FromParent.Y * ToChild[1][0] + FromParent.Z * ToChild[2][0],
+			FromParent.X * ToChild[0][1] + FromParent.Y * ToChild[1][1] + FromParent.Z * ToChild[2][1],
+			FromParent.X * ToChild[0][2] + FromParent.Y * ToChild[1][2] + FromParent.Z * ToChild[2][2]);
+	}
+	Twist = Twist.SizeSquared() > 1e-6f ? Twist.GetSafeNormal() : FVector(1, 0, 0);
 
+	// Twist와 가장 덜 나란한 로컬 축을 직교화해 두 번째 축으로 쓴다
+	const FVector Candidates[3] = { FVector(1, 0, 0), FVector(0, 1, 0), FVector(0, 0, 1) };
+	FVector Sec = Candidates[0];
+	for (const FVector& Candidate : Candidates)
+		if (std::abs(Candidate.Dot(Twist)) < std::abs(Sec.Dot(Twist))) Sec = Candidate;
+	Sec = (Sec - Twist * Sec.Dot(Twist)).GetSafeNormal();
+
+	CI.Pos1 = FVector::ZeroVector;
+	CI.PriAxis1 = Twist;
+	CI.SecAxis1 = Sec;
+
+	// 같은 프레임을 부모 본 공간으로 옮겨 바인드 포즈에서 두 프레임이 겹치게 한다
 	const FMatrix ChildComp = Bones[Child].InverseBindPose.Inverse();
 	const FMatrix ParentComp = Bones[Parent].InverseBindPose.Inverse();
 	const FMatrix ChildInParent = ChildComp * ParentComp.Inverse();
+	const auto ToParent = [&ChildInParent](const FVector& V)
+		{
+			return FVector(
+				V.X * ChildInParent[0][0] + V.Y * ChildInParent[1][0] + V.Z * ChildInParent[2][0],
+				V.X * ChildInParent[0][1] + V.Y * ChildInParent[1][1] + V.Z * ChildInParent[2][1],
+				V.X * ChildInParent[0][2] + V.Y * ChildInParent[1][2] + V.Z * ChildInParent[2][2]).GetSafeNormal();
+		};
 	CI.Pos2 = FVector(ChildInParent[3][0], ChildInParent[3][1], ChildInParent[3][2]);
-	CI.PriAxis2 = FVector(ChildInParent[0][0], ChildInParent[0][1], ChildInParent[0][2]).Normalized();
-	CI.SecAxis2 = FVector(ChildInParent[1][0], ChildInParent[1][1], ChildInParent[1][2]).Normalized();
+	CI.PriAxis2 = ToParent(Twist);
+	CI.SecAxis2 = ToParent(Sec);
 
 	CI.ProfileInstance.TwistLimit.TwistMotion = Params.AngularConstraintMode;
 	CI.ProfileInstance.ConeLimit.Swing1Motion = Params.AngularConstraintMode;

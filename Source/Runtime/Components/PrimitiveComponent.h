@@ -124,6 +124,8 @@ public:
 	FBodyInstance BodyInstance;
 	UPROPERTY(EditAnywhere)
 	bool bSimulatePhysics = false;   // UE는 BodyInstance.bSimulatePhysics. A의 FBodyInstance에 없어서 컴포넌트에 둔다
+	UPROPERTY(EditAnywhere)
+	bool bUseCCD = false;
 
 	virtual UBodySetup* GetBodySetup() { return nullptr; }   // UStaticMeshComponent가 override
 	UFUNCTION(BlueprintCallable)

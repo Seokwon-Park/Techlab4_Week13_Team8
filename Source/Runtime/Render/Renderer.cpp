@@ -47,6 +47,8 @@ void FRenderer::BindBatch(const FMeshDrawBatch& Batch)
 	RenderCommand::BindPipelineState(Batch.Pipeline);
 	if (Batch.bForceWireframe)
 		RenderCommand::SetRasterizerState(ERasterizerState::Wireframe);
+	else if (Batch.bTwoSided && Batch.Pipeline.RasterizerState == ERasterizerState::SolidBack)
+		RenderCommand::SetRasterizerState(ERasterizerState::SolidNone);
 	
 	RenderCommand::BindVertexBuffer(Batch.VertexBuffer);
 	RenderCommand::BindIndexBuffer(Batch.IndexBuffer);

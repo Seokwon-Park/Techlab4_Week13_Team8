@@ -17,6 +17,12 @@
 #include <extensions/PxRigidActorExt.h>
 #include <extensions/PxRigidBodyExt.h>
 
+namespace
+{
+    // 스윕 CCD(eENABLE_CCD)는 PhysX 4.1.2 Release DLL에서 CCD 접촉이 생기면 바디 자세가 NaN이 된다(Debug DLL은 정상)
+    constexpr physx::PxRigidBodyFlag::Enum BodyCCDFlag = physx::PxRigidBodyFlag::eENABLE_SPECULATIVE_CCD;
+}
+
 FBodyInstance::~FBodyInstance()
 {
     // 액터 수명의 최종 정리
@@ -140,9 +146,13 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
     const float SphylRadiusScale = std::max(Scale.X, Scale.Y);
     for (const FKSphylElem& Elem : Geom.SphylElems)
     {
-        const physx::PxCapsuleGeometry Geometry(Elem.Radius * SphylRadiusScale, 0.5f * Elem.Length * Scale.Z);
         const physx::PxTransform LocalPose = U2PSphylLocalPose(Elem.Center * Scale, Elem.Rotation);
-        if (!AttachShape(Geometry, LocalPose, Elem))
+        const float HalfHeight = 0.5f * Elem.Length * Scale.Z;
+        // PhysX 캡슐은 반높이가 0이면 무효라 바디 전체가 만들어지지 않는다. 길이 0 캡슐은 같은 반지름의 구로 만든다
+        const bool bAttached = HalfHeight > 0.0f
+            ? AttachShape(physx::PxCapsuleGeometry(Elem.Radius * SphylRadiusScale, HalfHeight), LocalPose, Elem)
+            : AttachShape(physx::PxSphereGeometry(Elem.Radius * SphylRadiusScale), LocalPose, Elem);
+        if (!bAttached)
         {
             return false;
         }
@@ -180,7 +190,7 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
         }
         const bool bKinematic = InBodyType == EPhysicsBodyType::Kinematic;
         DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, bKinematic);
-        DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_CCD, !bKinematic && bUseCCD);
+        DynamicActor->setRigidBodyFlag(BodyCCDFlag, !bKinematic && bUseCCD);
     }
 
     // 질량·관성 계산이 끝난 형상에 실제 충돌 정책 적용
@@ -334,7 +344,7 @@ void FBodyInstance::SetInstanceSimulatePhysics(bool bSimulate)
     if (bKinematic)
     {
         // 키네마틱 전환 전 CCD 해제
-        DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_CCD, false);
+        DynamicActor->setRigidBodyFlag(BodyCCDFlag, false);
     }
 
     DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, bKinematic);
@@ -342,7 +352,7 @@ void FBodyInstance::SetInstanceSimulatePhysics(bool bSimulate)
     if (bSimulate)
     {
         // 동적 복귀 시 CCD 복원과 시뮬레이션 재개
-        DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_CCD, bUseCCD);
+        DynamicActor->setRigidBodyFlag(BodyCCDFlag, bUseCCD);
         DynamicActor->wakeUp();
     }
 }
@@ -388,7 +398,7 @@ void FBodyInstance::SetUseCCD(bool bInUseCCD)
     if (!DynamicActor->getRigidBodyFlags().isSet(physx::PxRigidBodyFlag::eKINEMATIC))
     {
         // 동적 모드의 CCD 설정 즉시 반영
-        DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_CCD, bUseCCD);
+        DynamicActor->setRigidBodyFlag(BodyCCDFlag, bUseCCD);
     }
 }
 
@@ -422,4 +432,71 @@ void FBodyInstance::SetLinearVelocity(const FVector& NewVel, bool bAddToCurrent)
     {
         DynamicActor->setLinearVelocity(FinalVelocity);
     }
+}
+
+namespace
+{
+    // 키네마틱이거나 시뮬레이션이 꺼진 바디는 nullptr
+    physx::PxRigidDynamic* GetSimulatingActor(physx::PxRigidActor* Actor)
+    {
+        physx::PxRigidDynamic* DynamicActor = Actor ? Actor->is<physx::PxRigidDynamic>() : nullptr;
+        if (!DynamicActor ||
+            DynamicActor->getRigidBodyFlags().isSet(physx::PxRigidBodyFlag::eKINEMATIC) ||
+            DynamicActor->getActorFlags().isSet(physx::PxActorFlag::eDISABLE_SIMULATION))
+        {
+            return nullptr;
+        }
+        return DynamicActor;
+    }
+}
+
+void FBodyInstance::AddImpulseAtPosition(const FVector& Impulse, const FVector& Position)
+{
+    if (!Actor) return;
+    const physx::PxSceneWriteLock WriteLock(*Scene->GetPxScene());
+    physx::PxRigidDynamic* DynamicActor = GetSimulatingActor(Actor);
+    const physx::PxVec3 PxImpulse = U2PVector(Impulse);
+    if (DynamicActor && PxImpulse.isFinite())
+        physx::PxRigidBodyExt::addForceAtPos(*DynamicActor, PxImpulse, U2PVector(Position), physx::PxForceMode::eIMPULSE);
+}
+
+void FBodyInstance::AddForceAtPosition(const FVector& Force, const FVector& Position)
+{
+    if (!Actor) return;
+    const physx::PxSceneWriteLock WriteLock(*Scene->GetPxScene());
+    physx::PxRigidDynamic* DynamicActor = GetSimulatingActor(Actor);
+    const physx::PxVec3 PxForce = U2PVector(Force);
+    if (DynamicActor && PxForce.isFinite())
+        physx::PxRigidBodyExt::addForceAtPos(*DynamicActor, PxForce, U2PVector(Position), physx::PxForceMode::eFORCE);
+}
+
+bool FBodyInstance::IsInstanceSimulatingPhysics() const
+{
+    if (!Actor) return false;
+    const physx::PxSceneReadLock ReadLock(*Scene->GetPxScene());
+    return GetSimulatingActor(Actor) != nullptr;
+}
+
+FVector FBodyInstance::GetUnrealWorldVelocity() const
+{
+    if (!Actor) return FVector::ZeroVector;
+    const physx::PxSceneReadLock ReadLock(*Scene->GetPxScene());
+    const physx::PxRigidDynamic* DynamicActor = Actor->is<physx::PxRigidDynamic>();
+    return DynamicActor ? P2UVector(DynamicActor->getLinearVelocity()) : FVector::ZeroVector;
+}
+
+FBox FBodyInstance::GetBodyBounds() const
+{
+    if (!Actor) return FBox{ FVector(1.0f, 1.0f, 1.0f), FVector(-1.0f, -1.0f, -1.0f) };
+    const physx::PxSceneReadLock ReadLock(*Scene->GetPxScene());
+    const physx::PxBounds3 Bounds = Actor->getWorldBounds();
+    return FBox{ P2UVector(Bounds.minimum), P2UVector(Bounds.maximum) };
+}
+
+float FBodyInstance::GetBodyMass() const
+{
+    if (!Actor) return 0.0f;
+    const physx::PxSceneReadLock ReadLock(*Scene->GetPxScene());
+    const physx::PxRigidDynamic* DynamicActor = Actor->is<physx::PxRigidDynamic>();
+    return DynamicActor ? DynamicActor->getMass() : 0.0f;
 }

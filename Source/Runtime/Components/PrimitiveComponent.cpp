@@ -10,6 +10,7 @@
 
 #include "Physics/PhysicsScene.h"
 #include "Engine/World.h"
+#include "GameFramework/Actor.h"
 
 namespace
 {
@@ -171,6 +172,8 @@ void UPrimitiveComponent::PostEditChangeProperty(const FProperty& Property)
 
 	if (Property.Name == "bSimulatePhysics")
 		SetSimulatePhysics(bSimulatePhysics);
+	if (Property.Name == "bUseCCD")
+		BodyInstance.SetUseCCD(bUseCCD);
 	if (Property.Name == "bGenerateOverlapEvents" || Property.Name == "bBlockComponent")
 	{
 		UpdateCollisionSettings();
@@ -218,9 +221,11 @@ void UPrimitiveComponent::OnCreatePhysicsState()
 	const EPhysicsBodyType Type = bSimulatePhysics ? EPhysicsBodyType::Dynamic : EPhysicsBodyType::Kinematic;
 
 	FPhysicsScene* Scene = GetWorld()->GetPhysicsScene();
+	BodyInstance.SetUseCCD(bUseCCD);
 	if (!BodyInstance.InitBody(*Setup, FTransform::FromMatrix(GetWorldMatrix()), this, *GetWorld()->GetPhysicsScene(), Type))
 	{
-		HTR_LOG(Warning, "InitBody failed: {} (non-uniform scale or invalid shape?)", GetClass()->Name);
+		HTR_LOG(Warning, "InitBody failed: {} on {} (non-uniform scale or invalid shape?)", GetClass()->Name,
+			GetOwner() ? GetOwner()->GetName() : FString("(no owner)"));
 		return;
 	}
 }
