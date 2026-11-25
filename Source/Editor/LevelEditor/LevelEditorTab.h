@@ -22,6 +22,8 @@ public:
 	TDelegate<> OnOpenScene;
 	TDelegate<> OnSaveScene;
 	TDelegate<> OnSaveSceneAs;
+	// 지금 레벨 뷰포트 화면을 프로젝트 썸네일(Saved/AutoScreenshot.png)로 저장
+	TDelegate<> OnCaptureThumbnail;
 	TDelegate<EFbxImportMode> OnImportFbx;
 	TDelegate<> OnPackageGame;
 	TDelegate<const FString&> OnLevelLoaded;

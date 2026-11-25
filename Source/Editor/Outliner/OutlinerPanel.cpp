@@ -230,7 +230,7 @@ void FOutlinerPanel::OnRender()
         if (ImGui::IsKeyPressed(ImGuiKey_F2, false))
         {
             if (bFolderSelected) BeginRenameFolder(SelectedFolder);
-            else if (GEditor)    BeginRenameActor(GEditor->GetSelectedActors()->GetTop<AActor>());
+            else if (GEditor)    BeginRenameActor(GEditor->GetPrimarySelectedActor());
         }
         if (bFolderSelected && ImGui::IsKeyPressed(ImGuiKey_Delete, false))
         {
@@ -480,12 +480,16 @@ void FOutlinerPanel::DrawRow(const FRow& Row, ULevel* Level)
     const bool bDoubleClicked = ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
     if (Row.Type == ERowType::Actor)
     {
-        // 오른쪽 클릭도 UE처럼 먼저 그 액터를 고른다.
-        if ((bLeftClicked || bRightClicked) && GEditor && !bSelected)
+        // 왼쪽 클릭은 Ctrl/Shift로 여러 개를 고른다. 오른쪽 클릭은 UE처럼, 고르지 않은 액터일 때만 그 액터 하나를 고른다
+        // (여러 개를 고른 채 오른쪽 클릭하면 선택을 그대로 둔다).
+        if (bLeftClicked && GEditor)
         {
-            GEditor->SelectNone(false);
-            GEditor->SelectActor(Row.Actor, true, false);
-            GEditor->NoteSelectionChange();
+            HandleActorRowClick(Row.Actor);
+        }
+        else if (bRightClicked && GEditor && !bSelected)
+        {
+            GEditor->ClickSelectActor(Row.Actor, false, false);
+            SelectionAnchor = Row.Actor;
         }
         if (bLeftClicked || bRightClicked)
             bFolderSelected = false;
@@ -700,7 +704,10 @@ void FOutlinerPanel::DrawRowLabel(const FRow& Row, float RowHeight, bool bDimmed
     {
         Label = Row.Actor->GetName();
     }
-    const ImU32 TextColor = ImGui::GetColorU32(bDimmed ? ImGuiCol_TextDisabled : ImGuiCol_Text);
+    ImU32 TextColor = ImGui::GetColorU32(bDimmed ? ImGuiCol_TextDisabled : ImGuiCol_Text);
+    // UE처럼 플레이 중에 생겨난 액터(GameMode, Pawn, PlayerController 등)는 노란 글씨로 보여 준다.
+    if (Row.Type == ERowType::Actor && Row.Actor->WasSpawnedDuringPlay())
+        TextColor = bDimmed ? IM_COL32(242, 196, 64, 115) : IM_COL32(242, 196, 64, 255);
     DL->AddText(ImVec2(X, MidY - ImGui::GetFontSize() * 0.5f), TextColor, Label.c_str());
     // 표 칸이 줄 높이를 알도록 자리를 잡아 둔다.
     ImGui::SetCursorScreenPos(CellStart);
@@ -995,13 +1002,51 @@ FString FOutlinerPanel::CreateFolder(ULevel* Level, const FString& Parent)
     return Path;
 }
 
+void FOutlinerPanel::HandleActorRowClick(AActor* Actor)
+{
+    const ImGuiIO& IO = ImGui::GetIO();
+    if (IO.KeyShift && !IO.KeyCtrl && SelectionAnchor)
+    {
+        // 기준 줄과 이 줄 사이의 액터 줄을 모두 고른다. 기준 줄이 지금 보이지 않으면 이 액터만 더한다.
+        int32 AnchorIndex = -1, ClickIndex = -1;
+        for (int32 Index = 0; Index < static_cast<int32>(Rows.size()); ++Index)
+        {
+            if (Rows[Index].Type != ERowType::Actor) continue;
+            if (Rows[Index].Actor == SelectionAnchor) AnchorIndex = Index;
+            if (Rows[Index].Actor == Actor) ClickIndex = Index;
+        }
+        if (AnchorIndex >= 0 && ClickIndex >= 0)
+        {
+            const int32 First = std::min(AnchorIndex, ClickIndex);
+            const int32 Last = std::max(AnchorIndex, ClickIndex);
+            GEditor->SelectNone(false);
+            for (int32 Index = First; Index <= Last; ++Index)
+                if (Rows[Index].Type == ERowType::Actor && Rows[Index].Actor != Actor)
+                    GEditor->SelectActor(Rows[Index].Actor, true, false);
+            GEditor->SelectActor(Actor, true, false);   // 누른 줄이 주 선택
+            GEditor->NoteSelectionChange();
+            return;
+        }
+        GEditor->ClickSelectActor(Actor, false, true);
+        return;
+    }
+
+    GEditor->ClickSelectActor(Actor, IO.KeyCtrl, false);
+    SelectionAnchor = Actor;
+}
+
 void FOutlinerPanel::CreateFolderForSelection(ULevel* Level)
 {
-    AActor* Selected = GEditor ? GEditor->GetSelectedActors()->GetTop<AActor>() : nullptr;
+    // 고른 액터를 모두 새 폴더로 옮긴다. 새 폴더는 주 선택 액터가 있던 폴더 아래에 만든다.
+    AActor* Selected = GEditor ? GEditor->GetPrimarySelectedActor() : nullptr;
     if (Selected && Selected->GetLevel() == Level)
     {
         const FString NewFolder = CreateFolder(Level, Selected->GetFolderPath());
-        MoveActorToFolder(Level, Selected, NewFolder);
+        TArray<AActor*> Actors;
+        GEditor->GetSelectedActors()->GetSelectedObjects(Actors);
+        for (AActor* Each : Actors)
+            if (Each && Each->GetLevel() == Level)
+                MoveActorToFolder(Level, Each, NewFolder);
         BeginRenameFolder(NewFolder);
         return;
     }

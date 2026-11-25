@@ -18,6 +18,7 @@ class UBodySetup;
 // (Self, Other, OtherComp). 담당: C
 DECLARE_DELEGATE(FComponentOverlapSignature, UPrimitiveComponent*, AActor*, UPrimitiveComponent*);
 DECLARE_DELEGATE(FComponentHitSignature, UPrimitiveComponent*, AActor*, UPrimitiveComponent*);
+DECLARE_DELEGATE(FComponentContactSignature, const FVector&, const FVector&, float);
 
 struct FOverlapInfo
 {
@@ -100,6 +101,8 @@ public:
 	FComponentOverlapSignature OnComponentBeginOverlap;
 	FComponentOverlapSignature OnComponentEndOverlap;
 	FComponentHitSignature OnComponentHit;
+	// PhysX contact point and inward normal in the rigid body's local space, followed by impulse magnitude.
+	FComponentContactSignature OnComponentContact;
 
 	UPROPERTY(EditAnywhere)
 	bool bGenerateOverlapEvents = true;
@@ -124,6 +127,8 @@ public:
 	FBodyInstance BodyInstance;
 	UPROPERTY(EditAnywhere)
 	bool bSimulatePhysics = false;   // UE는 BodyInstance.bSimulatePhysics. A의 FBodyInstance에 없어서 컴포넌트에 둔다
+	UPROPERTY(EditAnywhere)
+	bool bUseCCD = false;
 
 	virtual UBodySetup* GetBodySetup() { return nullptr; }   // UStaticMeshComponent가 override
 	UFUNCTION(BlueprintCallable)

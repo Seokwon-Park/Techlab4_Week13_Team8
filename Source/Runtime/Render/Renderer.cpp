@@ -47,6 +47,8 @@ void FRenderer::BindBatch(const FMeshDrawBatch& Batch)
 	RenderCommand::BindPipelineState(Batch.Pipeline);
 	if (Batch.bForceWireframe)
 		RenderCommand::SetRasterizerState(ERasterizerState::Wireframe);
+	else if (Batch.bTwoSided && Batch.Pipeline.RasterizerState == ERasterizerState::SolidBack)
+		RenderCommand::SetRasterizerState(ERasterizerState::SolidNone);
 	
 	RenderCommand::BindVertexBuffer(Batch.VertexBuffer);
 	RenderCommand::BindIndexBuffer(Batch.IndexBuffer);
@@ -216,6 +218,8 @@ void FRenderer::InitScenePasses(const FString& SkyPanoramaPath)
 	CameraOverlay->Init(this);
 	ToneMapConstants = RenderCommand::CreateConstantBuffer(sizeof(FToneMapData));
 	DecalConstants = RenderCommand::CreateConstantBuffer(sizeof(FDecalData));
+	TireMarkViewConstants = RenderCommand::CreateConstantBuffer(sizeof(FTireMarkViewData));
+	TireMarkBuffer = RenderCommand::CreateDynamicStructuredBuffer(FTireMark::MaxCount, sizeof(FTireMark));
 	DepthOfFieldSetupConstants = RenderCommand::CreateConstantBuffer(sizeof(DepthOfFieldSetupData));
 	SceneText = MakeUnique<FTextRenderer>();
 	SceneText->Init();

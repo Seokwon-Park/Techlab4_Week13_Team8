@@ -23,6 +23,7 @@
 #include "Physics/BodyInstance.h"
 #include "Physics/ConstraintInstance.h"
 #include "Physics/PhysicsAsset.h"
+#include "Physics/PhysicsAssetFile.h"
 #include "Physics/PhysicsScene.h"
 #include "Engine/World.h"
 #include <extensions/PxDefaultSimulationFilterShader.h>   // PxSetGroup, PxSetGroupCollisionFlag
@@ -225,7 +226,7 @@ void USkeletalMeshComponent::Serialize(FStructuredArchive::FRecord Record)
 	if (Ar.IsSaving() && (!AnimBlueprintPath.empty() || ManagedAnimGraph))
 	{
 		AnimInstance = nullptr;
-	}
+	}  
 
 	Super::Serialize(Record);
 
@@ -257,6 +258,8 @@ void USkeletalMeshComponent::Serialize(FStructuredArchive::FRecord Record)
 
 	if (Ar.IsLoading())
 	{
+		LoadPhysicsAssetOverride();
+
 		if (!AnimBlueprintPath.empty())
 		{
 			ReloadAnimBlueprint();
@@ -395,7 +398,30 @@ bool USkeletalMeshComponent::HasValidPhysicsBody() const
 
 UPhysicsAsset* USkeletalMeshComponent::GetPhysicsAsset() const
 {
+	if (PhysicsAssetOverrideAsset)
+		return PhysicsAssetOverrideAsset;
 	return GetSkeletalMesh() ? GetSkeletalMesh()->GetPhysicsAsset() : nullptr;
+}
+
+void USkeletalMeshComponent::SetPhysicsAsset(UPhysicsAsset* NewPhysicsAsset)
+{
+	PhysicsAssetOverrideAsset = NewPhysicsAsset;
+	RecreatePhysicsState();
+}
+
+void USkeletalMeshComponent::LoadPhysicsAssetOverride()
+{
+	PhysicsAssetOverrideAsset = nullptr;
+	if (PhysicsAssetOverride.empty()) return;
+
+	UPhysicsAsset* Loaded = NewObject<UPhysicsAsset>(this);
+	FString Error;
+	if (!PhysicsAssetFile::Read(PhysicsAssetOverride, *Loaded, Error))
+	{
+		HTR_LOG(Warning, "PhysicsAssetOverride load failed: {} ({})", PhysicsAssetOverride, Error);
+		return;
+	}
+	PhysicsAssetOverrideAsset = Loaded;
 }
 
 // UE FindRootBodyIndex: 본 순서(부모가 앞)대로 돌며 처음 만나는 바디
@@ -714,6 +740,7 @@ USkeletalMeshComponent::FClothInstance USkeletalMeshComponent::CreateClothInstan
 	Cloth->teleportToLocation(U2PVector(GetWorldLocation() * WorldToCloth), Rotation);
 	Cloth->setGravity(physx::PxVec3(0.0f, 0.0f, GravityZ));
 	ApplyClothWindCoefficients(*Cloth);
+	ApplyClothFrictionAndDamping(*Cloth);
 	Instance.Cloth = std::move(Cloth);
 	ApplyClothSelfCollision(Instance, LOD);
 	return Instance;
@@ -765,15 +792,36 @@ void USkeletalMeshComponent::ApplyClothWindCoefficients(nv::cloth::Cloth& Cloth)
 	Cloth.setLiftCoefficient(std::clamp(ClothWindLiftCoefficient, 0.0f, 1.0f));
 }
 
+void USkeletalMeshComponent::ApplyClothFrictionAndDamping(nv::cloth::Cloth& Cloth) const
+{
+	Cloth.setFriction(std::isfinite(ClothFriction) ? std::clamp(ClothFriction, 0.0f, 1.0f) : 0.0f);
+	const float Damping = std::isfinite(ClothDamping) ? std::clamp(ClothDamping, 0.0f, 1.0f) : 0.0f;
+	Cloth.setDamping(physx::PxVec3(Damping));
+}
+
 void USkeletalMeshComponent::PostEditChangeProperty(const FProperty& Property)
 {
 	Super::PostEditChangeProperty(Property);
+	if (Property.Name == "PhysicsAssetOverride")
+	{
+		LoadPhysicsAssetOverride();
+		RecreatePhysicsState();
+		return;
+	}
 	if (Property.Name == "ClothWindDragCoefficient" || Property.Name == "ClothWindLiftCoefficient")
 	{
 		// Solver 재생성 없이 실행 중인 섹션에 공기력 계수 반영
 		for (const FClothInstance& Instance : ClothInstances)
 		{
 			ApplyClothWindCoefficients(*Instance.Cloth);
+		}
+		return;
+	}
+	if (Property.Name == "ClothFriction" || Property.Name == "ClothDamping")
+	{
+		for (const FClothInstance& Instance : ClothInstances)
+		{
+			ApplyClothFrictionAndDamping(*Instance.Cloth);
 		}
 		return;
 	}
@@ -789,6 +837,14 @@ void USkeletalMeshComponent::PostEditChangeProperty(const FProperty& Property)
 	{
 		ApplyClothSelfCollision(Instance, LOD);
 	}
+}
+
+void USkeletalMeshComponent::ForceClothNextUpdateTeleportAndReset()
+{
+	if (!HasClothSimulation()) return;
+	// RefreshClothSolver는 같은 메시의 Solver를 재사용하므로 먼저 해제한다
+	ReleaseClothSolver(false);
+	RefreshClothSolver();
 }
 
 void USkeletalMeshComponent::ReleaseClothSolver(bool bRefreshSkinningMode)
@@ -1115,6 +1171,7 @@ void USkeletalMeshComponent::AppendClothWorldCollision(nv::cloth::Cloth& Cloth, 
 	const TArray<FPhysicsOverlapShape>& Shapes) const
 {
 	const physx::PxTransform WorldToCloth = ClothToWorld.getInverse();
+	const float Thickness = std::isfinite(ClothCollisionThickness) ? std::max(0.0f, ClothCollisionThickness) : 0.0f;
 	// 몸통 뒤의 남은 슬롯에만 기록할 월드 충돌 데이터
 	const uint32 SphereBase = Cloth.getNumSpheres();
 	const uint32 PlaneBase = Cloth.getNumPlanes();
@@ -1136,7 +1193,7 @@ void USkeletalMeshComponent::AppendClothWorldCollision(nv::cloth::Cloth& Cloth, 
 		{
 			if (SphereBase + SphereCount < MaxClothCollisionSpheres)
 			{
-				Spheres[SphereCount++] = physx::PxVec4(Local.p, Shape.Geometry.sphere().radius);
+				Spheres[SphereCount++] = physx::PxVec4(Local.p, Shape.Geometry.sphere().radius + Thickness);
 			}
 			break;
 		}
@@ -1148,8 +1205,8 @@ void USkeletalMeshComponent::AppendClothWorldCollision(nv::cloth::Cloth& Cloth, 
 				const auto& Capsule = Shape.Geometry.capsule();
 				const physx::PxVec3 Offset = Local.q.getBasisVector0() * Capsule.halfHeight;
 				const uint32 FirstSphere = SphereBase + SphereCount;
-				Spheres[SphereCount++] = physx::PxVec4(Local.p - Offset, Capsule.radius);
-				Spheres[SphereCount++] = physx::PxVec4(Local.p + Offset, Capsule.radius);
+				Spheres[SphereCount++] = physx::PxVec4(Local.p - Offset, Capsule.radius + Thickness);
+				Spheres[SphereCount++] = physx::PxVec4(Local.p + Offset, Capsule.radius + Thickness);
 				CapsuleIndices[CapsuleIndexCount++] = FirstSphere;
 				CapsuleIndices[CapsuleIndexCount++] = FirstSphere + 1;
 			}
@@ -1167,8 +1224,8 @@ void USkeletalMeshComponent::AppendClothWorldCollision(nv::cloth::Cloth& Cloth, 
 				{
 					const physx::PxVec3& Normal = Axes[Axis];
 					const float Projection = Normal.dot(Local.p);
-					Planes[PlaneCount++] = physx::PxVec4(Normal, -Projection - Extents[Axis]);
-					Planes[PlaneCount++] = physx::PxVec4(-Normal, Projection - Extents[Axis]);
+					Planes[PlaneCount++] = physx::PxVec4(Normal, -Projection - Extents[Axis] - Thickness);
+					Planes[PlaneCount++] = physx::PxVec4(-Normal, Projection - Extents[Axis] - Thickness);
 				}
 				ConvexMasks[ConvexCount++] = ((1u << ClothBoxPlaneCount) - 1u) << FirstPlane;
 			}

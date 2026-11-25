@@ -445,6 +445,10 @@ UActorComponent* AActor::AddComponent(UClass* ComponentClass, FName Name)
 	Components.Add(NewComponent);
 	NewComponent->RegisterComponent();
 
+	// 컴포넌트 BP면 BP 기본값을 얹는다 (씬을 읽을 때처럼 등록한 뒤 Serialize로 읽는다).
+	if (FBlueprint::IsBlueprintClass(ComponentClass))
+		FBlueprint::ApplyComponentDefaults(NewComponent);
+
 	return NewComponent;
 }
 

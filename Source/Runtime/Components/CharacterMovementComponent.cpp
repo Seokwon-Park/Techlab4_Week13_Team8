@@ -292,6 +292,50 @@ void UCharacterMovementComponent::CalcVelocity(float DeltaTime, float Friction, 
 	Velocity = Velocity * (NewSpeed / Speed);
 }
 
+void UCharacterMovementComponent::HandleImpact(const FHitResult& Hit, float TimeSlice, const FVector& MoveDelta)
+{
+	Super::HandleImpact(Hit, TimeSlice, MoveDelta);
+	ApplyImpactPhysicsForces(Hit, Acceleration, Velocity);
+}
+
+namespace
+{
+	bool IsNearlyZero(const FVector& V, float Tolerance = KINDA_SMALL_NUMBER)
+	{
+		return std::abs(V.X) <= Tolerance && std::abs(V.Y) <= Tolerance && std::abs(V.Z) <= Tolerance;
+	}
+}
+
+void UCharacterMovementComponent::ApplyImpactPhysicsForces(const FHitResult& Impact, const FVector& ImpactAcceleration, const FVector& ImpactVelocity)
+{
+	if (!bEnablePhysicsInteraction || !Impact.HitComponent) return;
+
+	UPrimitiveComponent* ImpactComponent = Impact.HitComponent;
+	FBodyInstance* BI = ImpactComponent->GetBodyInstance();
+	if (!BI || !BI->IsInstanceSimulatingPhysics()) return;
+
+	// 계수가 cm 단위라 속도 비교도 cm로 하고, 바디에 줄 때 월드 단위(m)로 바꾼다
+	const FVector ComponentVelocityCm = BI->GetUnrealWorldVelocity() * (1.0f / CmToWorld);
+	const FVector ImpactVelocityCm = ImpactVelocity * (1.0f / CmToWorld);
+	const FVector VirtualVelocity = IsNearlyZero(ImpactAcceleration) ? ImpactVelocityCm : ImpactAcceleration.GetSafeNormal() * MaxWalkSpeed;
+
+	float PushForceModificator = 1.0f;
+	if (bScalePushForceToVelocity && !IsNearlyZero(ComponentVelocityCm))
+	{
+		const float Dot = ComponentVelocityCm.Dot(VirtualVelocity);
+		if (Dot > 0.0f && Dot < 1.0f)
+			PushForceModificator *= Dot;
+	}
+	if (bPushForceScaledToMass)
+		PushForceModificator *= std::max(BI->GetBodyMass(), 1.0f);
+
+	const FVector Force = Impact.ImpactNormal * (-PushForceModificator * CmToWorld);
+	if (IsNearlyZero(ComponentVelocityCm, 1.0f))
+		BI->AddImpulseAtPosition(Force * InitialPushForceFactor, Impact.ImpactPoint);
+	else
+		BI->AddForceAtPosition(Force * PushForceFactor, Impact.ImpactPoint);
+}
+
 void UCharacterMovementComponent::SafeMoveWithSlide(const FVector& Delta, const FRotator& NewRotation)
 {
 	const FVector Start = UpdatedComponent->GetWorldLocation();

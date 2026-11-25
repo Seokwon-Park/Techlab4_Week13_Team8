@@ -17,6 +17,7 @@
 #include "Physics/PhysicsAssetFile.h"
 #include "Engine/Blueprint.h"
 #include "GameFramework/Actor.h"
+#include "Components/ActorComponent.h"
 #include "UObject/UObjectHash.h"
 
 #include <imgui_internal.h>
@@ -1349,7 +1350,7 @@ namespace
 	// Blueprint 부모가 될 수 있나. 지금 데이터 Blueprint는 액터만 지원하고, 추상 클래스는 만들 수 없다.
 	bool CanBeBlueprintParent(const UClass* Class)
 	{
-		return Class && Class->Constructor && Class->IsChildOf(AActor::StaticClass());
+		return FBlueprint::IsValidParentClass(Class);
 	}
 
 	// 클래스 아이콘. 가장 가까운 COMMON 부모의 아이콘을 쓴다.
@@ -1458,7 +1459,7 @@ void FContentDrawerPanel::DrawBlueprintClassTree(UClass* Class, const TArray<UCl
 	ImGuiTreeNodeFlags Flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanAvailWidth;
 	if (Children.IsEmpty()) Flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 	if (BlueprintParentClass == Class->Name) Flags |= ImGuiTreeNodeFlags_Selected;
-	if (Class == AActor::StaticClass()) Flags |= ImGuiTreeNodeFlags_DefaultOpen;
+	if (Class == AActor::StaticClass() || Class == UActorComponent::StaticClass()) Flags |= ImGuiTreeNodeFlags_DefaultOpen;
 
 	const bool bCanPick = CanBeBlueprintParent(Class);
 	if (!bCanPick) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
@@ -1536,7 +1537,7 @@ void FContentDrawerPanel::DrawCreateBlueprintPopup()
 				Picked = Class;
 			ImGui::EndDisabled();
 			if (!bSupported && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-				ImGui::SetTooltip("Blueprints of components aren't supported yet. Only Actor classes can be Blueprint parents.");
+				ImGui::SetTooltip("%s is abstract and can't be used as a parent.", Parent.ClassName);
 
 			ImGui::SameLine();
 			ImGui::SetCursorPosY(RowY);
@@ -1563,15 +1564,19 @@ void FContentDrawerPanel::DrawCreateBlueprintPopup()
 	{
 		EditorIcons::SearchBox("##BlueprintParentSearch", BlueprintClassSearch, sizeof(BlueprintClassSearch), "Search", WindowWidth);
 
+		// 액터 계열과 컴포넌트 계열 두 갈래
 		TArray<UClass*> Classes;
 		Classes.Add(AActor::StaticClass());
 		GetDerivedClasses(AActor::StaticClass(), Classes);
+		Classes.Add(UActorComponent::StaticClass());
+		GetDerivedClasses(UActorComponent::StaticClass(), Classes);
 		std::sort(Classes.begin(), Classes.end(), [](const UClass* A, const UClass* B) { return A->Name < B->Name; });
 
 		ImGui::BeginChild("##ParentClassList", ImVec2(WindowWidth, 260.0f * S), ImGuiChildFlags_Borders);
 		if (BlueprintClassSearch[0] == '\0')
 		{
 			DrawBlueprintClassTree(AActor::StaticClass(), Classes, Picked);
+			DrawBlueprintClassTree(UActorComponent::StaticClass(), Classes, Picked);
 		}
 		else
 		{

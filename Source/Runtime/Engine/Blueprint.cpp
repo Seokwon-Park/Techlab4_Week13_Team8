@@ -11,6 +11,7 @@
 #include "Core/EngineLog.h"
 #include "Core/Misc/Paths.h"
 #include "GameFramework/Actor.h"
+#include "Components/ActorComponent.h"
 #include "Engine/World.h"
 #include "UObject/Class.h"
 #include "UObject/UObjectHash.h"
@@ -110,8 +111,9 @@ namespace
 		return true;
 	}
 
-	// Data의 "Defaults"를 Object에 읽어 들인다. bActor면 컴포넌트까지, 아니면 프로퍼티만 읽는다.
-	void ApplyDefaultsRecord(const FBlueprintData& Data, UObject* Object, bool bActor)
+	// Data의 "Defaults"를 Object에 읽어 들인다. bFull이면 객체의 Serialize 전체(액터는 컴포넌트까지,
+	// 컴포넌트는 머티리얼 같은 추가 데이터까지), 아니면 프로퍼티만 읽는다.
+	void ApplyDefaultsRecord(const FBlueprintData& Data, UObject* Object, bool bFull)
 	{
 		FMemoryReader Reader(Data.FileBytes, true);
 		FJsonArchiveInputFormatter Formatter(Reader);
@@ -120,8 +122,8 @@ namespace
 		FStructuredArchive Ar(Formatter);
 		FStructuredArchive::FRecord Root = Ar.Open().EnterRecord();
 		FStructuredArchive::FRecord Defaults = Root.EnterRecord("Defaults");
-		if (bActor)
-			static_cast<AActor*>(Object)->Serialize(Defaults);
+		if (bFull)
+			Object->Serialize(Defaults);   // AActor::Serialize / UActorComponent 계열의 Serialize
 		else
 			Object->UObject::Serialize(Defaults);   // 프로퍼티만. CDO에는 컴포넌트를 만들지 않는다
 		Ar.Close();
@@ -130,14 +132,14 @@ namespace
 	}
 
 	// Class부터 위로 올라가며 BP 클래스를 모아, 가장 위(부모 쪽) BP부터 적용한다.
-	void ApplyChain(UClass* Class, UObject* Object, bool bActor)
+	void ApplyChain(UClass* Class, UObject* Object, bool bFull)
 	{
 		TArray<const FBlueprintData*> Chain;
 		for (UClass* It = Class; It; It = It->Super)
 			if (const FBlueprintData* Data = FindData(It))
 				Chain.Add(Data);
 		for (int32 Index = Chain.Num() - 1; Index >= 0; --Index)
-			ApplyDefaultsRecord(*Chain[Index], Object, bActor);
+			ApplyDefaultsRecord(*Chain[Index], Object, bFull);
 	}
 
 	// CDO를 만들 때 UClass::CreateDefaultObject가 부른다. 프로퍼티 기본값만 덮어쓴다.
@@ -319,9 +321,9 @@ namespace
 			OutError = "parent class '" + Data.ParentClassName + "' not found";
 			return nullptr;
 		}
-		if (!Parent->IsChildOf(AActor::StaticClass()))
+		if (!FBlueprint::IsValidParentClass(Parent))
 		{
-			OutError = "parent class '" + Data.ParentClassName + "' is not an Actor";
+			OutError = "parent class '" + Data.ParentClassName + "' is not an Actor or an ActorComponent";
 			return nullptr;
 		}
 		if (!Parent->Constructor)
@@ -477,19 +479,39 @@ void FBlueprint::RegisterAll(const std::filesystem::path& AssetRoot)
 		HTR_LOG(Info, "Blueprint: {} classes registered", Registered);
 }
 
-UClass* FBlueprint::SaveBlueprint(const std::filesystem::path& File, UClass* ParentClass, AActor* Template, FString& OutError,
+bool FBlueprint::IsValidParentClass(const UClass* Class)
+{
+	return Class && Class->Constructor &&
+		(Class->IsChildOf(AActor::StaticClass()) || Class->IsChildOf(UActorComponent::StaticClass()));
+}
+
+bool FBlueprint::IsComponentBlueprint(const UClass* Class)
+{
+	return IsBlueprintClass(Class) && Class->IsChildOf(UActorComponent::StaticClass());
+}
+
+UClass* FBlueprint::SaveBlueprint(const std::filesystem::path& File, UClass* ParentClass, UObject* Template, FString& OutError,
 	const FBPGraphSet* Graphs)
 {
-	if (!ParentClass || !ParentClass->IsChildOf(AActor::StaticClass()))
+	if (!IsValidParentClass(ParentClass))
 	{
-		OutError = "parent class must be an Actor";
+		OutError = "parent class must be a non-abstract Actor or ActorComponent";
 		return nullptr;
 	}
+	const bool bComponent = ParentClass->IsChildOf(UActorComponent::StaticClass());
+	if (Template && !Template->IsA(ParentClass))
+	{
+		OutError = "template is not a " + ParentClass->Name;
+		return nullptr;
+	}
+	// 컴포넌트 BP는 아직 노드 그래프를 실행하지 않으므로 쓰지 않는다.
+	if (bComponent)
+		Graphs = nullptr;
 
 	// 템플릿이 없으면(새로 만드는 BP) 부모 클래스의 기본 객체를 그대로 기본값으로 쓴다.
 	// 비워 두면 읽을 때마다 "필드 없음" 경고가 나오므로 부모 값을 채워 둔다.
 	if (!Template)
-		Template = Cast<AActor>(ParentClass->GetDefaultObject());
+		Template = ParentClass->GetDefaultObject();
 
 	TArray<uint8> Bytes;
 	FMemoryWriter Writer(Bytes);
@@ -520,7 +542,7 @@ UClass* FBlueprint::SaveBlueprint(const std::filesystem::path& File, UClass* Par
 		{
 			GraphsJson = FJsonObject::parse(FBlueprintGraphSerializer::ToJson(*Graphs), nullptr, false);
 		}
-		else
+		else if (!bComponent)
 		{
 			TArray<uint8> OldBytes;
 			if (ReadFileBytes(File, OldBytes))
@@ -581,6 +603,12 @@ void FBlueprint::ApplyActorDefaults(AActor* Actor)
 {
 	if (Actor)
 		ApplyChain(Actor->GetClass(), Actor, true);
+}
+
+void FBlueprint::ApplyComponentDefaults(UActorComponent* Component)
+{
+	if (Component)
+		ApplyChain(Component->GetClass(), Component, true);
 }
 
 bool FBlueprint::SetDefaultStringProperty(UClass* BlueprintClass, const FString& PropertyName, const FString& Value, FString& OutError)

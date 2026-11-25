@@ -51,6 +51,8 @@ public:
 
 	FConstantBuffer* GetToneMapConstants() const { return ToneMapConstants.get(); }
 	FConstantBuffer* GetDecalConstants() const { return DecalConstants.get(); }
+	FConstantBuffer* GetTireMarkViewConstants() const { return TireMarkViewConstants.get(); }
+	FStructuredBuffer* GetTireMarkBuffer() const { return TireMarkBuffer.get(); }
 	FConstantBuffer* GetDepthOfFieldConstants() const { return DepthOfFieldSetupConstants.get(); }
 	
 private:
@@ -66,6 +68,8 @@ private:
 	TUniquePtr<FVertexBuffer> MeshParticleInstanceBuffer;
 	TUniquePtr<FConstantBuffer> ToneMapConstants;
 	TUniquePtr<FConstantBuffer> DecalConstants;
+	TUniquePtr<FConstantBuffer> TireMarkViewConstants;
+	TUniquePtr<FStructuredBuffer> TireMarkBuffer;
 	TUniquePtr<FConstantBuffer> DepthOfFieldSetupConstants;
 	uint32 PerObjectSlotCapacity = 0;
 	bool bUsePerObjectSlots = false;

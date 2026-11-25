@@ -122,5 +122,11 @@ FOutline::~FOutline() = default;
 
 void FOutline::Render(const FSceneView* View, const FViewportSettings& Viewport) const
 {
-	Renderer->OnRender(*this, View->ViewProjectionMatrix, Viewport);
+	const UPrimitiveComponent* First = Target;
+	for (UPrimitiveComponent* Each : Targets)
+	{
+		Target = Each;
+		Renderer->OnRender(*this, View->ViewProjectionMatrix, Viewport);
+	}
+	Target = const_cast<UPrimitiveComponent*>(First);
 }

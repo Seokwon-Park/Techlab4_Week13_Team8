@@ -224,6 +224,8 @@ private:
 	AHUD* HUD = nullptr;
 	bool bIsPaused = false;
 	bool bBegunPlay = false;
+	// BeginPlay가 GameMode, Pawn 등을 만드는 동안 true. 이때 만든 액터도 "플레이 중 생성"으로 표시한다.
+	bool bStartingPlay = false;
 
 	ULevel* PersistentLevel = nullptr;
 	ULevel* CurrentLevel = nullptr;

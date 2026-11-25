@@ -215,6 +215,12 @@ namespace
 		return nullptr;
 	}
 
+	UPrimitiveComponent& PrimitiveOf(const FLuaComponentRef& Ref)
+	{
+		if (auto* Primitive = Cast<UPrimitiveComponent>(&Deref(Ref))) return *Primitive;
+		throw sol::error("Component is not a primitive component.");
+	}
+
 	UParticleSubUVComponent& ParticleComponent(const FLuaActorRef& Ref)
 	{
 		for (UActorComponent* Comp : Deref(Ref).GetComponents())
@@ -548,7 +554,24 @@ namespace
 					{
 						throw sol::error("Component is not a scene component.");
 					}
-				})
+				}),
+			"SimulatePhysics", sol::property(
+				[](const FLuaComponentRef& Ref) { return PrimitiveOf(Ref).bSimulatePhysics; },
+				[](const FLuaComponentRef& Ref, bool bSimulate) { PrimitiveOf(Ref).SetSimulatePhysics(bSimulate); }),
+			// 바디를 지금 Transform과 SimulatePhysics 값으로 새로 만든다. 속도도 0이 된다
+			"RecreatePhysicsState", [](const FLuaComponentRef& Ref) { Deref(Ref).RecreatePhysicsState(); },
+			// 본을 바인드 포즈로 되돌린다. 스켈레탈 메시가 아니면 아무것도 하지 않는다
+			"ResetPose", [](const FLuaComponentRef& Ref)
+			{
+				if (auto* Skeletal = Cast<USkeletalMeshComponent>(&Deref(Ref)))
+					Skeletal->ResetPose();
+			},
+			// 천 시뮬레이션을 처음부터 다시 한다. 천이 없으면 아무것도 하지 않는다
+			"ForceClothNextUpdateTeleportAndReset", [](const FLuaComponentRef& Ref)
+			{
+				if (auto* Skeletal = Cast<USkeletalMeshComponent>(&Deref(Ref)))
+					Skeletal->ForceClothNextUpdateTeleportAndReset();
+			}
 		);
 	}
 

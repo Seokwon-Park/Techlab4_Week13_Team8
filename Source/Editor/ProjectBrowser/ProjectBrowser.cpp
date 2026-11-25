@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "Editor/ProjectBrowser/ProjectBrowser.h"
 
+#include <algorithm>
 #include <cctype>
 #include <fstream>
 
@@ -16,6 +17,7 @@
 #include "Core/Misc/Paths.h"
 #include "Core/Window.h"
 #include "Editor/EditorUI/EditorTitleBar.h"
+#include "Editor/ProjectBrowser/ProjectBrowserView.h"
 #include "Editor/ProjectBrowser/ProjectCode.h"
 #include "Render/ImageLoader.h"
 
@@ -299,272 +301,28 @@ namespace
 		return ImGui_ImplWin32_WndProcHandler(Hwnd, Msg, WParam, LParam) != 0;
 	}
 
-	// IFileOpenDialog로 폴더나 .hproject 파일을 고른다. 취소하면 빈 경로.
-	fs::path ShowOpenDialog(HWND Owner, bool bPickFolder, const fs::path& InitialDir)
-	{
-		ComPtr<IFileOpenDialog> Dialog;
-		if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&Dialog))))
-			return {};
-
-		DWORD Options = 0;
-		Dialog->GetOptions(&Options);
-		Options |= FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST;
-		if (bPickFolder)
-		{
-			Options |= FOS_PICKFOLDERS;
-			Dialog->SetTitle(L"Select Project Location");
-		}
-		else
-		{
-			Options |= FOS_FILEMUSTEXIST;
-			const COMDLG_FILTERSPEC Filter[] = { { L"Hitori Project (*.hproject)", L"*.hproject" } };
-			Dialog->SetFileTypes(1, Filter);
-			Dialog->SetTitle(L"Open Project");
-		}
-		Dialog->SetOptions(Options);
-
-		std::error_code Ec;
-		if (!InitialDir.empty() && fs::is_directory(InitialDir, Ec))
-		{
-			ComPtr<IShellItem> Folder;
-			if (SUCCEEDED(SHCreateItemFromParsingName(InitialDir.c_str(), nullptr, IID_PPV_ARGS(&Folder))))
-				Dialog->SetFolder(Folder.Get());
-		}
-
-		if (FAILED(Dialog->Show(Owner))) return {};
-
-		ComPtr<IShellItem> Result;
-		if (FAILED(Dialog->GetResult(&Result))) return {};
-		PWSTR Path = nullptr;
-		if (FAILED(Result->GetDisplayName(SIGDN_FILESYSPATH, &Path))) return {};
-		fs::path Out(Path);
-		CoTaskMemFree(Path);
-		return Out;
-	}
-
-	fs::path DefaultProjectLocation()
-	{
-		PWSTR Documents = nullptr;
-		fs::path Result;
-		if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &Documents)))
-			Result = fs::path(Documents) / L"HitoriProjects";
-		CoTaskMemFree(Documents);
-		return Result;
-	}
-
-	FString NextFreeProjectName(const fs::path& Location)
-	{
-		std::error_code Ec;
-		for (int32 i = 1; i < 1000; ++i)
-		{
-			const FString Name = "MyProject" + std::to_string(i);
-			if (!fs::exists(Location / FPaths::FromUtf8(Name), Ec)) return Name;
-		}
-		return "MyProject";
-	}
-
-	void CopyToBuffer(const FString& Text, char* Buffer, size_t Size)
-	{
-		strncpy_s(Buffer, Size, Text.c_str(), _TRUNCATE);
-	}
-
-	// 창 안의 화면 상태와 그리기.
-	struct FBrowserUI
-	{
-		TArray<fs::path> Recent;
-		int32 SelectedRecent = -1;
-		char NameBuffer[64] = {};
-		EProjectTemplate Template = EProjectTemplate::Blank;
-		char LocationBuffer[1024] = {};
-		FString Error;
-		fs::path Chosen;
-
-		void Init()
-		{
-			Recent = RecentProjects::Load();
-			SelectedRecent = Recent.Num() > 0 ? 0 : -1;
-			const fs::path Location = DefaultProjectLocation();
-			CopyToBuffer(FPaths::ToUtf8(fs::path(Location).make_preferred()), LocationBuffer, sizeof(LocationBuffer));
-			CopyToBuffer(NextFreeProjectName(Location), NameBuffer, sizeof(NameBuffer));
-		}
-
-		void TryOpen(const fs::path& ProjectFile)
-		{
-			FProjectDescriptor Descriptor;
-			FString LoadError;
-			if (!Descriptor.Load(ProjectFile, &LoadError))
-			{
-				Error = LoadError;
-				return;
-			}
-			Chosen = ProjectFile;
-		}
-
-		void DrawRecent(HWND Hwnd, float Height)
-		{
-			ImGui::BeginChild("Recent", ImVec2(ImGui::GetContentRegionAvail().x * 0.5f, Height), ImGuiChildFlags_Borders);
-			ImGui::SeparatorText("Recent Projects");
-
-			const float ButtonRow = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
-			ImGui::BeginChild("RecentList", ImVec2(0, -ButtonRow));
-			if (Recent.IsEmpty())
-				ImGui::TextDisabled("No recent projects.");
-
-			for (int32 i = 0; i < Recent.Num(); ++i)
-			{
-				ImGui::PushID(i);
-				const FString Name = FPaths::ToUtf8(Recent[i].stem());
-				const FString Path = FPaths::ToUtf8(Recent[i].parent_path().make_preferred());
-				const float RowHeight = ImGui::GetTextLineHeight() * 2.0f + ImGui::GetStyle().ItemSpacing.y;
-				// Selectable은 칸 사이 간격을 메우려고 사각형을 왼쪽으로 넓힌다.
-				// GetItemRectMin()에서 글자를 그리면 첫 글자가 잘리므로 그리기 전 커서 위치를 쓴다.
-				const ImVec2 RowStart = ImGui::GetCursorScreenPos();
-				if (ImGui::Selectable("##row", SelectedRecent == i, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(0, RowHeight)))
-				{
-					SelectedRecent = i;
-					if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) TryOpen(Recent[i]);
-				}
-				ImGui::SetCursorScreenPos(RowStart);
-				ImGui::TextUnformatted(Name.c_str());
-				ImGui::TextDisabled("%s", Path.c_str());
-				ImGui::PopID();
-			}
-			ImGui::EndChild();
-
-			const bool bHasSelection = SelectedRecent >= 0 && SelectedRecent < Recent.Num();
-			ImGui::BeginDisabled(!bHasSelection);
-			if (ImGui::Button("Open")) TryOpen(Recent[SelectedRecent]);
-			ImGui::SameLine();
-			if (ImGui::Button("Remove from List"))
-			{
-				RecentProjects::Remove(Recent[SelectedRecent]);
-				Recent = RecentProjects::Load();
-				SelectedRecent = Recent.Num() > 0 ? 0 : -1;
-			}
-			ImGui::EndDisabled();
-			ImGui::SameLine();
-			if (ImGui::Button("Browse..."))
-			{
-				const fs::path File = ShowOpenDialog(Hwnd, false, {});
-				if (!File.empty()) TryOpen(File);
-			}
-			ImGui::EndChild();
-		}
-
-		void DrawCreate(HWND Hwnd, float Height)
-		{
-			ImGui::BeginChild("Create", ImVec2(0, Height), ImGuiChildFlags_Borders);
-			ImGui::SeparatorText("New Project");
-
-			// UE의 Blueprint / C++ 선택
-			ImGui::TextUnformatted("Template");
-			if (ImGui::RadioButton("Blank", Template == EProjectTemplate::Blank)) Template = EProjectTemplate::Blank;
-			ImGui::SameLine();
-			if (ImGui::RadioButton("C++", Template == EProjectTemplate::Cpp)) Template = EProjectTemplate::Cpp;
-
-			ImGui::Spacing();
-			ImGui::TextUnformatted("Name");
-			ImGui::SetNextItemWidth(-FLT_MIN);
-			ImGui::InputText("##Name", NameBuffer, sizeof(NameBuffer));
-
-			ImGui::Spacing();
-			ImGui::TextUnformatted("Location");
-			const float BrowseWidth = ImGui::CalcTextSize("...").x + ImGui::GetStyle().FramePadding.x * 4.0f;
-			ImGui::SetNextItemWidth(-(BrowseWidth + ImGui::GetStyle().ItemSpacing.x));
-			ImGui::InputText("##Location", LocationBuffer, sizeof(LocationBuffer));
-			ImGui::SameLine();
-			if (ImGui::Button("...", ImVec2(BrowseWidth, 0)))
-			{
-				const fs::path Folder = ShowOpenDialog(Hwnd, true, FPaths::FromUtf8(LocationBuffer));
-				if (!Folder.empty()) CopyToBuffer(FPaths::ToUtf8(Folder), LocationBuffer, sizeof(LocationBuffer));
-			}
-
-			const FString Name = NameBuffer;
-			const fs::path Location = FPaths::FromUtf8(LocationBuffer);
-			const FString NameError = ProjectCreator::ValidateName(Name, Template);
-
-			ImGui::Spacing();
-			ImGui::TextDisabled("Project file");
-			if (NameError.empty())
-			{
-				fs::path Preview = Location / FPaths::FromUtf8(Name) / (FPaths::FromUtf8(Name).native() + FPaths::ProjectExtension);
-				ImGui::TextWrapped("%s", FPaths::ToUtf8(Preview.make_preferred()).c_str());
-			}
-			else
-			{
-				ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), "%s", NameError.c_str());
-			}
-
-			ImGui::Spacing();
-			if (Template == EProjectTemplate::Cpp)
-				ImGui::TextDisabled("Also creates Source/<Name> with a sample GameMode and\n<Name>.slnx. Build <Name>Editor in Visual Studio to open it.");
-			else
-				ImGui::TextDisabled("Creates Assets, Scenes, Scripts and Config folders.\nEngine icons and fonts are shared from the engine folder.");
-
-			ImGui::SetCursorPosY(ImGui::GetWindowHeight() - ImGui::GetFrameHeightWithSpacing() - ImGui::GetStyle().WindowPadding.y);
-			ImGui::BeginDisabled(!NameError.empty() || Location.empty());
-			if (ImGui::Button("Create Project", ImVec2(-FLT_MIN, 0)))
-			{
-				std::error_code Ec;
-				fs::create_directories(Location, Ec);
-				fs::path ProjectFile;
-				FString CreateError;
-				if (ProjectCreator::Create(Name, Location, ProjectFile, CreateError, Template))
-					Chosen = ProjectFile;
-				else
-					Error = CreateError;
-			}
-			ImGui::EndDisabled();
-			ImGui::EndChild();
-		}
-
-		void Draw(HWND Hwnd)
-		{
-			// 에디터와 같은 제목 표시줄을 맨 위에 그린다. 그 높이만큼 WorkPos가 내려가 본문이 그 아래에 온다.
-			EditorTitleBar::Draw();
-
-			const ImGuiViewport* Viewport = ImGui::GetMainViewport();
-			ImGui::SetNextWindowPos(Viewport->WorkPos);
-			ImGui::SetNextWindowSize(Viewport->WorkSize);
-			ImGui::Begin("Project Browser", nullptr,
-				ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
-
-			ImGui::TextDisabled("Engine: %s", FPaths::ToUtf8(FPaths::EngineDir()).c_str());
-			ImGui::Spacing();
-
-			const float ErrorHeight = Error.empty() ? 0.0f : ImGui::GetTextLineHeightWithSpacing() * 2.0f;
-			const float Height = ImGui::GetContentRegionAvail().y - ErrorHeight;
-			DrawRecent(Hwnd, Height);
-			ImGui::SameLine();
-			DrawCreate(Hwnd, Height);
-
-			if (!Error.empty())
-			{
-				ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", Error.c_str());
-				ImGui::SameLine();
-				if (ImGui::SmallButton("Dismiss")) Error.clear();
-			}
-			ImGui::End();
-		}
-	};
-
+	// 프로젝트 브라우저 창 전용 스타일. 화면 색은 FProjectBrowserView가 직접 칠하고, 여기서는 입력 칸과 기본 버튼만 맞춘다.
 	void ApplyStyle(float Scale)
 	{
 		ImGui::StyleColorsDark();
 		ImGuiStyle& Style = ImGui::GetStyle();
 		Style.WindowRounding = 0.0f;
+		Style.WindowBorderSize = 0.0f;
 		Style.ChildRounding = 4.0f;
 		Style.FrameRounding = 4.0f;
-		Style.FramePadding = ImVec2(8.0f, 5.0f);
-		Style.ItemSpacing = ImVec2(8.0f, 6.0f);
-		// 에디터와 같은 강조 색
+		Style.FramePadding = ImVec2(10.0f, 7.0f);
+		Style.ItemSpacing = ImVec2(8.0f, 8.0f);
 		ImVec4* Colors = Style.Colors;
-		Colors[ImGuiCol_Button] = ImVec4(0.65f, 0.30f, 0.45f, 1.00f);
-		Colors[ImGuiCol_ButtonHovered] = ImVec4(0.75f, 0.40f, 0.55f, 1.00f);
-		Colors[ImGuiCol_ButtonActive] = ImVec4(0.55f, 0.20f, 0.35f, 1.00f);
-		Colors[ImGuiCol_Header] = ImVec4(0.65f, 0.30f, 0.45f, 0.55f);
-		Colors[ImGuiCol_HeaderHovered] = ImVec4(0.75f, 0.40f, 0.55f, 0.70f);
-		Colors[ImGuiCol_HeaderActive] = ImVec4(0.55f, 0.20f, 0.35f, 1.00f);
+		Colors[ImGuiCol_WindowBg] = ImVec4(0.08f, 0.08f, 0.09f, 1.0f);
+		Colors[ImGuiCol_FrameBg] = ImVec4(0.06f, 0.06f, 0.07f, 1.0f);
+		Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.12f, 0.12f, 0.14f, 1.0f);
+		Colors[ImGuiCol_FrameBgActive] = ImVec4(0.14f, 0.14f, 0.16f, 1.0f);
+		Colors[ImGuiCol_Button] = ImVec4(0.28f, 0.28f, 0.30f, 1.0f);
+		Colors[ImGuiCol_ButtonHovered] = ImVec4(0.36f, 0.36f, 0.39f, 1.0f);
+		Colors[ImGuiCol_ButtonActive] = ImVec4(0.22f, 0.22f, 0.24f, 1.0f);
+		Colors[ImGuiCol_Header] = ImVec4(0.0f, 0.44f, 0.88f, 0.55f);
+		Colors[ImGuiCol_HeaderHovered] = ImVec4(0.0f, 0.44f, 0.88f, 0.75f);
+		Colors[ImGuiCol_HeaderActive] = ImVec4(0.0f, 0.44f, 0.88f, 1.0f);
 		Style.ScaleAllSizes(Scale);
 	}
 }
@@ -576,8 +334,9 @@ fs::path ProjectBrowser::Run(HINSTANCE hInstance)
 
 	// 주 모니터 DPI에 맞춰 창 크기와 글자 크기를 키운다.
 	const float Scale = static_cast<float>(GetDpiForSystem()) / 96.0f;
-	const int32 Width = static_cast<int32>(1000 * Scale);
-	const int32 Height = static_cast<int32>(600 * Scale);
+	// UE 런처처럼 넓게 띄운다. 작은 화면에서는 화면의 90%를 넘지 않는다.
+	const int32 Width = (std::min)(static_cast<int32>(1280 * Scale), GetSystemMetrics(SM_CXSCREEN) * 9 / 10);
+	const int32 Height = (std::min)(static_cast<int32>(800 * Scale), GetSystemMetrics(SM_CYSCREEN) * 9 / 10);
 
 	// 에디터 메인 창과 같은 FWindow를 쓴다. 기본 제목 표시줄 제거와 히트 테스트도 그대로 가져온다.
 	FWindow MainWindow;
@@ -627,11 +386,12 @@ fs::path ProjectBrowser::Run(HINSTANCE hInstance)
 		if (Logo) EditorTitleBar::SetLogo((ImTextureID)Logo.Get());
 		MainWindow.Show();
 
-		FBrowserUI UI;
-		UI.Init();
+		FProjectBrowserView View;
+		View.SetDevice(Window.Device.Get());   // 썸네일 텍스처는 이 창의 장치로 만든다
+		View.Init();
 
 		bool bRunning = true;
-		while (bRunning && UI.Chosen.empty())
+		while (bRunning && Result.empty())
 		{
 			MainWindow.ProcessMessage(bRunning);
 			if (MainWindow.ConsumeCloseRequest()) break;
@@ -646,7 +406,18 @@ fs::path ProjectBrowser::Run(HINSTANCE hInstance)
 			ImGui_ImplDX11_NewFrame();
 			ImGui_ImplWin32_NewFrame();
 			ImGui::NewFrame();
-			UI.Draw(Window.Hwnd);
+			// 에디터와 같은 제목 표시줄을 맨 위에 그린다. 그 높이만큼 WorkPos가 내려가 본문이 그 아래에 온다.
+			EditorTitleBar::Draw();
+			const ImGuiViewport* Viewport = ImGui::GetMainViewport();
+			ImGui::SetNextWindowPos(Viewport->WorkPos);
+			ImGui::SetNextWindowSize(Viewport->WorkSize);
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+			ImGui::Begin("Project Browser", nullptr,
+				ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
+			ImGui::PopStyleVar();
+			View.Draw(Window.Hwnd, Logo ? (ImTextureID)Logo.Get() : ImTextureID_Invalid);
+			ImGui::End();
+			Result = View.ConsumeChosen();
 			ImGui::Render();
 
 			const float Clear[4] = { 0.08f, 0.08f, 0.09f, 1.0f };
@@ -656,8 +427,6 @@ fs::path ProjectBrowser::Run(HINSTANCE hInstance)
 			ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 			Window.SwapChain->Present(1, 0);
 		}
-
-		Result = UI.Chosen;
 
 		// 에디터가 자기 창으로 다시 Install하고 자기 훅을 등록하기 전까지 브라우저 것을 남기지 않는다.
 		EditorTitleBar::Uninstall();

@@ -12,6 +12,8 @@ public:
 	// 맨 위 탭 줄에서 이름 왼쪽에 그릴 아이콘. false면 아이콘 없이 이름만
 	virtual bool GetTabIcon(EEditorIcon& OutIcon, ImU32& OutColor) const { return false; }
 	virtual bool CanDetach() const { return true; }
+	// true면 탭 줄 맨 왼쪽에 고정한다 (Home 탭).
+	virtual bool IsLeadingTab() const { return false; }
 	// BeginMenuBar/EndMenuBar는 컨테이너가 담당하고 탭은 메뉴 내용만 그린다.
 	virtual void DrawMenuBar() {}
 	virtual bool CanClose() const { return false; }

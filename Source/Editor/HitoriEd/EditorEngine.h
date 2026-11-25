@@ -69,6 +69,8 @@ public:
 	// PIE 게임 화면 위에 Settings > Debug Draw (PIE)에서 켠 디버그 표시를 그린다.
 	void DrawPIEDebug(UWorld* World, const FMatrix& ViewProjection);
 	void DeleteActor(AActor* Actor);
+	// 선택된 액터를 모두 지운다. Delete 키가 부른다.
+	void DeleteSelectedActors();
 	void DeleteComponent(UActorComponent* Component);
 
 	// 선택한 액터가 활성 뷰포트 화면에 꽉 차도록 카메라를 부드럽게 옮긴다. F 키와 Outliner 메뉴가 부른다.
@@ -76,6 +78,7 @@ public:
 	void FocusSelection();
 
 	// 선택한 액터를 복사, 붙여넣기, 복제한다. 붙여넣은 액터를 새로 선택한다.
+	// 복제는 선택된 액터를 모두 복제하고, 복사는 주 선택(마지막에 고른 액터) 하나만 클립보드에 넣는다.
 	void CopySelectedActor();
 	void PasteActor();
 	void DuplicateSelectedActor();
@@ -87,6 +90,8 @@ public:
 
 	//Play 버튼을 눌렀을때 Play Session 실행을 요청한다.
 	inline void RequestPlaySession() { bPlaySessionRequested = true; }
+	// Simulate 버튼. UE처럼 PIE를 시작하자마자 SIE로 바꿔, 플레이어를 조종하지 않고 에디터 카메라로 월드가 도는 것을 본다.
+	inline void RequestSimulateSession() { bPlaySessionRequested = true; bSimulateSessionRequested = true; }
 	inline void RequestEndPlayMap() { bRequestEndPlayMapQueued = true; bIsPaused = false; }
 
 	// 대기 중인 Play 요청이 있으면 PIE를 시작한다. Tick이 프레임 시작에 부른다.
@@ -101,7 +106,8 @@ public:
 
 	// PIE(게임을 조작)와 SIE(에디터처럼 둘러보고 선택)를 오간다. F8이 부른다.
 	// UE의 UEditorEngine::ToggleBetweenPIEandSIE와 같은 자리다.
-	void ToggleBetweenPIEandSIE();
+	// bMoveEditorCamera: SIE로 갈 때 에디터 카메라를 플레이어가 보던 자리로 옮길지. Simulate로 시작할 때는 옮기지 않는다.
+	void ToggleBetweenPIEandSIE(bool bMoveEditorCamera = true);
 
 	// 아래 셋은 에디터 전체가 공유하는 상태를 읽는 접근자다. 레벨 뷰포트 클라이언트가 그릴 때 쓴다.
 	// UE도 선택과 설정은 에디터 전역이 갖고 뷰포트 클라이언트가 읽어 간다(GEditor->GetSelectedActors(),
@@ -117,10 +123,18 @@ public:
 	// UE의 UEditorEngine::GetSelectedActors, GetSelectedComponents와 같다.
 	USelection* GetSelectedActors() const { return SelectedActors; }
 	USelection* GetSelectedComponents() const { return SelectedComponents; }
+	// 주 선택: 마지막에 고른 액터. 기즈모와 디테일 패널이 이 액터를 본다. 없으면 nullptr.
+	AActor* GetPrimarySelectedActor() const { return SelectedActors ? SelectedActors->GetBottom<AActor>() : nullptr; }
+
+	// 클릭 한 번으로 선택을 바꾼다 (뷰포트와 Outliner가 함께 쓴다). UE 레벨 에디터와 같은 규칙이다.
+	//   그냥 클릭: 그 액터만 선택 (Actor가 nullptr이면 선택을 비운다)
+	//   Ctrl+클릭: 그 액터를 선택에 넣거나 뺀다
+	//   Shift+클릭: 그 액터를 선택에 더한다 (이미 있으면 주 선택으로 올린다)
+	void ClickSelectActor(AActor* Actor, bool bCtrl, bool bShift);
 
 	// 액터 하나를 선택하거나 선택에서 뺀다. 액터 선택이 바뀌면 컴포넌트 선택은 비운다.
 	// bNotify가 true면 NoteSelectionChange를 불러 기즈모, 외곽선, 디테일 패널을 새 선택에 맞춘다.
-	// 이 엔진은 한 번에 하나만 선택하므로, 다른 액터를 고를 때는 SelectNone(false)을 먼저 부른다. UE에서도 클릭 선택은 그렇게 한다.
+	// 여러 액터를 함께 고를 수 있다. 하나만 고르려면 SelectNone(false)을 먼저 부른다 (ClickSelectActor 참고).
 	// UE의 UEditorEngine::SelectActor와 같다. UE에는 뒤에 인자가 더 있다(bSelectEvenIfHidden, bForceRefresh).
 	void SelectActor(AActor* Actor, bool bInSelected, bool bNotify);
 	// 컴포넌트 하나를 선택하거나 선택에서 뺀다. UE의 UEditorEngine::SelectComponent와 같다.
@@ -260,8 +274,14 @@ private:
 	FEditorCommand Resume;
 	FEditorCommand StepFrame;
 	FEditorCommand Stop;
+	FEditorCommand Simulate;
+	FEditorCommand Eject;
+	FEditorCommand Possess;
 
 	bool bPlaySessionRequested = false;
+	bool bSimulateSessionRequested = false;
+	// 툴바 Eject/Possess 버튼. 다음 PIE 입력 처리(TickPIEInput)에서 ToggleBetweenPIEandSIE를 부른다.
+	bool bToggleSIERequested = false;
 	bool bRequestEndPlayMapQueued = false;
 	bool bStepRequested = false;
 	bool bIsPaused = false;
@@ -275,6 +295,9 @@ private:
 	void OpenScene();
 	void SaveCurrentScene();
 	void SaveSceneAs();
+	// 지금 레벨 뷰포트 화면을 프로젝트 썸네일(<프로젝트>/Saved/AutoScreenshot.png)로 저장한다.
+	// 레벨을 저장할 때 자동으로 부르고, File > Capture Project Thumbnail에서도 부른다. bReport면 결과를 로그에 남긴다.
+	void CaptureProjectThumbnail(bool bReport);
 
 	// 레벨 편집의 실행 취소. PIE 중에는 에디터 월드를 건드리지 않으므로 쓸 수 없다.
 	void UndoLevelEdit();

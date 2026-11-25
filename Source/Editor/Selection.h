@@ -43,6 +43,31 @@ public:
 		return (InIndex >= 0 && InIndex < SelectedObjects.Num()) ? SelectedObjects[InIndex] : nullptr;
 	}
 
+	// 선택된 것 가운데 T 타입인 마지막(가장 최근에 고른) 오브젝트. 없으면 nullptr이다.
+	// 여러 개를 골랐을 때 기즈모와 디테일 패널이 보는 "주 선택"이다 (UE도 마지막에 고른 것을 쓴다).
+	template <typename T>
+	T* GetBottom() const
+	{
+		for (int32 Index = SelectedObjects.Num() - 1; Index >= 0; --Index)
+		{
+			if (T* Typed = Cast<T>(SelectedObjects[Index]))
+				return Typed;
+		}
+		return nullptr;
+	}
+
+	// 선택된 것 가운데 T 타입인 것을 고른 순서대로 모은다.
+	template <typename T>
+	void GetSelectedObjects(TArray<T*>& OutObjects) const
+	{
+		OutObjects.Empty();
+		for (UObject* Object : SelectedObjects)
+		{
+			if (T* Typed = Cast<T>(Object))
+				OutObjects.Add(Typed);
+		}
+	}
+
 	// 선택된 것 가운데 T 타입인 첫 번째 오브젝트. 없으면 nullptr이다.
 	template <typename T>
 	T* GetTop() const

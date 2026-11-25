@@ -66,6 +66,7 @@ public:
 	void RefreshOverlapEvents(const UPrimitiveComponent* Component);
 	// 바디 생성과 차량 쿼리용 비소유 씬 접근
 	physx::PxScene* GetPxScene() const { return Scene; }
+	static constexpr uint32 ContactReportBit = 1u << 31; // simulation filter word3
 
 	// 월드 공간 정점 충돌 검사
 	bool Raycast(const FRay& WorldRay, float MaxDistance, FHitResult& OutHit,

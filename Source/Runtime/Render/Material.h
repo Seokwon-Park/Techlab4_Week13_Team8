@@ -40,6 +40,9 @@ public:
 	EBlendState BlendState = EBlendState::Opaque;
 	UPROPERTY(EditAnywhere)
 	bool bRenderBeforeDOF = false;
+	// 뒷면 컬링을 끄고 뒷면 픽셀의 법선을 뒤집는다. 천처럼 면 한 장으로 된 메시에 쓴다
+	UPROPERTY(EditAnywhere)
+	bool bTwoSided = false;
 	EDepthStencilState DepthStencilState = EDepthStencilState::Default;
 	ESamplerState SamplerState = ESamplerState::LinearClamp;
 

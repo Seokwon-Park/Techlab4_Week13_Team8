@@ -22,4 +22,5 @@ private:
 	UCameraComponent* CameraComponent = nullptr;
 	UStaticMeshComponent* StaticMeshComponent = nullptr;
 	float MoveSpeed = 20.0f;
+	float FastSpeedScale = 3.0f;
 };

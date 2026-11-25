@@ -489,4 +489,9 @@ FUberOutput Uber_PS(VS_OUT Input)
 
 // 현재 리소스 매니저는 .hlsl 파일을 스캔할 때 mainVS/mainPS 진입점을 찾는다.
 VS_OUT mainVS(VS_IN Input) { return Uber_VS(Input); }
-FUberOutput mainPS(VS_OUT Input) { return Uber_PS(Input); }
+// 뒷면 픽셀은 Two Sided 머티리얼에서만 들어온다. 법선을 뒤집어 보는 쪽 면 기준으로 조명한다
+FUberOutput mainPS(VS_OUT Input, bool bFrontFace : SV_IsFrontFace)
+{
+    if (!bFrontFace) Input.WorldNormal = -Input.WorldNormal;
+    return Uber_PS(Input);
+}

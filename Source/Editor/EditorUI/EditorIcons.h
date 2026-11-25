@@ -89,6 +89,21 @@ enum class EEditorIcon : uint8
 	ClassGameMode,
 	ClassComponent,
 	ClassSceneComponent,
+	// 에디터 탭 줄 맨 왼쪽 Home 탭
+	Home,
+	// 툴바 Play 그룹
+	Simulate,       // 오른쪽 삼각형 + 아래 막대 (Simulate)
+	Eject,          // 위 삼각형 + 막대 (PIE -> SIE)
+	Possess,        // 사람 (SIE -> PIE)
+	// 도킹 패널 탭
+	Details,        // 줄 + 연필
+	Outliner,       // 들여쓴 목록 (Outliner, 계층 트리)
+	OutputLog,      // 줄 글
+	Viewport,       // 원근 격자 화면
+	Info,           // 원 안의 i
+	Graph,          // 이어진 노드
+	Curve,          // 곡선 그래프
+	Keyboard,       // 키보드
 
 	Count
 };
