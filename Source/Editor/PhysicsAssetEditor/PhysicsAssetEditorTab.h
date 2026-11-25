@@ -22,4 +22,5 @@ private:
 	FEditorCommand SaveCommand;
 	FEditorCommand SimulateCommand;
 	FEditorCommand StopSimulationCommand;
+	FEditorCommand RegenerateAllBodiesCommand;
 };

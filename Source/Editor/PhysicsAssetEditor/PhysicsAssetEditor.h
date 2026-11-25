@@ -7,6 +7,7 @@
 #include "Physics/ConstraintInstance.h"
 #include "Physics/BodyInstance.h"
 #include "Physics/PhysicsHandle.h"
+#include "Physics/PhysicsAssetUtils.h"
 
 class UPhysicsAsset;
 class UPhysicsConstraintTemplate;
@@ -67,6 +68,13 @@ public:
 	// 자식 바디의 Constraint를 지울 바디의 부모 바디로 옮긴 뒤 지운다
 	void DeleteBody(int32 BodyIndex);
 	void DeleteConstraint(int32 ConstraintIndex);
+	// 바디와 Constraint는 두고 Shape만 본 정점으로 다시 만든다
+	void RegenerateBody(int32 BodyIndex);
+	// 확인 후 바디와 Constraint를 모두 지우고 에셋을 처음 만들 때와 같은 설정으로 다시 만든다
+	void RegenerateAllBodies();
+	// ChildBodyIndex 본 원점에 놓이는 Constraint로 두 바디를 잇는다. 이미 이어져 있으면 아무것도 하지 않는다
+	void MakeNewConstraint(int32 ChildBodyIndex, int32 ParentBodyIndex);
+	bool HasConstraintBetween(int32 BodyIndexA, int32 BodyIndexB) const;
 	// 본 원점에 기본 크기로 만들고 선택한다
 	void AddShape(int32 BodyIndex, EAggCollisionShape::Type ShapeType);
 	// 마지막 Shape면 바디도 지운다
@@ -89,6 +97,7 @@ private:
 	// 바인드 박스 대각선이 이보다 크면 cm 값으로 본다. 사람 크기 메시는 cm면 200 안팎, m면 2 안팎이다
 	static constexpr float CentimeterMeshMinSize = 10.0f;
 
+	FPhysAssetCreateParams MakeCreateParams() const;
 	void UpdatePhysicsPicking();
 	USkeletalBodySetup* GetSelectedBodySetup() const;
 	// 선택한 Shape. 바디만 선택했으면 첫 Shape (Sphyl, Box, Sphere 순)

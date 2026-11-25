@@ -49,12 +49,15 @@ void FPhysicsAssetTreePanel::DrawContent()
 	case EPendingAction::DeleteConstraint: Editor.DeleteConstraint(PendingIndex); break;
 	case EPendingAction::AddShape:         Editor.AddShape(PendingIndex, PendingShapeType); break;
 	case EPendingAction::DeleteShape:      Editor.DeleteShape(PendingIndex, PendingShapeType, PendingShapeIndex); break;
+	case EPendingAction::RegenerateBody:   Editor.RegenerateBody(PendingIndex); break;
+	case EPendingAction::MakeConstraint:   Editor.MakeNewConstraint(PendingIndex, PendingTargetBodyIndex); break;
 	default: break;
 	}
 	PendingAction = EPendingAction::None;
 	PendingIndex = INDEX_NONE;
 	PendingShapeType = EAggCollisionShape::Unknown;
 	PendingShapeIndex = INDEX_NONE;
+	PendingTargetBodyIndex = INDEX_NONE;
 }
 
 int32 FPhysicsAssetTreePanel::FindBody(int32 BoneIndex) const
@@ -187,6 +190,13 @@ void FPhysicsAssetTreePanel::DrawBody(int32 BoneIndex, int32 BodyIndex, bool bNe
 		AddShapeItem("Add Box", EAggCollisionShape::Box);
 		AddShapeItem("Add Capsule", EAggCollisionShape::Sphyl);
 		ImGui::Separator();
+		if (ImGui::MenuItem("Regenerate Body"))
+		{
+			PendingAction = EPendingAction::RegenerateBody;
+			PendingIndex = BodyIndex;
+		}
+		DrawConstrainToMenu(BodyIndex);
+		ImGui::Separator();
 		if (ImGui::MenuItem("Delete Body"))
 		{
 			PendingAction = EPendingAction::DeleteBody;
@@ -208,6 +218,33 @@ void FPhysicsAssetTreePanel::DrawBody(int32 BoneIndex, int32 BodyIndex, bool bNe
 		}
 		ImGui::TreePop();
 	}
+}
+
+void FPhysicsAssetTreePanel::DrawConstrainToMenu(int32 BodyIndex)
+{
+	const UPhysicsAsset* PhysicsAsset = Editor.GetPhysicsAsset();
+	if (!ImGui::BeginMenu("Constrain To", PhysicsAsset->SkeletalBodySetups.Num() > 1))
+	{
+		return;
+	}
+	for (int32 TargetIndex = 0; TargetIndex < PhysicsAsset->SkeletalBodySetups.Num(); ++TargetIndex)
+	{
+		if (TargetIndex == BodyIndex)
+		{
+			continue;
+		}
+		const int32 TargetBone = Editor.FindBoneIndexByName(PhysicsAsset->SkeletalBodySetups[TargetIndex]->BoneName);
+		const char* TargetName = TargetBone >= 0 ? Editor.GetBoneItems()[TargetBone].Name.c_str() : "?";
+		ImGui::PushID(TargetIndex);
+		if (ImGui::MenuItem(TargetName, nullptr, false, !Editor.HasConstraintBetween(BodyIndex, TargetIndex)))
+		{
+			PendingAction = EPendingAction::MakeConstraint;
+			PendingIndex = BodyIndex;
+			PendingTargetBodyIndex = TargetIndex;
+		}
+		ImGui::PopID();
+	}
+	ImGui::EndMenu();
 }
 
 void FPhysicsAssetTreePanel::DrawShapes(int32 BodyIndex)
