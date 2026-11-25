@@ -639,8 +639,8 @@ USkeletalMeshComponent::FClothInstance USkeletalMeshComponent::CreateClothInstan
 		return {};
 	}
 
-	// 거리 맵을 네이티브 입자 순서로 변환하고 고정점의 반경을 0으로 설정
-	if (bForPreview||!Binding.MaxDistanceByRenderVertex.IsEmpty())
+	// 현재 본 포즈를 추종할 고정점과 거리 제한의 입자별 반경
+	if (bForPreview || !Binding.PinnedRenderVertices.IsEmpty() || !Binding.MaxDistanceByRenderVertex.IsEmpty())
 	{
 		constexpr float UnboundedRadius = (std::numeric_limits<float>::max)();
 		Instance.MotionConstraintRadii.Init(UnboundedRadius, ParticleCount);
