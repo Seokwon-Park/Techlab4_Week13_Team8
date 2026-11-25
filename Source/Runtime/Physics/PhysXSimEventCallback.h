@@ -18,6 +18,7 @@ public:
         physx::PxPairFlags& OutPairFlags, const void* ConstantBlock, physx::PxU32 ConstantBlockSize);
 
     // 물리 스텝 종료 후 대기 이벤트 전달
+    bool HasPendingEvents() const { return bOverlapSettingsChanged || !PendingEvents.IsEmpty(); }
     void DispatchPending();
     void RefreshOverlapEvents(const UPrimitiveComponent* Component);
 

@@ -109,6 +109,7 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 	// 스텝이 없는 틱의 표시값 초기화
 	LastTickStepCount = 0;
 	LastTickStepTimeMs = 0.0;
+	LastTickEventTimeMs = 0.0;
 
 	if (!Scene || DeltaSeconds <= 0.0f)
 	{
@@ -120,7 +121,7 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 	const double FixedStepSeconds = Settings.FixedStepSeconds;
 	const int32 MaxStepsPerTick = Settings.MaxStepsPerTick;
 	const float StepDelta = static_cast<float>(FixedStepSeconds);
-	const bool bMeasureStepTime = FStatOverlay::IsEnabled(EStatFlags::Physics);
+	const bool bMeasurePhysicsTime = FStatOverlay::IsEnabled(EStatFlags::Physics);
 	AccumulatedSeconds = std::min(
 		AccumulatedSeconds + static_cast<double>(DeltaSeconds),
 		FixedStepSeconds * MaxStepsPerTick);
@@ -133,10 +134,10 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 		{
 			// 고정 스텝의 네이티브 씬 쓰기 잠금
 			const physx::PxSceneWriteLock WriteLock(*Scene);
-			const uint64 StartCycles = bMeasureStepTime ? FPlatformTime::GetCycles64() : 0;
+			const uint64 StartCycles = bMeasurePhysicsTime ? FPlatformTime::GetCycles64() : 0;
 			Scene->simulate(StepDelta);
 			bFetchedResults = Scene->fetchResults(true);
-			if (bMeasureStepTime && bFetchedResults)
+			if (bMeasurePhysicsTime && bFetchedResults)
 			{
 				const uint64 ElapsedCycles = FPlatformTime::GetCycles64() - StartCycles;
 				LastTickStepTimeMs += FPlatformTime::ToMilliseconds64(ElapsedCycles);
@@ -155,8 +156,16 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 		AccumulatedSeconds -= FixedStepSeconds;
 		OnPostStep.Broadcast(StepDelta);
 	}
-	// 프레임의 물리 스텝 완료 후 게임 이벤트 발행
-	SimulationEvents->DispatchPending();
+	// 마지막 스텝 이후의 게임 이벤트 전달 비용 별도 측정
+	if (SimulationEvents->HasPendingEvents())
+	{
+		const uint64 StartCycles = bMeasurePhysicsTime ? FPlatformTime::GetCycles64() : 0;
+		SimulationEvents->DispatchPending();
+		if (bMeasurePhysicsTime)
+		{
+			LastTickEventTimeMs = FPlatformTime::ToMilliseconds64(FPlatformTime::GetCycles64() - StartCycles);
+		}
+	}
 }
 
 void FPhysicsScene::RefreshOverlapEvents(const UPrimitiveComponent* Component)

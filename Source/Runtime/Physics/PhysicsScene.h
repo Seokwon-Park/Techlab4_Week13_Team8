@@ -56,9 +56,11 @@ public:
 		AccumulatedSeconds = 0.0;
 		LastTickStepCount = 0;
 		LastTickStepTimeMs = 0.0;
+		LastTickEventTimeMs = 0.0;
 	}
 	int32 GetLastTickStepCount() const { return LastTickStepCount; }
 	double GetLastTickStepTimeMs() const { return LastTickStepTimeMs; }
+	double GetLastTickEventTimeMs() const { return LastTickEventTimeMs; }
 	float GetInterpolationAlpha() const;
 	// 겹쳐 있는 고체의 이벤트 허용 상태 변경 전달
 	void RefreshOverlapEvents(const UPrimitiveComponent* Component);
@@ -102,6 +104,8 @@ private:
 	// 마지막 물리 틱의 완료 스텝 수와 처리 시간 합계
 	int32 LastTickStepCount = 0;
 	double LastTickStepTimeMs = 0.0;
+	// 게임 스레드에서 Hit·Overlap을 수신자에게 전달한 시간
+	double LastTickEventTimeMs = 0.0;
 
 	// PhysX 쿼리, 엔진 히트 결과
 	bool QuerySingle(const FRay& WorldRay, float MaxDistance, const physx::PxGeometry* SweepGeometry,

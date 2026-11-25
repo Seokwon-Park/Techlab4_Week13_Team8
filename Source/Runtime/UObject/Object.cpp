@@ -17,6 +17,8 @@ UObject::UObject()
 	ObjectUUID = FEngineStatics::GetUUID();
 	InternalIndex = GUObjectArray.Num();
 	GUObjectArray.Add(this);
+	// 실제 클래스 등록 전에도 조회 가능한 생존 주소 등록
+	HashObject(this, nullptr);
 }
 
 UObject::UObject(bool bRegister)
@@ -28,6 +30,7 @@ UObject::~UObject()
 {
 	if (bIsRegistered)
 	{
+		UnhashObject(this, nullptr);
 		if (GetClass())
 		{
 			UnhashObject(this, GetClass());
