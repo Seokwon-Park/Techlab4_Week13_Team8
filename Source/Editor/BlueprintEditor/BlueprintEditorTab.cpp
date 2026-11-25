@@ -373,7 +373,8 @@ void FBlueprintDetailsPanel::DrawContent()
 	else if (Selected)
 	{
 		ImGui::PushID(Selected);
-		DrawVariableSection(Selected);
+		if (!Editor.IsComponentBlueprint())   // 컴포넌트 BP는 BP 자체가 컴포넌트라 변수 이름이 없다
+			DrawVariableSection(Selected);
 		FPropertyEditor::DrawObjectProperties(Selected, nullptr, Search);
 		if (Search[0] == '\0')
 			FPropertyEditor::DrawComponentExtras(Selected);
@@ -432,6 +433,8 @@ void FBlueprintDetailsPanel::DrawClassSettings()
 	{
 		BeginDetailRow("Parent Class");
 		ImGui::TextUnformatted(BlueprintClass->Super ? BlueprintClass->Super->Name.c_str() : "None");
+		BeginDetailRow("Blueprint Type");
+		ImGui::TextUnformatted(Editor.IsComponentBlueprint() ? "Component Blueprint" : "Actor Blueprint");
 		BeginDetailRow("Blueprint");
 		ImGui::TextUnformatted(BlueprintClass->Name.c_str());
 		BeginDetailRow("Asset Path");
@@ -553,6 +556,18 @@ FBlueprintEditorTab::FBlueprintEditorTab(FBlueprintEditor& InEditor)
 	PanelClassId = ImHashStr("BlueprintPanelClass", 0, AssetId);
 
 	// 순서는 BuildDefaultLayout이 쓴다.
+	if (InEditor.IsComponentBlueprint())
+	{
+		// UE5 Component Blueprint 에디터처럼 Details + Viewport만 둔다 (컴포넌트 트리와 노드 그래프 없음).
+		Panels.Add(MakeUnique<FBlueprintDetailsPanel>(InEditor));
+		Panels.Add(MakeUnique<FBlueprintViewportPanel>(InEditor));
+		for (auto& Panel : Panels)
+		{
+			Panel->SetDockClass(PanelClassId);
+			Panel->Init();
+		}
+		return;
+	}
 	Panels.Add(MakeUnique<FBlueprintComponentsPanel>(InEditor));
 	Panels.Add(MakeUnique<FBlueprintMyBlueprintPanel>(InEditor));
 	Panels.Add(MakeUnique<FBlueprintDetailsPanel>(InEditor));
@@ -619,12 +634,14 @@ void FBlueprintEditorTab::DrawToolbar()
 		// Class Settings / Class Defaults: Details에 보일 것을 고른다.
 		Gap();
 		const bool bClassSettings = BlueprintEditor.IsShowingClassSettings();
-		const bool bClassDefaults = !bClassSettings && BlueprintEditor.GetSelectedComponent() == nullptr;
+		const bool bClassDefaults = !bClassSettings &&
+			BlueprintEditor.GetSelectedComponent() == BlueprintEditor.GetComponentTemplate();
 		if (EditorIcons::Button("##BPClassSettings", EEditorIcon::Settings, IconGray, "Class Settings", false, bClassSettings, ButtonHeight))
 			BlueprintEditor.ShowClassSettings();
 		ImGui::SetItemTooltip("Edit Class Settings (parent class and blueprint options)");
 		ImGui::SameLine();
-		if (EditorIcons::Button("##BPClassDefaults", EEditorIcon::ClassActor, IconGray, "Class Defaults", false, bClassDefaults, ButtonHeight))
+		const EEditorIcon DefaultsIcon = BlueprintEditor.IsComponentBlueprint() ? EEditorIcon::ClassComponent : EEditorIcon::ClassActor;
+		if (EditorIcons::Button("##BPClassDefaults", DefaultsIcon, IconGray, "Class Defaults", false, bClassDefaults, ButtonHeight))
 			BlueprintEditor.SelectComponent(nullptr);
 		ImGui::SetItemTooltip("Edit the default values of this blueprint");
 
@@ -644,6 +661,15 @@ void FBlueprintEditorTab::BuildDefaultLayout(ImGuiID InDockSpaceId, const ImVec2
 	ImGui::DockBuilderAddNode(InDockSpaceId, ImGuiDockNodeFlags_DockSpace);
 	ImGui::DockBuilderSetNodeSize(InDockSpaceId, Size);
 	ImGuiID ViewportId = InDockSpaceId;
+	if (BlueprintEditor.IsComponentBlueprint())
+	{
+		// 컴포넌트 BP: 가운데 Viewport, 오른쪽 Details
+		const ImGuiID DetailsOnlyId = ImGui::DockBuilderSplitNode(ViewportId, ImGuiDir_Right, 0.40f, nullptr, &ViewportId);
+		ImGui::DockBuilderDockWindow(Panels[0]->GetWindowName(), DetailsOnlyId);
+		ImGui::DockBuilderDockWindow(Panels[1]->GetWindowName(), ViewportId);
+		ImGui::DockBuilderFinish(InDockSpaceId);
+		return;
+	}
 	ImGuiID MyBlueprintId = ImGui::DockBuilderSplitNode(ViewportId, ImGuiDir_Left, 0.16f, nullptr, &ViewportId);
 	const ImGuiID ComponentsId = ImGui::DockBuilderSplitNode(MyBlueprintId, ImGuiDir_Up, 0.35f, nullptr, &MyBlueprintId);
 	const ImGuiID DetailsId = ImGui::DockBuilderSplitNode(ViewportId, ImGuiDir_Right, 0.30f, nullptr, &ViewportId);

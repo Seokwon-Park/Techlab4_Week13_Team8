@@ -31,6 +31,9 @@ struct FBlueprintViewportPointer
 // 데이터 Blueprint 에디터. UE의 Blueprint 에디터에서 Components / Viewport / Details 부분에 해당한다.
 // 미리보기 월드에 BP 클래스로 액터(템플릿)를 하나 만들고, 그 액터를 고친 뒤 Save하면
 // 템플릿의 지금 상태가 BP 기본값이 된다 (FBlueprint::SaveBlueprint).
+//
+// 컴포넌트 BP(부모가 UActorComponent 계열)는 빈 액터에 BP 컴포넌트를 하나 붙여 그 컴포넌트를 템플릿으로 쓴다.
+// 이때는 UE5의 Component Blueprint 에디터처럼 Details와 Viewport만 보이고, 노드 그래프는 없다.
 class FBlueprintEditor : public FAssetEditor
 {
 public:
@@ -62,13 +65,20 @@ public:
 
 	UClass* GetBlueprintClass() const { return BlueprintClass; }
 	AActor* GetTemplate() const { return Template; }
+	// 컴포넌트 BP면 편집 중인 BP 컴포넌트, 아니면 nullptr.
+	UActorComponent* GetComponentTemplate() const { return ComponentTemplate; }
+	bool IsComponentBlueprint() const { return ComponentTemplate != nullptr; }
 
-	// 고르고 있는 컴포넌트. nullptr이면 액터 자신(Self)이다.
+	// 고르고 있는 컴포넌트. nullptr이면 액터 자신(Self)이다. 컴포넌트 BP는 늘 BP 컴포넌트를 고른다.
 	UActorComponent* GetSelectedComponent() const { return SelectedComponent; }
-	void SelectComponent(UActorComponent* Component) { SelectedComponent = Component; bShowClassSettings = false; }
+	void SelectComponent(UActorComponent* Component)
+	{
+		SelectedComponent = ComponentTemplate ? ComponentTemplate : Component;
+		bShowClassSettings = false;
+	}
 	// 툴바 [Class Settings]: Details에 부모 클래스 같은 BP 자체 설정을 보인다. 컴포넌트를 고르면 풀린다.
 	bool IsShowingClassSettings() const { return bShowClassSettings; }
-	void ShowClassSettings() { SelectedComponent = nullptr; bShowClassSettings = true; }
+	void ShowClassSettings() { SelectedComponent = ComponentTemplate; bShowClassSettings = true; }
 	// 이름을 바꾼다. 빈 이름이거나 같은 이름의 컴포넌트가 이미 있으면 바꾸지 않는다.
 	bool RenameComponent(UActorComponent* Component, const char* NewName);
 	// 컴포넌트를 지운다. 루트는 지울 수 없다. 패널을 다 그린 뒤 부른다.
@@ -107,6 +117,7 @@ private:
 
 	UClass* BlueprintClass = nullptr;
 	AActor* Template = nullptr;
+	UActorComponent* ComponentTemplate = nullptr;
 
 	// 이 에디터의 편집 모드와 좌표계. 레벨 에디터와 따로 갖는다. Gizmo보다 먼저 선언해야 한다.
 	FEditorModeTools ModeTools;

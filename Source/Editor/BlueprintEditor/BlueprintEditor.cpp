@@ -58,12 +58,27 @@ bool FBlueprintEditor::InitializeResources()
 	if (!FAssetEditor::InitializeResources())
 		return false;
 
-	// 미리보기 월드에 BP 클래스로 액터를 만든다. SpawnActor가 BP 기본값을 적용해 준다.
-	Template = PreviewScene.AddActor(BlueprintClass);
-	if (!Template)
+	if (FBlueprint::IsComponentBlueprint(BlueprintClass))
 	{
-		HTR_LOG(Warning, "Blueprint editor: cannot spawn {}", BlueprintClass->Name);
-		return false;
+		// 컴포넌트 BP: 빈 액터에 BP 컴포넌트를 붙인다. AddComponent가 BP 기본값을 적용해 준다.
+		Template = PreviewScene.AddActor(AActor::StaticClass());
+		ComponentTemplate = Template ? Template->AddComponent(BlueprintClass, FName(BlueprintClass->Name)) : nullptr;
+		if (!ComponentTemplate)
+		{
+			HTR_LOG(Warning, "Blueprint editor: cannot create component {}", BlueprintClass->Name);
+			return false;
+		}
+		SelectedComponent = ComponentTemplate;
+	}
+	else
+	{
+		// 미리보기 월드에 BP 클래스로 액터를 만든다. SpawnActor가 BP 기본값을 적용해 준다.
+		Template = PreviewScene.AddActor(BlueprintClass);
+		if (!Template)
+		{
+			HTR_LOG(Warning, "Blueprint editor: cannot spawn {}", BlueprintClass->Name);
+			return false;
+		}
 	}
 
 	// 그래프는 편집용으로 복사해 둔다. 저장할 때까지 실행 중인 게임에는 옛 그래프가 쓰인다.
@@ -87,6 +102,7 @@ void FBlueprintEditor::ShutdownResources()
 	Gizmo.EndDrag();
 	Gizmo.SetTarget(nullptr);
 	Template = nullptr;
+	ComponentTemplate = nullptr;
 	SelectedComponent = nullptr;
 	FAssetEditor::ShutdownResources();
 }
@@ -103,7 +119,8 @@ bool FBlueprintEditor::SerializeTemplate(TArray<uint8>& OutBytes) const
 		FJsonArchiveOutputFormatter Formatter(Writer);
 		FStructuredArchive Ar(Formatter);
 		FStructuredArchive::FRecord Root = Ar.Open().EnterRecord();
-		Template->Serialize(Root.EnterRecord("Defaults"));
+		UObject* Defaults = ComponentTemplate ? static_cast<UObject*>(ComponentTemplate) : Template;
+		Defaults->Serialize(Root.EnterRecord("Defaults"));
 		Ar.Close();
 	}
 	if (Writer.IsError())
@@ -123,7 +140,8 @@ bool FBlueprintEditor::Save()
 
 	FString Error;
 	const std::filesystem::path File = ResolveFile(GetAssetPath());
-	if (!FBlueprint::SaveBlueprint(File, BlueprintClass->Super, Template, Error, &Graphs))
+	UObject* Defaults = ComponentTemplate ? static_cast<UObject*>(ComponentTemplate) : Template;
+	if (!FBlueprint::SaveBlueprint(File, BlueprintClass->Super, Defaults, Error, ComponentTemplate ? nullptr : &Graphs))
 	{
 		HTR_LOG(Error, "Blueprint: failed to save {} ({})", GetAssetPath(), Error);
 		const std::wstring Message = FPaths::FromUtf8("Failed to save blueprint.\n" + Error).wstring();
@@ -155,7 +173,7 @@ bool FBlueprintEditor::ConfirmClose()
 
 void FBlueprintEditor::DeleteComponent(UActorComponent* Component)
 {
-	if (!Template || !Component || Component == Template->GetRootComponent())
+	if (!Template || !Component || Component == Template->GetRootComponent() || Component == ComponentTemplate)
 		return;
 	if (Gizmo.GetTarget() == Component)
 	{

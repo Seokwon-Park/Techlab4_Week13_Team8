@@ -9,6 +9,7 @@
 class UClass;
 class UObject;
 class AActor;
+class UActorComponent;
 struct FBPGraphSet;
 
 // 데이터 Blueprint. UE의 Data Only Blueprint와 같은 자리다.
@@ -18,6 +19,9 @@ struct FBPGraphSet;
 //
 //   { "Version": 1, "ParentClass": "AStaticMeshActor",
 //     "Defaults": { AActor::Serialize와 같은 형식 (프로퍼티 + 컴포넌트) } }
+//
+// 부모는 액터(Actor Blueprint) 또는 액터 컴포넌트(Component Blueprint)다. 컴포넌트 BP의 Defaults는
+// 컴포넌트 하나의 Serialize 형식이고, AActor::AddComponent가 만든 컴포넌트에 적용한다. 노드 그래프는 액터 BP만 갖는다.
 //
 // 엔진이 시작할 때 Assets 아래 .bp를 모두 읽어 파일 이름("BP_Door")으로 UClass를 만들어 등록한다.
 // 그래서 FindClass, SpawnActor, 클래스 목록, 씬 파일이 BP 클래스를 C++ 클래스처럼 쓴다.
@@ -36,10 +40,14 @@ namespace FBlueprint
 	// 실패하면 nullptr이고 이유를 OutError에 쓴다.
 	UClass* LoadBlueprint(const std::filesystem::path& File, FString* OutError = nullptr);
 
-	// Template 액터의 지금 상태를 기본값으로 삼아 .bp를 쓰고 다시 읽는다. Template이 없으면 부모 클래스의 CDO를 쓴다.
-	// ParentClass는 AActor 계열이어야 한다. 쓴 뒤 등록된 클래스를 돌려준다.
+	// BP 부모가 될 수 있는 클래스인가: 추상이 아닌 AActor 또는 UActorComponent 계열.
+	bool IsValidParentClass(const UClass* Class);
+
+	// Template(액터 또는 컴포넌트)의 지금 상태를 기본값으로 삼아 .bp를 쓰고 다시 읽는다. Template이 없으면 부모 클래스의 CDO를 쓴다.
+	// ParentClass는 IsValidParentClass여야 하고 Template은 그 클래스여야 한다. 쓴 뒤 등록된 클래스를 돌려준다.
 	// Graphs가 있으면 "Graphs"(EventGraph, Construction Script)로 함께 쓰고, nullptr이면 파일에 있던 그래프를 남긴다.
-	UClass* SaveBlueprint(const std::filesystem::path& File, UClass* ParentClass, AActor* Template, FString& OutError,
+	// 컴포넌트 BP는 그래프를 쓰지 않는다.
+	UClass* SaveBlueprint(const std::filesystem::path& File, UClass* ParentClass, UObject* Template, FString& OutError,
 		const FBPGraphSet* Graphs = nullptr);
 
 	// BP 클래스의 노드 그래프 (BlueprintGraph.h). 그래프가 없거나 BP가 아니면 nullptr. 부모 BP는 보지 않는다.
@@ -50,6 +58,8 @@ namespace FBlueprint
 	bool SetDefaultStringProperty(UClass* BlueprintClass, const FString& PropertyName, const FString& Value, FString& OutError);
 
 	bool IsBlueprintClass(const UClass* Class);
+	// 부모가 UActorComponent 계열인 BP 클래스인가.
+	bool IsComponentBlueprint(const UClass* Class);
 	// BP 클래스의 에셋 경로(Assets 기준). BP가 아니면 빈 문자열.
 	FString GetAssetPath(const UClass* Class);
 	// BP가 아닌 가장 가까운 조상 (C++ 클래스). BP가 아니면 자기 자신.
@@ -58,6 +68,8 @@ namespace FBlueprint
 	// 스폰한 액터에 BP 기본값(프로퍼티와 컴포넌트)을 덮어쓴다. 부모 BP의 기본값부터 차례로 적용한다.
 	// UWorld::SpawnActor가 부른다.
 	void ApplyActorDefaults(AActor* Actor);
+	// 새로 만든 컴포넌트에 컴포넌트 BP 기본값을 덮어쓴다. 부모 BP부터 차례로 적용한다. AActor::AddComponent가 부른다.
+	void ApplyComponentDefaults(UActorComponent* Component);
 
 	// ---------------- 놓인 BP 액터의 차이 저장 (UE의 delta serialization) ----------------
 	// 씬에는 BP 액터를 통째로 쓰지 않고, BP 기본값과 다른 값만 쓴다. 불러올 때는 지금의 BP 기본값 위에

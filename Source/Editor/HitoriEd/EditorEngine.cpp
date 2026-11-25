@@ -1359,6 +1359,11 @@ void UEditorEngine::PlaceBlueprint(int32 ViewIndex, const FVector2& ViewLocalPos
 		Class = FBlueprint::LoadBlueprint(File);
 	if (!Class)
 		return;
+	if (FBlueprint::IsComponentBlueprint(Class))
+	{
+		HTR_LOG(Warning, "{} is a Component Blueprint; add it to an actor with + Add in the Details panel", Class->Name);
+		return;
+	}
 
 	// 마우스 아래 물체에 닿는 곳에 놓는다. 닿는 것이 없으면 카메라 앞 일정 거리에 놓는다.
 	const FRay Ray = Client->DeprojectScreenToWorld(ViewLocalPos);
