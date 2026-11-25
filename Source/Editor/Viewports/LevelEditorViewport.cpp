@@ -131,7 +131,7 @@ void FLevelEditorViewportClient::Draw(const FSceneView* View, FScenePassCallback
 	const bool bIsActiveViewport = (GCurrentLevelEditingViewportClient == this);
 
 	// 선택된 액터는 에디터의 선택 집합에서 읽는다.
-	AActor* SelectedActor = GEditor->GetSelectedActors()->GetTop<AActor>();
+	AActor* SelectedActor = GEditor->GetPrimarySelectedActor();
 	const bool bDrawSelectedLight = bIsActiveViewport && SelectedActor &&
 		(Cast<ASpotLightActor>(SelectedActor) ||
 			Cast<APointLightActor>(SelectedActor) ||

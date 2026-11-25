@@ -436,10 +436,10 @@ void UEditorEngine::InitCommands()
 	PasteCommand.CanExecute = [this]() { return CanPasteActor(); };
 	PasteCommand.Execute = [this]() { PasteActor(); };
 
-	DuplicateCommand = { "Duplicate", "Duplicate the selected actor", nullptr, White, { EKeyCode::D, true } };
+	DuplicateCommand = { "Duplicate", "Duplicate the selected actors", nullptr, White, { EKeyCode::D, true } };
 	DuplicateCommand.CanExecute = [this]()
 	{
-		AActor* Actor = SelectedActors ? SelectedActors->GetTop<AActor>() : nullptr;
+		AActor* Actor = GetPrimarySelectedActor();
 		return CanEditLevelHistory() && Actor && Actor->GetWorld() == EditorWorld;
 	};
 	DuplicateCommand.Execute = [this]() { DuplicateSelectedActor(); };
@@ -609,7 +609,7 @@ void UEditorEngine::Tick(const float DeltaTime)
 	FStatOverlay::Tick(DeltaTime);
 
 	if (!ImGui::GetIO().WantTextInput && FInputSystem::IsKeyPressed(EKeyCode::Delete))
-		DeleteActor(GetSelectedActors()->GetTop<AActor>());
+		DeleteSelectedActors();
 
 	// F: 선택한 액터로 카메라를 옮긴다. 우클릭 비행 중이거나 수식키를 누르고 있으면 다른 조작이므로 넘긴다.
 	if (!ImGui::GetIO().WantTextInput && IsLevelEditorFocused() &&
@@ -1003,12 +1003,86 @@ void UEditorEngine::UpdateGizmoAndPicking()
 		return;
 
 	const FVector2 LocalMousePosition = ViewportsPanel->GetLocalMousePosition();
-	// 클릭으로 고른 액터 하나만 선택한다. 빈 곳을 누르면 SelectedActor가 nullptr이라 선택이 비워진다.
+
+	// 여러 액터를 골랐고 기즈모가 주 선택 액터의 루트에 붙어 있으면, 기즈모가 옮긴 만큼 나머지 액터도 옮긴다.
+	TArray<AActor*> Others;
+	USceneComponent* GizmoTarget = Gizmo ? Gizmo->GetTarget() : nullptr;
+	AActor* Primary = GetPrimarySelectedActor();
+	const bool bMoveGroup = GizmoTarget && Primary && GizmoTarget == Primary->GetRootComponent() &&
+		SelectedComponents->Num() == 0 && SelectedActors->Num() > 1;
+	FMatrix Before;
+	if (bMoveGroup)
+	{
+		Before = GizmoTarget->GetWorldMatrix();
+		TArray<AActor*> Selected;
+		SelectedActors->GetSelectedObjects(Selected);
+		for (AActor* Actor : Selected)
+		{
+			if (!Actor || Actor == Primary || !Actor->GetRootComponent())
+				continue;
+			// 선택된 다른 액터에 붙어 있으면 부모를 따라 움직이므로 따로 옮기지 않는다.
+			bool bParentSelected = false;
+			for (AActor* Parent = Actor->GetAttachParentActor(); Parent; Parent = Parent->GetAttachParentActor())
+				if (SelectedActors->IsSelected(Parent)) { bParentSelected = true; break; }
+			if (!bParentSelected)
+				Others.Add(Actor);
+		}
+	}
+
+	// 빈 곳을 누르면 SelectedActor가 nullptr이다. Ctrl/Shift를 누르고 있으면 여러 개를 고른다.
 	ViewClient->UpdateGizmoAndPicking(Gizmo.get(), LocalMousePosition, [this](AActor* SelectedActor) {
-		SelectNone(false);
-		SelectActor(SelectedActor, true, false);
-		NoteSelectionChange();
+		const ImGuiIO& IO = ImGui::GetIO();
+		ClickSelectActor(SelectedActor, IO.KeyCtrl, IO.KeyShift);
 		});
+
+	if (bMoveGroup && !Others.IsEmpty() && Gizmo->GetTarget() == GizmoTarget)
+	{
+		const FMatrix After = GizmoTarget->GetWorldMatrix();
+		bool bChanged = false;
+		for (int32 Row = 0; Row < 4 && !bChanged; ++Row)
+			for (int32 Col = 0; Col < 4; ++Col)
+				if (Before[Row][Col] != After[Row][Col]) { bChanged = true; break; }
+		if (bChanged)
+		{
+			// 행 벡터 규칙: 새 월드 = 옛 월드 * (Before의 역) * After. 주 선택을 중심으로 함께 옮기고 돌리고 늘인다.
+			const FMatrix Delta = Before.Inverse() * After;
+			for (AActor* Actor : Others)
+			{
+				USceneComponent* Root = Actor->GetRootComponent();
+				Root->SetWorldTransform(Root->GetWorldMatrix() * Delta, false);
+			}
+		}
+	}
+}
+
+void UEditorEngine::ClickSelectActor(AActor* Actor, bool bCtrl, bool bShift)
+{
+	if (!SelectedActors)
+		return;
+	if (!Actor)
+	{
+		// 빈 곳: 수식키 없이 누르면 선택을 비우고, Ctrl/Shift면 지금 선택을 그대로 둔다.
+		if (!bCtrl && !bShift)
+			SelectNone(true);
+		return;
+	}
+
+	if (bCtrl)
+	{
+		SelectActor(Actor, !SelectedActors->IsSelected(Actor), false);
+	}
+	else if (bShift)
+	{
+		// 이미 골랐으면 뺐다가 다시 넣어 주 선택(맨 뒤)으로 올린다.
+		SelectedActors->Deselect(Actor);
+		SelectActor(Actor, true, false);
+	}
+	else
+	{
+		SelectNone(false);
+		SelectActor(Actor, true, false);
+	}
+	NoteSelectionChange();
 }
 
 //void UEditorEngine::RenderSceneText(UWorld* TargetWorld, const FSceneView& SceneView)
@@ -1112,6 +1186,17 @@ void UEditorEngine::DeleteActor(AActor* Actor)
 	FLevelUndoHistory::MarkDirty();
 }
 
+void UEditorEngine::DeleteSelectedActors()
+{
+	if (!SelectedActors)
+		return;
+	// DeleteActor가 선택을 비우므로 먼저 목록을 복사한다.
+	TArray<AActor*> Actors;
+	SelectedActors->GetSelectedObjects(Actors);
+	for (AActor* Actor : Actors)
+		DeleteActor(Actor);
+}
+
 void UEditorEngine::DeleteComponent(UActorComponent* Component)
 {
 	if (!Component)
@@ -1208,7 +1293,8 @@ void UEditorEngine::NoteSelectionChange()
 {
 	if (!SelectedActors || !SelectedComponents) return;
 
-	AActor* Actor = SelectedActors->GetTop<AActor>();
+	// 여러 개를 골랐으면 마지막에 고른 액터(주 선택)에 기즈모와 디테일 패널을 맞춘다.
+	AActor* Actor = GetPrimarySelectedActor();
 	UActorComponent* Component = SelectedComponents->GetTop<UActorComponent>();
 	USceneComponent* Root = Actor ? Actor->GetRootComponent() : nullptr;
 
@@ -1228,16 +1314,24 @@ void UEditorEngine::NoteSelectionChange()
 		}
 	}
 
-	// 외곽선은 선택된 액터의 메시에 그린다. 루트가 메시가 아니면 액터의 첫 번째 메시 컴포넌트를 쓴다.
+	// 외곽선은 선택된 액터마다 그 메시에 그린다. 루트가 메시가 아니면 액터의 첫 번째 메시 컴포넌트를 쓴다.
 	if (Outline)
 	{
-		UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Root);
-		if (!Primitive && Actor)
+		TArray<AActor*> Selected;
+		SelectedActors->GetSelectedObjects(Selected);
+		TArray<UPrimitiveComponent*> Primitives;
+		for (AActor* Each : Selected)
 		{
-			for (UActorComponent* C : Actor->GetComponents())
-				if ((Primitive = Cast<UPrimitiveComponent>(C))) break;
+			UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Each->GetRootComponent());
+			if (!Primitive)
+			{
+				for (UActorComponent* C : Each->GetComponents())
+					if ((Primitive = Cast<UPrimitiveComponent>(C))) break;
+			}
+			if (Primitive)
+				Primitives.Add(Primitive);
 		}
-		Outline->SetTarget(Primitive);
+		Outline->SetTargets(Primitives);
 	}
 
 	// 디테일 패널은 선택된 액터를 보여 준다. 컴포넌트를 고른 경우에는 패널이 이미 그 컴포넌트를 보여 주고 있으므로 건드리지 않는다.
@@ -1291,7 +1385,7 @@ bool UEditorEngine::IsLevelEditorFocused() const
 
 void UEditorEngine::FocusSelection()
 {
-	AActor* Actor = SelectedActors ? SelectedActors->GetTop<AActor>() : nullptr;
+	AActor* Actor = GetPrimarySelectedActor();
 	if (!Actor || !ViewportsPanel)
 		return;
 
@@ -1311,9 +1405,13 @@ void UEditorEngine::FocusSelection()
 	}
 	else
 	{
-		for (UActorComponent* Component : Actor->GetComponents())
-			if (USceneComponent* SceneComponent = Cast<USceneComponent>(Component))
-				Targets.Add(SceneComponent);
+		// 여러 액터를 골랐으면 모두가 화면에 들어오게 한다.
+		TArray<AActor*> SelectedList;
+		SelectedActors->GetSelectedObjects(SelectedList);
+		for (AActor* Each : SelectedList)
+			for (UActorComponent* Component : Each->GetComponents())
+				if (USceneComponent* SceneComponent = Cast<USceneComponent>(Component))
+					Targets.Add(SceneComponent);
 	}
 
 	bool bHasBox = false;
@@ -1365,7 +1463,7 @@ void UEditorEngine::FocusSelection()
 void UEditorEngine::CopySelectedActor()
 {
 	// PIE 중에도 복사는 된다. 게임 중 상태를 에디터에 붙여 넣을 수 있다.
-	AActor* Actor = SelectedActors ? SelectedActors->GetTop<AActor>() : nullptr;
+	AActor* Actor = GetPrimarySelectedActor();
 	if (FActorClipboard::CopyToClipboard(Actor))
 		HTR_LOG(Info, "Copied actor {}", Actor->GetName());
 }
@@ -1424,10 +1522,32 @@ void UEditorEngine::PasteActor()
 
 void UEditorEngine::DuplicateSelectedActor()
 {
-	AActor* Actor = SelectedActors ? SelectedActors->GetTop<AActor>() : nullptr;
-	if (!CanEditLevelHistory() || !Actor || Actor->GetWorld() != EditorWorld)
+	if (!CanEditLevelHistory() || !SelectedActors)
 		return;
-	OnActorPasted(FActorClipboard::Duplicate(Actor, EditorWorld));
+	TArray<AActor*> Sources;
+	SelectedActors->GetSelectedObjects(Sources);
+	if (Sources.Num() <= 1)
+	{
+		AActor* Actor = Sources.IsEmpty() ? nullptr : Sources[0];
+		if (Actor && Actor->GetWorld() == EditorWorld)
+			OnActorPasted(FActorClipboard::Duplicate(Actor, EditorWorld));
+		return;
+	}
+
+	// 여러 개: 모두 복제하고 복제본을 같은 순서로 선택한다 (마지막 것이 주 선택).
+	TArray<AActor*> Copies;
+	for (AActor* Actor : Sources)
+		if (Actor && Actor->GetWorld() == EditorWorld)
+			if (AActor* Copy = FActorClipboard::Duplicate(Actor, EditorWorld))
+				Copies.Add(Copy);
+	if (Copies.IsEmpty())
+		return;
+	SelectNone(false);
+	for (AActor* Copy : Copies)
+		SelectActor(Copy, true, false);
+	NoteSelectionChange();
+	FLevelUndoHistory::MarkDirty();
+	HTR_LOG(Info, "Duplicated {} actors", Copies.Num());
 }
 
 void UEditorEngine::OnActorPasted(AActor* NewActor)
@@ -1502,10 +1622,20 @@ void UEditorEngine::RedoLevelEdit()
 void UEditorEngine::ApplyLevelSnapshot(const TArray<uint8>& Snapshot)
 {
 	// 복원하면 액터와 컴포넌트가 모두 새로 만들어진다. 이름은 스냅샷에 남으므로 이름으로 선택을 되살린다.
-	AActor* OldActor = SelectedActors ? SelectedActors->GetTop<AActor>() : nullptr;
+	AActor* OldActor = GetPrimarySelectedActor();
 	UActorComponent* OldComponent = SelectedComponents ? SelectedComponents->GetTop<UActorComponent>() : nullptr;
 	const FString ActorName = OldActor ? OldActor->GetName() : FString();
 	const FString ComponentName = OldComponent ? OldComponent->GetName() : FString();
+	// 함께 골라 둔 다른 액터도 이름으로 되살린다 (주 선택은 맨 뒤에 다시 넣는다).
+	TArray<FString> OtherNames;
+	if (SelectedActors)
+	{
+		TArray<AActor*> Selected;
+		SelectedActors->GetSelectedObjects(Selected);
+		for (AActor* Each : Selected)
+			if (Each != OldActor)
+				OtherNames.Add(Each->GetName());
+	}
 
 	// 지워질 오브젝트를 가리키는 참조를 먼저 모두 끊는다.
 	SelectNone(true);
@@ -1525,6 +1655,14 @@ void UEditorEngine::ApplyLevelSnapshot(const TArray<uint8>& Snapshot)
 	ULevel* Level = EditorWorld->GetPersistentLevel();
 	if (!Level)
 		return;
+
+	for (const FString& Name : OtherNames)
+		for (AActor* Actor : Level->GetActors())
+			if (Actor && Actor->GetName() == Name)
+			{
+				SelectActor(Actor, true, false);
+				break;
+			}
 
 	for (AActor* Actor : Level->GetActors())
 	{

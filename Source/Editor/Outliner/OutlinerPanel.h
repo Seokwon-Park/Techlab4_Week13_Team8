@@ -53,6 +53,8 @@ private:
     void DrawToolbar(ULevel* Level);
     void DrawTable(ULevel* Level);
     void DrawRow(const FRow& Row, ULevel* Level);
+    // 액터 줄을 왼쪽 클릭했을 때. Ctrl은 넣고 빼기, Shift는 기준 줄부터 이 줄까지 고른다.
+    void HandleActorRowClick(AActor* Actor);
     void DrawRowLabel(const FRow& Row, float RowHeight, bool bDimmed);
 
     // 오른쪽 클릭 메뉴. 액터 줄, 폴더 줄, 빈 곳(과 월드 줄)이 각자 다르다.
@@ -103,6 +105,8 @@ private:
 
     // 이번 프레임의 줄과 폴더별 내용
     std::vector<FRow> Rows;
+    // Shift+클릭 범위의 기준 줄 (마지막으로 그냥 클릭하거나 Ctrl+클릭한 액터)
+    AActor* SelectionAnchor = nullptr;
     std::set<FString> Folders;
     std::map<FString, std::vector<FString>> ChildFolders;
     std::map<FString, std::vector<AActor*>> ActorsInFolder;

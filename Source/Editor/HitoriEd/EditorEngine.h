@@ -69,6 +69,8 @@ public:
 	// PIE 게임 화면 위에 Settings > Debug Draw (PIE)에서 켠 디버그 표시를 그린다.
 	void DrawPIEDebug(UWorld* World, const FMatrix& ViewProjection);
 	void DeleteActor(AActor* Actor);
+	// 선택된 액터를 모두 지운다. Delete 키가 부른다.
+	void DeleteSelectedActors();
 	void DeleteComponent(UActorComponent* Component);
 
 	// 선택한 액터가 활성 뷰포트 화면에 꽉 차도록 카메라를 부드럽게 옮긴다. F 키와 Outliner 메뉴가 부른다.
@@ -76,6 +78,7 @@ public:
 	void FocusSelection();
 
 	// 선택한 액터를 복사, 붙여넣기, 복제한다. 붙여넣은 액터를 새로 선택한다.
+	// 복제는 선택된 액터를 모두 복제하고, 복사는 주 선택(마지막에 고른 액터) 하나만 클립보드에 넣는다.
 	void CopySelectedActor();
 	void PasteActor();
 	void DuplicateSelectedActor();
@@ -120,10 +123,18 @@ public:
 	// UE의 UEditorEngine::GetSelectedActors, GetSelectedComponents와 같다.
 	USelection* GetSelectedActors() const { return SelectedActors; }
 	USelection* GetSelectedComponents() const { return SelectedComponents; }
+	// 주 선택: 마지막에 고른 액터. 기즈모와 디테일 패널이 이 액터를 본다. 없으면 nullptr.
+	AActor* GetPrimarySelectedActor() const { return SelectedActors ? SelectedActors->GetBottom<AActor>() : nullptr; }
+
+	// 클릭 한 번으로 선택을 바꾼다 (뷰포트와 Outliner가 함께 쓴다). UE 레벨 에디터와 같은 규칙이다.
+	//   그냥 클릭: 그 액터만 선택 (Actor가 nullptr이면 선택을 비운다)
+	//   Ctrl+클릭: 그 액터를 선택에 넣거나 뺀다
+	//   Shift+클릭: 그 액터를 선택에 더한다 (이미 있으면 주 선택으로 올린다)
+	void ClickSelectActor(AActor* Actor, bool bCtrl, bool bShift);
 
 	// 액터 하나를 선택하거나 선택에서 뺀다. 액터 선택이 바뀌면 컴포넌트 선택은 비운다.
 	// bNotify가 true면 NoteSelectionChange를 불러 기즈모, 외곽선, 디테일 패널을 새 선택에 맞춘다.
-	// 이 엔진은 한 번에 하나만 선택하므로, 다른 액터를 고를 때는 SelectNone(false)을 먼저 부른다. UE에서도 클릭 선택은 그렇게 한다.
+	// 여러 액터를 함께 고를 수 있다. 하나만 고르려면 SelectNone(false)을 먼저 부른다 (ClickSelectActor 참고).
 	// UE의 UEditorEngine::SelectActor와 같다. UE에는 뒤에 인자가 더 있다(bSelectEvenIfHidden, bForceRefresh).
 	void SelectActor(AActor* Actor, bool bInSelected, bool bNotify);
 	// 컴포넌트 하나를 선택하거나 선택에서 뺀다. UE의 UEditorEngine::SelectComponent와 같다.
