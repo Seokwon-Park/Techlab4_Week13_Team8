@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Math/Transform.h"
+#include "Math/Box.h"
 
 class FPhysicsScene;
 class UPrimitiveComponent;
@@ -83,6 +84,8 @@ struct FBodyInstance
     bool IsInstanceSimulatingPhysics() const;
     FVector GetUnrealWorldVelocity() const;
     float GetBodyMass() const;
+    // 모든 형상을 감싸는 월드 AABB. 바디가 없으면 Min > Max인 빈 박스
+    FBox GetBodyBounds() const;
 
 private:
     friend class FPhysicsScene;

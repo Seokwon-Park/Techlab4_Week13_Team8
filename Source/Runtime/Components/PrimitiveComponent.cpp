@@ -224,7 +224,8 @@ void UPrimitiveComponent::OnCreatePhysicsState()
 	BodyInstance.SetUseCCD(bUseCCD);
 	if (!BodyInstance.InitBody(*Setup, FTransform::FromMatrix(GetWorldMatrix()), this, *GetWorld()->GetPhysicsScene(), Type))
 	{
-		HTR_LOG(Warning, "InitBody failed: {} (non-uniform scale or invalid shape?)", GetClass()->Name);
+		HTR_LOG(Warning, "InitBody failed: {} on {} (non-uniform scale or invalid shape?)", GetClass()->Name,
+			GetOwner() ? GetOwner()->GetName() : FString("(no owner)"));
 		return;
 	}
 }

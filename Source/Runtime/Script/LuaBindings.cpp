@@ -565,6 +565,12 @@ namespace
 			{
 				if (auto* Skeletal = Cast<USkeletalMeshComponent>(&Deref(Ref)))
 					Skeletal->ResetPose();
+			},
+			// 천 시뮬레이션을 처음부터 다시 한다. 천이 없으면 아무것도 하지 않는다
+			"ForceClothNextUpdateTeleportAndReset", [](const FLuaComponentRef& Ref)
+			{
+				if (auto* Skeletal = Cast<USkeletalMeshComponent>(&Deref(Ref)))
+					Skeletal->ForceClothNextUpdateTeleportAndReset();
 			}
 		);
 	}

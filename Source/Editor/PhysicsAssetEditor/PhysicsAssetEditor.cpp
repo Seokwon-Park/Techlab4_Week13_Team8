@@ -80,6 +80,14 @@ bool FPhysicsAssetEditor::InitializeResources()
 	}
 	GizmoTarget->DetachFromParent();
 
+	if (StandaloneAsset)
+	{
+		PhysicsAsset = StandaloneAsset;
+		// 미리보기 시뮬레이션도 메시 기본 에셋이 아니라 이 에셋의 바디와 관절을 쓴다
+		if (MeshComponent) MeshComponent->SetPhysicsAsset(StandaloneAsset);
+		return true;
+	}
+
 	PhysicsAsset = Mesh->GetPhysicsAsset();
 	if (!PhysicsAsset)
 	{
@@ -109,6 +117,10 @@ FPhysAssetCreateParams FPhysicsAssetEditor::MakeCreateParams() const
 
 FString FPhysicsAssetEditor::GetSaveFilePath() const
 {
+	if (StandaloneAsset)
+	{
+		return StandaloneAssetPath;
+	}
 	if (!Mesh->PhysicsAssetPath.empty())
 	{
 		return Mesh->PhysicsAssetPath;
@@ -133,7 +145,10 @@ bool FPhysicsAssetEditor::Save()
 		HTR_LOG(Warning, "Failed to save physics asset: {} ({})", FilePath, Error);
 		return false;
 	}
-	Mesh->PhysicsAssetPath = FilePath;
+	if (!StandaloneAsset)
+	{
+		Mesh->PhysicsAssetPath = FilePath;
+	}
 	bDirty = false;
 	HTR_LOG(Info, "Saved physics asset: {}", FilePath);
 	return true;
@@ -732,8 +747,21 @@ void FPhysicsAssetEditor::CreateSimulationFloor(FPhysicsScene& Scene)
 		FloorBodySetup->AggGeom.BoxElems.Add(FKBoxElem());
 	}
 
-	// 바인드 포즈 바운드의 바닥면에 메시보다 훨씬 넓은 판을 깐다
-	const FBox Bounds = MeshComponent->CalcBounds();
+	// 바디 형상의 가장 낮은 면에 메시보다 훨씬 넓은 판을 깐다.
+	// CalcBounds는 컬링용이라 스키닝 바운드에 25% 여유를 더해 발보다 한참 아래까지 내려간다
+	FBox Bounds{ FVector(FLT_MAX, FLT_MAX, FLT_MAX), FVector(-FLT_MAX, -FLT_MAX, -FLT_MAX) };
+	for (const FBodyInstance* Body : MeshComponent->Bodies)
+	{
+		if (!Body || !Body->IsValidBodyInstance()) continue;
+		const FBox BodyBounds = Body->GetBodyBounds();
+		for (int32 Axis = 0; Axis < 3; ++Axis)
+		{
+			Bounds.Min[Axis] = std::min(Bounds.Min[Axis], BodyBounds.Min[Axis]);
+			Bounds.Max[Axis] = std::max(Bounds.Max[Axis], BodyBounds.Max[Axis]);
+		}
+	}
+	if (Bounds.Min.X > Bounds.Max.X)
+		Bounds = MeshComponent->CalcBounds();
 	const float MeshSize = (Bounds.Max - Bounds.Min).Size();
 	FKBoxElem& Box = FloorBodySetup->AggGeom.BoxElems[0];
 	Box.X = MeshSize * 10.0f;

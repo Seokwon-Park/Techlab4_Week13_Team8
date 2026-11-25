@@ -20,5 +20,6 @@ function Tick(dt)
         Saved.Comp.Location = Saved.Location
         Saved.Comp.Rotation = Saved.Rotation
         Saved.Comp:RecreatePhysicsState()
+        Saved.Comp:ForceClothNextUpdateTeleportAndReset()
     end
 end

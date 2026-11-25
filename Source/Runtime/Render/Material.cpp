@@ -36,6 +36,7 @@ UMaterial* UMaterial::CreateInstance(const UMaterial* Source)
 	Instance->Textures = Source->Textures;
 	Instance->BlendState = Source->BlendState;
 	Instance->bRenderBeforeDOF = Source->bRenderBeforeDOF;
+	Instance->bTwoSided = Source->bTwoSided;
 	Instance->DepthStencilState = Source->DepthStencilState;
 	Instance->SamplerState = Source->SamplerState;
 	Instance->BaseColor = Source->BaseColor;

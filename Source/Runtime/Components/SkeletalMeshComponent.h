@@ -88,6 +88,8 @@ public:
 	void StopClothPreview();
 	void TickClothPreview(float DeltaTime);
 	bool HasClothSimulation() const { return ClothSolver.get() != nullptr; }
+	// 실행 중인 천을 현재 본 포즈에서 처음부터 다시 시뮬레이션한다
+	void ForceClothNextUpdateTeleportAndReset();
 
 	// Cloth 충돌에 사용할 PhysicsAsset 바디 이름
 	UPROPERTY(EditAnywhere)
@@ -115,6 +117,18 @@ public:
 	// 천 표면과 공기의 상대 방향에 따른 양력 계수
 	UPROPERTY(EditAnywhere, meta=(ClampMin=0, ClampMax=1, Delta=0.01))
 	float ClothWindLiftCoefficient = 0.0f;
+
+	// 충돌면 위에서 미끄러질 때의 마찰 계수
+	UPROPERTY(EditAnywhere, meta=(ClampMin=0, ClampMax=1, Delta=0.01))
+	float ClothFriction = 0.8f;
+
+	// 입자 속도를 줄이는 비율, 0이면 감쇠 없음
+	UPROPERTY(EditAnywhere, meta=(ClampMin=0, ClampMax=1, Delta=0.01))
+	float ClothDamping = 0.05f;
+
+	// 월드 충돌면에서 천을 띄우는 거리(미터). 천이 충돌면과 같은 깊이에 그려지는 것을 막는다
+	UPROPERTY(EditAnywhere, meta=(ClampMin=0, Delta=0.001))
+	float ClothCollisionThickness = 0.01f;
 
 	void PostEditChangeProperty(const FProperty& Property) override;
 
@@ -157,6 +171,8 @@ public:
 	bool HasValidPhysicsBody() const override;
 	void UpdateCollisionSettings() override;
 	UPhysicsAsset* GetPhysicsAsset() const;
+	// 메시의 PhysicsAsset 대신 쓸 에셋을 지정하고 바디를 다시 만든다. nullptr이면 메시의 에셋으로 돌아간다
+	void SetPhysicsAsset(UPhysicsAsset* NewPhysicsAsset);
 
 	UPROPERTY(EditAnywhere)
 	FString PhysicsAssetOverride;
@@ -257,6 +273,7 @@ private:
 		float GravityZ,bool bForPreview = false) const;
 	void ApplyClothSelfCollision(const FClothInstance& Instance, const FSkeletalMeshLODRenderData& LOD) const;
 	void ApplyClothWindCoefficients(nv::cloth::Cloth& Cloth) const;
+	void ApplyClothFrictionAndDamping(nv::cloth::Cloth& Cloth) const;
 	void UpdateClothMotionConstraints();
 	void UpdateClothVertexPositions();
 	const TArray<FClothVertexPosition>* GetClothVertexPositions() const override

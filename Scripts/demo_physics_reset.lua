@@ -1,5 +1,5 @@
 -- R 키를 누르면 이 액터의 메시를 BeginPlay 때 위치와 물리 상태로 되돌린다.
--- 물리 시연 씬(Scenes/demo)의 Dynamic 물체와 래그돌에 붙인다.
+-- 물리 시연 씬(Scenes/demo)의 Dynamic 물체, 래그돌, 천에 붙인다.
 
 local Saved = {}
 
@@ -20,5 +20,6 @@ function Tick(dt)
         S.Comp.Location = S.Location
         S.Comp.Rotation = S.Rotation
         S.Comp:RecreatePhysicsState()
+        S.Comp:ForceClothNextUpdateTeleportAndReset()
     end
 end
