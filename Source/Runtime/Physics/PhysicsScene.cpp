@@ -141,6 +141,12 @@ void FPhysicsScene::Tick(float DeltaSeconds)
 	SimulationEvents->DispatchPending();
 }
 
+float FPhysicsScene::GetInterpolationAlpha() const
+{
+	const double StepSeconds = FPhysicsSettings::Get().FixedStepSeconds;
+	return static_cast<float>(std::clamp(AccumulatedSeconds / StepSeconds, 0.0, 1.0));
+}
+
 UPrimitiveComponent* FPhysicsScene::FindHitComponent(const physx::PxRigidActor* Actor) const
 {
 	// userData의 바디 역참조

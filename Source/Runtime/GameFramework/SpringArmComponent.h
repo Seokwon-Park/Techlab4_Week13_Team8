@@ -69,6 +69,9 @@ public:
 	float CameraLagMaxDistance = 0.0f;		// 0 = 제한 없음
 
 	UPROPERTY(EditAnywhere)
+	float CameraCollisionRecoverySpeed = 0.0f;	// 0 = 장애물을 지나면 즉시 복귀
+
+	UPROPERTY(EditAnywhere)
 	bool bDrawDebug = true;
 
 	UPROPERTY(EditAnywhere)
@@ -76,11 +79,12 @@ public:
 
 protected:
 	void UpdateDesiredArmLocation(bool bDoTrace, bool bDoLocationLag, bool bDoRotationLag, float DeltaTime);
-	FRotator GetTargetRotation() const;
+	FRotator GetTargetRotation(const FTransform* ParentRenderTransform) const;
 	FVector PreviousDesiredLoc;
 	FRotator PreviousDesiredRot;
 	void OnRegister() override; // Lag 없이 한 번 계산해서 Previous* 초기화
 private:
+	float PreviousArmFraction = 1.0f;
 	FVector DebugArmOrigin = FVector();
 	FVector DebugDesiredLoc = FVector();
 	FVector DebugResultLoc = FVector();

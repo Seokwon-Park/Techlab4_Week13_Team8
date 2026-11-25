@@ -19,6 +19,7 @@
 #include <vehicle/PxVehicleUpdate.h>
 #include <vehicle/PxVehicleUtil.h>
 #include <vehicle/PxVehicleUtilControl.h>
+#include <vehicle/PxVehicleUtilSetup.h>
 
 using namespace physx;
 
@@ -28,6 +29,12 @@ namespace
 	constexpr float WheelWidth = 0.20f;
 	constexpr float AvanteNMeshScale = 0.01f;
 	constexpr PxU32 VehicleChassisQueryBit = 1u << 31;
+
+	FTransform InterpolatePose(const FTransform& Previous, const FTransform& Current, float Alpha)
+	{
+		return FTransform(FMath::Slerp(Previous.Rotation, Current.Rotation, Alpha),
+			FMath::Lerp(Previous.Location, Current.Location, Alpha), FMath::Lerp(Previous.Scale, Current.Scale, Alpha));
+	}
 
 	PxQueryHitType::Enum FilterSuspensionHit(
 		PxFilterData, PxFilterData ShapeFilter, const void*, PxU32, PxHitFlags&)
@@ -58,6 +65,36 @@ struct AVehiclePawn::FVehiclePhysics
 	PxShape* ChassisShape = nullptr;
 	PxFilterData OriginalQueryFilter;
 	int32 LastGroundedWheels = -1;
+	struct FPose
+	{
+		FTransform Chassis;
+		FTransform Wheels[WheelCount];
+	};
+	FPose PreviousPose;
+	FPose CurrentPose;
+
+	void ApplyCorneringAssist(float ForwardSpeed, const PxVec3& GroundNormal) const
+	{
+		const float Strength = PxClamp((ForwardSpeed - 8.0f) / 8.0f, 0.0f, 1.0f);
+		if (Strength == 0.0f)
+			return;
+
+		// 접지면 위에서만 횡미끄럼을 줄인다. 앞쪽 속도는 타이어와 구동계가 결정한다.
+		const PxVec3 Up = GroundNormal.getNormalized();
+		const PxVec3 Right = Up.cross(ChassisBody->getGlobalPose().q.getBasisVector0()).getNormalized();
+		const float SideSpeed = ChassisBody->getLinearVelocity().dot(Right);
+		const float SideAcceleration = PxClamp(-4.0f * SideSpeed, -7.0f, 7.0f);
+		ChassisBody->addForce(Right * (SideAcceleration * Strength), PxForceMode::eACCELERATION);
+
+		const float SteerAngle = 0.5f * (WheelResults[0].steerAngle + WheelResults[1].steerAngle);
+		const float Wheelbase = Drive->mDriveSimData.getAckermannGeometryData().mAxleSeparation;
+		const float YawRate = ForwardSpeed * PxTan(SteerAngle) / Wheelbase;
+		const float MaxYawRate = 18.5f / ForwardSpeed;
+		const float TargetYawRate = PxClamp(YawRate, -MaxYawRate, MaxYawRate);
+		const float ActualYawRate = ChassisBody->getAngularVelocity().dot(Up);
+		const float YawAcceleration = PxClamp(5.0f * (TargetYawRate - ActualYawRate), -3.0f, 3.0f);
+		ChassisBody->addTorque(Up * (YawAcceleration * Strength), PxForceMode::eACCELERATION);
+	}
 
 	~FVehiclePhysics()
 	{
@@ -81,6 +118,9 @@ struct AVehiclePawn::FVehiclePhysics
 
 AVehiclePawn::AVehiclePawn()
 {
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.TickGroup = ETickingGroup::PostPhysics;
+
 	UStaticMeshComponent* Chassis = CreateDefaultSubobject<UStaticMeshComponent>("Chassis");
 	SetRootComponent(Chassis);
 	Chassis->SetSimulatePhysics(true);
@@ -99,15 +139,19 @@ AVehiclePawn::AVehiclePawn()
 
 	USpringArmComponent* SpringArm = CreateDefaultSubobject<USpringArmComponent>("SpringArmComponent");
 	SpringArm->SetupAttachment(Chassis);
+	SpringArm->PrimaryComponentTick.TickGroup = ETickingGroup::PostUpdateWork;
 	SpringArm->TargetArmLength = 6.5f;
-	SpringArm->TargetOffset = FVector(0.0f, 0.0f, 0.25f);
+	// 장애물에 막혀 팔이 짧아져도 카메라가 차체 위에 머물도록 한다.
+	SpringArm->TargetOffset = FVector(0.0f, 0.0f, 1.30f);
 	SpringArm->SetRelativeRotation({25.0f, 0.0f, 0.0f});
 	SpringArm->bInheritPitch = false;
 	SpringArm->bInheritRoll = false;
 	SpringArm->bEnableCameraLag = true;
-	SpringArm->bCameraLagZOnly = true;
-	SpringArm->CameraLagSpeed = 12.0f;
+	SpringArm->CameraLagSpeed = 15.0f;
+	SpringArm->CameraLagMaxDistance = 1.75f;
 	SpringArm->bEnableCameraRotationLag = true;
+	SpringArm->CameraRotationLagSpeed = 8.0f;
+	SpringArm->CameraCollisionRecoverySpeed = 5.0f;
 	SpringArm->bDrawDebug = false;
 
 	UCameraComponent* Camera = CreateDefaultSubobject<UCameraComponent>("CameraComponent");
@@ -159,6 +203,8 @@ void AVehiclePawn::BeginPlay()
 	const UStaticMesh* ChassisMesh = Chassis->GetStaticMesh();
 	const bool bAvanteN = ChassisMesh && ChassisMesh->GetPath().ends_with("/AvanteN_Body_Static.fbx.bin");
 	State->bAvanteN = bAvanteN;
+	if (bAvanteN)
+		State->Friction->setTypePairFriction(0, 0, 1.45f);
 	State->ChassisBody = Body;
 	State->OriginalMass = Body->getMass();
 	State->OriginalCenterOfMass = Body->getCMassLocalPose();
@@ -188,6 +234,13 @@ void AVehiclePawn::BeginPlay()
 	CenterOfMass.p.z = ShapeCenter.z - Box.halfExtents.z * 0.7f;
 	Body->setCMassLocalPose(CenterOfMass);
 
+	float SprungMasses[WheelCount]{};
+	if (bAvanteN)
+	{
+		PxVehicleComputeSprungMasses(WheelCount, WheelPositions, CenterOfMass.p, Body->getMass(), 2, SprungMasses);
+		Wheels->setSubStepCount(5.0f, 4, 3);
+	}
+
 	PxVec3 InertiaTensor = Body->getMassSpaceInertiaTensor();
 	InertiaTensor.y *= 2.0f;
 	Body->setMassSpaceInertiaTensor(InertiaTensor);
@@ -199,10 +252,20 @@ void AVehiclePawn::BeginPlay()
 		const bool bFrontWheel =
 			Index == PxVehicleDrive4WWheelOrder::eFRONT_LEFT ||
 			Index == PxVehicleDrive4WWheelOrder::eFRONT_RIGHT;
-		Wheel.mMaxSteer = bFrontWheel ? PxPi / 5.0f : 0.0f;
+		Wheel.mMaxSteer = bFrontWheel ? PxPi * (40.0f / 180.0f) : 0.0f;
 		Wheel.mMaxHandBrakeTorque = bFrontWheel ? 0.0f : 3000.0f;
 		Wheels->setWheelData(Index, Wheel);
 		Wheels->setTireData(Index, PxVehicleTireData{});
+		if (bAvanteN)
+		{
+			PxVehicleSuspensionData Suspension = Wheels->getSuspensionData(Index);
+			Suspension.mSprungMass = SprungMasses[Index];
+			Suspension.mSpringStrength = Suspension.mSprungMass * 120.0f;
+			Suspension.mSpringDamperRate = Suspension.mSprungMass * 17.0f;
+			Suspension.mMaxCompression = 0.16f;
+			Suspension.mMaxDroop = 0.18f;
+			Wheels->setSuspensionData(Index, Suspension);
+		}
 		Wheels->setWheelCentreOffset(Index, Offset);
 		Wheels->setSuspTravelDirection(Index, PxVec3(0.0f, 0.0f, -1.0f));
 		Wheels->setSuspForceAppPointOffset(Index, Offset);
@@ -216,11 +279,28 @@ void AVehiclePawn::BeginPlay()
 	Steering.mFrontWidth = 2.0f * Y;
 	Steering.mRearWidth = 2.0f * Y;
 
+	PxVehicleEngineData Engine;
+	PxVehicleGearsData Gears;
+	PxVehicleAutoBoxData AutoBox;
+	if (bAvanteN)
+	{
+		// 데모용 레이스 튜닝: 저단의 구동력을 높이고 변속 중 가속이 끊기는 시간을 줄인다.
+		Engine.mPeakTorque = 720.0f;
+		Engine.mMaxOmega = 720.0f;
+		Gears.setGearRatio(PxVehicleGearsData::eSECOND, 2.55f);
+		Gears.setGearRatio(PxVehicleGearsData::eTHIRD, 1.75f);
+		Gears.setGearRatio(PxVehicleGearsData::eFOURTH, 1.24f);
+		Gears.mSwitchTime = 0.15f;
+		AutoBox.setLatency(0.35f);
+		for (PxU32 Gear = PxVehicleGearsData::eFIRST; Gear < Gears.mNbRatios; ++Gear)
+			AutoBox.mUpRatios[Gear] = 0.84f;
+	}
+
 	PxVehicleDriveSimData4W DriveSettings;
-	DriveSettings.setEngineData(PxVehicleEngineData{});
-	DriveSettings.setGearsData(PxVehicleGearsData{});
+	DriveSettings.setEngineData(Engine);
+	DriveSettings.setGearsData(Gears);
 	DriveSettings.setClutchData(PxVehicleClutchData{});
-	DriveSettings.setAutoBoxData(PxVehicleAutoBoxData{});
+	DriveSettings.setAutoBoxData(AutoBox);
 	DriveSettings.setDiffData(PxVehicleDifferential4WData{});
 	DriveSettings.setAckermannGeometryData(Steering);
 	State->Drive = PxVehicleDrive4W::create(
@@ -237,6 +317,11 @@ void AVehiclePawn::BeginPlay()
 	PxFilterData QueryFilter = State->OriginalQueryFilter;
 	QueryFilter.word3 |= VehicleChassisQueryBit;
 	Shape->setQueryFilterData(QueryFilter);
+
+	State->CurrentPose.Chassis = GetActorTransform();
+	for (uint32 Index = 0; Index < WheelCount; ++Index)
+		State->CurrentPose.Wheels[Index] = WheelMeshes[Index]->GetTransform();
+	State->PreviousPose = State->CurrentPose;
 
 	State->PreStepHandle = Scene->OnPreStep.AddDynamic(this, &AVehiclePawn::TickVehiclePhysics);
 	if (State->PreStepHandle != 0)
@@ -288,35 +373,70 @@ void AVehiclePawn::TickVehiclePhysics(float StepDelta)
 	const bool bBrakeBeforeDrive = bWantsDrive &&
 		(bOppositeMotion || (bChangingDirection && PxAbs(ForwardSpeed) > ShiftSpeedLimit));
 
+	const bool bAccelerate = bWantsDrive && !bBrakeBeforeDrive;
+	const bool bServiceBrake = bBrake || bBrakeBeforeDrive;
+	const bool bSteerLeft = IsDown(EKeyCode::A);
+	const bool bSteerRight = IsDown(EKeyCode::D);
+	const bool bInAir = PxVehicleIsInAir(Results);
 	PxVehicleDrive4WRawInputData Input;
-	Input.setDigitalAccel(bWantsDrive && !bBrakeBeforeDrive);
-	Input.setDigitalBrake(bBrake || bBrakeBeforeDrive);
-	Input.setDigitalHandbrake(bHandbrake);
-	Input.setDigitalSteerLeft(IsDown(EKeyCode::A));
-	Input.setDigitalSteerRight(IsDown(EKeyCode::D));
+	if (State.bAvanteN)
+	{
+		const float Steer = static_cast<float>(bSteerRight) - static_cast<float>(bSteerLeft);
+		const bool bCornering = Steer != 0.0f && !bHandbrake && State.LastGroundedWheels >= 3;
+		const float CornerWeight = bCornering ? PxClamp((ForwardSpeed - 12.0f) / 12.0f, 0.0f, 1.0f) : 0.0f;
+		// 코너에서만 가속을 줄이고, 진입 속도가 높으면 남은 입력을 제동에 쓴다.
+		const float SpeedCorrection = CornerWeight * PxClamp((ForwardSpeed - 25.0f) * 0.06f, 0.0f, 0.70f);
+		const float Pedal = (bAccelerate ? 1.0f - 0.70f * CornerWeight : 0.0f) - SpeedCorrection;
+		Input.setAnalogAccel(PxMax(Pedal, 0.0f));
+		Input.setAnalogBrake(bServiceBrake ? 1.0f : PxMax(-Pedal, 0.0f));
+		Input.setAnalogHandbrake(bHandbrake ? 1.0f : 0.0f);
+		Input.setAnalogSteer(Steer);
 
-	// 가속, 브레이크, 핸드브레이크, 좌회전, 우회전 순서
-	static const PxVehicleKeySmoothingData Smoothing{
-		{6.0f, 6.0f, 6.0f, 2.5f, 2.5f},
-		{10.0f, 10.0f, 10.0f, 5.0f, 5.0f}
-	};
-	// 전진 속도(m/s)에 따른 최대 조향 입력 비율
-	static const PxReal SteerPairs[] = {
-		0.0f, 1.00f,
-		3.0f, 0.85f,
-		6.0f, 0.52f,
-		10.0f, 0.24f,
-		18.0f, 0.05f
-	};
-	static const PxFixedSizeLookupTable<8> SteerBySpeed(SteerPairs, 5);
-	PxVehicleDrive4WSmoothDigitalRawInputsAndSetAnalogInputs(
-		Smoothing, SteerBySpeed, Input, StepDelta, PxVehicleIsInAir(Results), *State.Drive);
+		static const PxVehiclePadSmoothingData Smoothing{
+			{6.0f, 8.0f, 6.0f, 4.0f, 4.0f},
+			{10.0f, 12.0f, 10.0f, 6.0f, 6.0f}
+		};
+		static const PxReal SteerPairs[] = {
+			0.0f, 1.00f, 6.0f, 0.76f, 12.0f, 0.44f, 18.0f, 0.22f,
+			24.0f, 0.14f, 32.0f, 0.10f, 42.0f, 0.07f
+		};
+		static const PxFixedSizeLookupTable<8> SteerBySpeed(SteerPairs, 7);
+		PxVehicleDrive4WSmoothAnalogRawInputsAndSetAnalogInputs(
+			Smoothing, SteerBySpeed, Input, StepDelta, bInAir, *State.Drive);
+	}
+	else
+	{
+		Input.setDigitalAccel(bAccelerate);
+		Input.setDigitalBrake(bServiceBrake);
+		Input.setDigitalHandbrake(bHandbrake);
+		Input.setDigitalSteerLeft(bSteerLeft);
+		Input.setDigitalSteerRight(bSteerRight);
+		static const PxVehicleKeySmoothingData Smoothing{
+			{6.0f, 6.0f, 6.0f, 2.5f, 2.5f},
+			{10.0f, 10.0f, 10.0f, 5.0f, 5.0f}
+		};
+		static const PxReal SteerPairs[] = {
+			0.0f, 1.00f, 3.0f, 0.92f, 6.0f, 0.62f, 10.0f, 0.34f, 18.0f, 0.11f, 28.0f, 0.07f
+		};
+		static const PxFixedSizeLookupTable<8> SteerBySpeed(SteerPairs, 6);
+		PxVehicleDrive4WSmoothDigitalRawInputsAndSetAnalogInputs(
+			Smoothing, SteerBySpeed, Input, StepDelta, bInAir, *State.Drive);
+	}
 
 	PxVehicleUpdates(StepDelta, Gravity, *State.Friction, 1, Vehicles, &Results);
 
 	int32 GroundedWheels = 0;
+	PxVec3 GroundNormal(0.0f);
 	for (const PxWheelQueryResult& Wheel : State.WheelResults)
-		GroundedWheels += Wheel.isInAir ? 0 : 1;
+	{
+		if (!Wheel.isInAir)
+		{
+			++GroundedWheels;
+			GroundNormal += Wheel.tireContactNormal;
+		}
+	}
+	if (State.bAvanteN && GroundedWheels >= 3 && !bHandbrake)
+		State.ApplyCorneringAssist(ForwardSpeed, GroundNormal);
 
 	if (GroundedWheels != State.LastGroundedWheels)
 	{
@@ -327,8 +447,11 @@ void AVehiclePawn::TickVehiclePhysics(float StepDelta)
 
 void AVehiclePawn::SyncWheelMeshes(float)
 {
+	FVehiclePhysics& State = *VehiclePhysics;
+	State.PreviousPose = State.CurrentPose;
+	State.CurrentPose.Chassis = GetActorTransform();
 	const float ChassisScale = GetRootComponent()->GetWorldScale3D().X;
-	const bool bAvanteN = VehiclePhysics->bAvanteN;
+	const bool bAvanteN = State.bAvanteN;
 	const PxQuat MeshBasis = bAvanteN ? PxQuat(PxIdentity) : PxQuat(-PxHalfPi, PxVec3(1.0f, 0.0f, 0.0f));
 	const FVector MeshScale = bAvanteN
 		? FVector(AvanteNMeshScale, AvanteNMeshScale, AvanteNMeshScale)
@@ -336,12 +459,33 @@ void AVehiclePawn::SyncWheelMeshes(float)
 
 	for (PxU32 Index = 0; Index < WheelCount; ++Index)
 	{
-		const PxTransform& Pose = VehiclePhysics->WheelResults[Index].localPose;
-		WheelMeshes[Index]->SetTransform(FTransform(
+		const PxTransform& Pose = State.WheelResults[Index].localPose;
+		FTransform& Wheel = State.CurrentPose.Wheels[Index];
+		Wheel = FTransform(
 			P2UQuat(Pose.q * MeshBasis),
 			P2UVector(Pose.p) / ChassisScale,
-			MeshScale / ChassisScale));
+			MeshScale / ChassisScale);
+		WheelMeshes[Index]->SetTransform(Wheel);
 		WheelMeshes[Index]->SetVisibility(true);
+	}
+}
+
+void AVehiclePawn::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	if (!VehiclePhysics) return;
+
+	// 고정 스텝이 없는 프레임에도 차체와 바퀴의 렌더 위치만 갱신한다.
+	const FVehiclePhysics& State = *VehiclePhysics;
+	const float Alpha = State.Scene->GetInterpolationAlpha();
+	const FTransform Chassis = InterpolatePose(State.PreviousPose.Chassis, State.CurrentPose.Chassis, Alpha);
+	CastChecked<UStaticMeshComponent>(GetRootComponent())->SetRenderTransformOverride(Chassis);
+	const FMatrix ChassisMatrix = Chassis.GetLocalMatrix();
+	for (uint32 Index = 0; Index < WheelCount; ++Index)
+	{
+		const FTransform Wheel = InterpolatePose(State.PreviousPose.Wheels[Index], State.CurrentPose.Wheels[Index], Alpha);
+		WheelMeshes[Index]->SetRenderTransformOverride(FTransform(Chassis.Rotation * Wheel.Rotation,
+			ChassisMatrix.TransformPosition(Wheel.Location), Chassis.Scale * Wheel.Scale));
 	}
 }
 
@@ -349,6 +493,9 @@ void AVehiclePawn::EndPlay()
 {
 	if (VehiclePhysics)
 	{
+		CastChecked<UStaticMeshComponent>(GetRootComponent())->ClearRenderTransformOverride();
+		for (UVehicleWheelMeshComponent* Wheel : WheelMeshes)
+			Wheel->ClearRenderTransformOverride();
 		FPhysicsScene& Scene = *VehiclePhysics->Scene;
 		Scene.OnPreStep.Remove(VehiclePhysics->PreStepHandle);
 		Scene.OnPostStep.Remove(VehiclePhysics->PostStepHandle);

@@ -3,6 +3,7 @@
 
 #include <cmath>
 
+#include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -53,7 +54,9 @@ void USpringArmComponent::UpdateDesiredArmLocation(
 	float DeltaTime)
 {
 	// 1) 회전 (+ Rotation Lag). UE는 쿼터니언 QInterpTo (최단 경로, 짐벌락 없음)
-	FRotator DesiredRot = GetTargetRotation();
+	const UStaticMeshComponent* ParentMesh = Cast<UStaticMeshComponent>(GetAttachParent());
+	const FTransform* ParentRenderTransform = ParentMesh ? ParentMesh->GetRenderTransformOverride() : nullptr;
+	FRotator DesiredRot = GetTargetRotation(ParentRenderTransform);
 	if (bDoRotationLag)
 	{
 		DesiredRot = FMath::QInterpTo(
@@ -65,7 +68,9 @@ void USpringArmComponent::UpdateDesiredArmLocation(
 	PreviousDesiredRot = DesiredRot;
 
 	// 2) 팔 시작점 (+ Location Lag는 "시작점"에 건다: 팔 길이는 유지된 채 늦게 따라옴
-	const FVector ArmOrigin = GetWorldLocation() + TargetOffset;
+	const FVector Pivot = ParentRenderTransform
+		? ParentRenderTransform->GetLocalMatrix().TransformPosition(GetRelativeLocation()) : GetWorldLocation();
+	const FVector ArmOrigin = Pivot + TargetOffset;
 	FVector DesiredLoc = ArmOrigin;
 	if (bDoLocationLag)
 	{
@@ -96,6 +101,7 @@ void USpringArmComponent::UpdateDesiredArmLocation(
 
 	// 4) 충돌: 시작점 -> 원하는 위치로 구를 쓸어서, 막히면 맞은 거리에서 멈춘다
 	FVector ResultLoc = DesiredLoc;
+	float ArmFraction = 1.0f;
 	bool bCollisionHit = false;
 
 	if (bDoTrace && TargetArmLength > 0.0f)
@@ -108,9 +114,17 @@ void USpringArmComponent::UpdateDesiredArmLocation(
 			GetWorld()->SweepSingle(FRay(ArmOrigin, ToCamera / Len), Len, ProbeSize, Hit, GetOwner(), true))
 		{
 			ResultLoc = Hit.Location;
+			ArmFraction = Hit.Time;
 			bCollisionHit = true;
 		}
+		// 장애물 쪽으로는 즉시 당기고, 안전한 거리가 늘어날 때만 부드럽게 복귀한다.
+		if (CameraCollisionRecoverySpeed > 0.0f && DeltaTime > 0.0f && ArmFraction > PreviousArmFraction)
+		{
+			ArmFraction = FMath::FInterpTo(PreviousArmFraction, ArmFraction, DeltaTime, CameraCollisionRecoverySpeed);
+			ResultLoc = ArmOrigin + ToCamera * ArmFraction;
+		}
 	}
+	PreviousArmFraction = ArmFraction;
 
 	// 디버그용 데이터 저장
 	DebugArmOrigin = ArmOrigin;
@@ -135,14 +149,14 @@ void USpringArmComponent::OnRegister()
 	UpdateDesiredArmLocation(false, false, false, 0.0f);
 }
 
-FRotator USpringArmComponent::GetTargetRotation() const
+FRotator USpringArmComponent::GetTargetRotation(const FTransform* ParentRenderTransform) const
 {
 	const FRotator Rel = GetRelativeRotation();
 	if (!bUsePawnControlRotation && !bInheritPitch && !bInheritRoll)
 	{
 		const USceneComponent* Parent = GetAttachParent();
 		const float ParentYaw = bInheritYaw && Parent
-			? Parent->GetWorldRotation().Yaw
+			? (ParentRenderTransform ? ParentRenderTransform->Rotation.ToFRotator().Yaw : Parent->GetWorldRotation().Yaw)
 			: 0.0f;
 		return FRotator(Rel.Pitch, FMath::NormalizeAxis(ParentYaw + Rel.Yaw), Rel.Roll);
 	}

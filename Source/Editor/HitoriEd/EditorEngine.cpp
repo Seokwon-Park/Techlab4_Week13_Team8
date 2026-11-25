@@ -789,6 +789,7 @@ void UEditorEngine::Tick(const float DeltaTime)
 					Options.bGammaCorrection = S.bGammaCorrection;
 					Options.DisplayGamma = S.DisplayGamma;
 					ShowFlags.DepthOfField = S.bShowDepthOfField;
+					ShowFlags.VisualizeDOF = S.bVisualizeDOF;
 					ShowFlags.Vignette = S.bShowVignette;
 					ShowFlags.CameraOverlay = S.bShowCameraOverlay;
 					ShowFlags.SkeletalMeshes = S.bShowSkeletalMesh;
