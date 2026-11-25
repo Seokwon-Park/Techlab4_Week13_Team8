@@ -22,7 +22,7 @@ public:
     UPROPERTY(EditAnywhere)
     float Restitution = 0.1f;
 
-    // 재질 밀도
+    // 재질 밀도(g/cm³)
     UPROPERTY(EditAnywhere)
     float Density = 0.1f;
 

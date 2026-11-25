@@ -2,13 +2,20 @@
 
 #include "Render/SkeletalMesh.h"
 
+// Cloth 렌더 정점 번호와 메시 로컬 위치
+struct FClothVertexPosition
+{
+	uint32 RenderVertexIndex;
+	FVector Position;
+};
+
 class FSkeletalMeshObject
 {
 public:
 	explicit FSkeletalMeshObject(USkeletalMesh* InMesh);
 	virtual ~FSkeletalMeshObject() = default;
 
-	virtual void Update(const TArray<FMatrix>& ComponentSpaceTransforms) = 0;
+	virtual void Update(const TArray<FMatrix>& ComponentSpaceTransforms, const TArray<FClothVertexPosition>* ClothPositions) = 0;
 	virtual FVertexBuffer* GetVertexBuffer(uint32 LOD) const = 0;
 
 	FIndexBuffer* GetIndexBuffer(uint32 LOD) const
@@ -41,11 +48,12 @@ class FSkeletalMeshObjectCPUSkin : public FSkeletalMeshObject
 public:
 	explicit FSkeletalMeshObjectCPUSkin(USkeletalMesh* InMesh);
 
-	void Update(const TArray<FMatrix>& ComponentSpaceTransforms) override;
+	void Update(const TArray<FMatrix>& ComponentSpaceTransforms, const TArray<FClothVertexPosition>* ClothPositions) override;
 	FVertexBuffer* GetVertexBuffer(uint32 LOD) const override { return FinalVertexBuffer.get(); }
 	const TArray<FVertex>* GetCPUSkinnedVertices() const override { return &SkinnedVertices; }
 
 private:
+	void RebuildClothTangentSpace(const TArray<FClothVertexPosition>& ClothPositions);
 	void UploadVertices();
 
 	TUniquePtr<FVertexBuffer> FinalVertexBuffer;
@@ -59,7 +67,7 @@ public:
 	explicit FSkeletalMeshObjectGPUSkin(USkeletalMesh* InMesh);
 
 	bool IsValid() const;
-	void Update(const TArray<FMatrix>& ComponentSpaceTransforms) override;
+	void Update(const TArray<FMatrix>& ComponentSpaceTransforms, const TArray<FClothVertexPosition>* ClothPositions) override;
 	FVertexBuffer* GetVertexBuffer(uint32 LOD) const override;
 	const FStructuredBuffer* GetBoneMatrixBuffer() const override { return BoneMatrixBuffer.get(); }
 	// 피킹처럼 CPU에서 정점이 필요할 때만 현재 포즈로 계산한다

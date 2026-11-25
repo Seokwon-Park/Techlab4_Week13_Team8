@@ -27,6 +27,7 @@
 #include "Components/ParticleSubUVComponent.h"
 #include "Components/ParticleSystemComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
+#include "Components/WindDirectionalSourceComponent.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkinnedMeshComponent.h"
@@ -83,6 +84,33 @@ UWorld::UWorld()
 UWorld::~UWorld()
 {
 
+}
+
+void UWorld::RegisterWindSource(UWindDirectionalSourceComponent& Source)
+{
+	// 같은 바람의 중복 기여 방지
+	WindSources.AddUnique(&Source);
+}
+
+void UWorld::UnregisterWindSource(UWindDirectionalSourceComponent& Source)
+{
+	// 바람 컴포넌트 해제 전 비소유 참조 제거
+	const int32 Index = WindSources.Find(&Source);
+	if (Index != INDEX_NONE)
+	{
+		WindSources.RemoveAtSwap(Index);
+	}
+}
+
+FVector UWorld::GetWindVelocity() const
+{
+	// 월드 좌표계에서 방향성 풍속의 벡터 합산
+	FVector Velocity = FVector::ZeroVector;
+	for (const UWindDirectionalSourceComponent* Source : WindSources)
+	{
+		Velocity += Source->GetWindVelocity();
+	}
+	return Velocity;
 }
 
 bool UWorld::Init()
@@ -1244,7 +1272,11 @@ void UWorld::UpdateOverlaps()
 				B->BeginComponentOverlap(A);
 
 				// 지금은 “처음 막혔을 때 한 번” Hit를 보내는 정책
-				if (A->bBlockComponent && B->bBlockComponent)
+				// 고체 두 개의 Hit는 PhysX 접촉 콜백에서 전달
+				const bool bNativeHit = A->HasValidPhysicsBody() && B->HasValidPhysicsBody()
+					&& A->BodyInstance.CollisionEnabled == ECollisionEnabled::QueryAndPhysics
+					&& B->BodyInstance.CollisionEnabled == ECollisionEnabled::QueryAndPhysics;
+				if (A->bBlockComponent && B->bBlockComponent && !bNativeHit)
 				{
 					A->DispatchHit(B);
 					B->DispatchHit(A);

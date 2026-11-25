@@ -16,5 +16,5 @@ void UnhashObject(UObject* Obj, const UClass* Class);
 
 void GetDerivedClasses(const UClass* ClassToLookFor, TArray<UClass*>& Results, bool bRecursive = true);
 
-//Delegate용 getter
+// 클래스 미지정 시 전체 생존 객체에서 주소 확인 후 UUID 반환
 bool TryGetLiveObjectUUID(const UObject* Object, const UClass* ObjectClass, uint32& OutUUID);

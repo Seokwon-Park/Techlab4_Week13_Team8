@@ -6,6 +6,8 @@
 #include "Physics/PhysicsAssetFile.h"
 #include "UObject/UObjectGlobals.h"
 #include <filesystem>
+#include <algorithm>
+#include <cmath>
 
 UPhysicsAsset* USkeletalMesh::GetPhysicsAsset()
 {
@@ -133,7 +135,28 @@ bool USkeletalMesh::Build(FSkeletalMeshData&& ImportData, FString& OutError)
 	Materials = std::move(NewMaterials);
 	RenderData.LODRenderData.Empty();
 	RenderData.LODRenderData.Add(std::move(LOD));
+	ClothSectionBindings = std::move(ImportData.ClothSectionBindings);
 	RenderStates.Reset();
+	return true;
+}
+
+bool USkeletalMesh::SetClothSectionBindings(TArray<FClothSectionBinding> Bindings)
+{
+	// 편집 입력과 파일 로드의 공용 검증
+	if (!Bindings.IsEmpty())
+	{
+		if (RenderData.LODRenderData.IsEmpty())
+		{
+			return false;
+		}
+		const FSkeletalMeshLODRenderData& LOD = RenderData.LODRenderData[0];
+		if (!FSkeletalMeshData::ValidateClothSectionBindings(
+			Bindings, LOD.Sections, LOD.Indices, LOD.BindVertices.Num()))
+		{
+			return false;
+		}
+	}
+	ClothSectionBindings = std::move(Bindings);
 	return true;
 }
 

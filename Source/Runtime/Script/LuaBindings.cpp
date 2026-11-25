@@ -587,6 +587,20 @@ namespace
 
 	void RegisterInput(sol::state& Lua)
 	{
+		// 현재 월드의 플레이어에게 전달된 키와 마우스 버튼의 누름 상태
+		Lua.set_function("IsInputKeyDown", [](sol::this_environment Env, const FString& KeyName)
+		{
+			const APlayerController* Controller = WorldFromEnv(Env, "IsInputKeyDown")->GetPlayerController();
+			return Controller && Controller->IsKeyDown(FInputKeyNames::FromString(KeyName).Code);
+		});
+		// 게임 뷰포트가 수신한 커서 캡처 보정 이후의 이동량
+		Lua.set_function("GetInputMouseDelta", [](sol::this_environment Env)
+		{
+			UWorld* World = WorldFromEnv(Env, "GetInputMouseDelta");
+			const FWorldContext* Context = GEngine ? GEngine->GetWorldContextFromWorld(World) : nullptr;
+			const FVector2 Delta = Context && Context->GameViewport ? Context->GameViewport->GetInputMouseDelta() : FVector2{};
+			return std::make_tuple(Delta.X, Delta.Y);
+		});
 		Lua.set_function("IsKeyDown", [](const std::string& K) {
 			return FInputSystem::IsKeyDown(ToKeyCode(K));
 			});

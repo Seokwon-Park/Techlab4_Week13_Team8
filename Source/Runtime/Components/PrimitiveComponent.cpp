@@ -57,6 +57,29 @@ void UPrimitiveComponent::SetSimulatePhysics(bool bSimulate)
 	BodyInstance.SetInstanceSimulatePhysics(bSimulate);
 }
 
+void UPrimitiveComponent::SetGenerateOverlapEvents(bool bEnabled)
+{
+	if (bGenerateOverlapEvents != bEnabled)
+	{
+		bGenerateOverlapEvents = bEnabled;
+		UpdateCollisionSettings();
+	}
+}
+
+void UPrimitiveComponent::SetBlockComponent(bool bEnabled)
+{
+	if (bBlockComponent != bEnabled)
+	{
+		bBlockComponent = bEnabled;
+		UpdateCollisionSettings();
+	}
+}
+
+void UPrimitiveComponent::UpdateCollisionSettings()
+{
+	BodyInstance.UpdateCollisionSettings();
+}
+
 // UE PrimitiveComponentPhysics.cpp SyncComponentToRBPhysics와 같은 흐름.
 // 어떤 바디를 따라갈지(GetBodyInstance)와 바디 -> 컴포넌트 변환(GetComponentTransformFromBodyInstance)은 하위 클래스가 정한다
 void UPrimitiveComponent::SyncComponentToRBPhysics()
@@ -148,6 +171,10 @@ void UPrimitiveComponent::PostEditChangeProperty(const FProperty& Property)
 
 	if (Property.Name == "bSimulatePhysics")
 		SetSimulatePhysics(bSimulatePhysics);
+	if (Property.Name == "bGenerateOverlapEvents" || Property.Name == "bBlockComponent")
+	{
+		UpdateCollisionSettings();
+	}
 }
 
 void UPrimitiveComponent::SetCastShadow(bool NewValue)

@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "SkeletalMeshDetailsPanel.h"
 #include "Editor/SkeletalMeshEditor/SkeletalMeshEditor.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Math/Transform.h"
 #include "Physics/PhysicsAsset.h"
 #include "Physics/PhysicsAssetFile.h"
@@ -116,10 +117,152 @@ void FSkeletalMeshDetailsPanel::DrawPhysicsDebug()
 	ImGui::Separator();
 }
 
+// 선택한 렌더 섹션의 Cloth 브러시 조작과 바인딩 적용
+void FSkeletalMeshDetailsPanel::DrawClothBinding()
+{
+	USkeletalMesh* Mesh = Editor.GetMesh();
+	if (!Mesh || Mesh->GetRenderData().LODRenderData.IsEmpty()
+		|| !ImGui::CollapsingHeader("Cloth"))
+	{
+		return;
+	}
+
+	const auto& Sections = Mesh->GetRenderData().LODRenderData[0].Sections;
+	const auto& MaterialSlots = Mesh->GetMaterialSlots();
+	const int32 ClothSectionIndex = Editor.GetClothSectionIndex();
+	const FString Preview = Sections.IsValidIndex(ClothSectionIndex)
+		? std::to_string(ClothSectionIndex) : "Select a section";
+
+	// 현재 메시의 섹션 번호와 머티리얼 이름 표시
+	if (ImGui::BeginCombo("Section", Preview.c_str()))
+	{
+		for (int32 Index = 0; Index < Sections.Num(); ++Index)
+		{
+			const FString Label = std::format("{} - {}",
+				Index, MaterialSlots[Sections[Index].MaterialSlotIndex].Name);
+			const bool bSelected = Index == ClothSectionIndex;
+			if (ImGui::Selectable(Label.c_str(), bSelected) && !bSelected)
+			{
+				Editor.SelectClothSection(Index);
+				ClothBindingMessage.clear();
+			}
+		}
+		ImGui::EndCombo();
+	}
+
+	const int32 VertexCount = Editor.GetClothSectionVertexCount();
+	const int32 PinCount = Editor.GetClothPinnedVertexCount();
+	ImGui::BeginDisabled(VertexCount == 0);
+	bool bPaintMaxDistance = Editor.IsClothPaintMode();
+	if (ImGui::Checkbox("Paint Max Distance", &bPaintMaxDistance))
+	{
+		Editor.SetClothPaintMode(bPaintMaxDistance);
+	}
+	if (bPaintMaxDistance)
+	{
+		float Radius = Editor.GetClothBrushRadius();
+		if (ImGui::SliderFloat("Brush Radius", &Radius, 4.0f, 64.0f, "%.0f px"))
+		{
+			Editor.SetClothBrushRadius(Radius);
+		}
+		float MaxDistance = Editor.GetClothBrushMaxDistance();
+		if (ImGui::DragFloat("Max Distance", &MaxDistance, 0.01f, 0.0f, FLT_MAX, "%.4g m", ImGuiSliderFlags_AlwaysClamp))
+		{
+			Editor.SetClothBrushMaxDistance(MaxDistance);
+		}
+		ImGui::TextDisabled("Drag to paint. 0 m pins. Shift + drag erases.");
+	}
+	ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.1f, 1.0f), "Pinned: %d / %d", PinCount, VertexCount);
+	ImGui::TextColored(ImVec4(0.2f, 0.75f, 1.0f, 1.0f), "Distance-limited: %d", Editor.GetClothCappedVertexCount());
+	const bool bApply = ImGui::Button("Apply & Save Cloth Binding");
+	ImGui::EndDisabled();
+
+	USkeletalMeshComponent* PreviewComponent = Editor.GetMeshComponent();
+	// Cloth 프리뷰에 사용할 PhysicsAsset 바디 선택
+	if (PreviewComponent)
+	{
+		FString& CollisionBody = PreviewComponent->ClothCollisionBody;
+		const char* BodyPreview = CollisionBody.empty() ? "None" : CollisionBody.c_str();
+		if (ImGui::BeginCombo("Collision Body", BodyPreview))
+		{
+			if (ImGui::Selectable("None", CollisionBody.empty()))
+			{
+				CollisionBody.clear();
+			}
+			if (const UPhysicsAsset* PhysicsAsset = PreviewComponent->GetPhysicsAsset())
+			{
+				for (const USkeletalBodySetup* Setup : PhysicsAsset->SkeletalBodySetups)
+				{
+					if (!Setup || (Setup->AggGeom.SphereElems.IsEmpty()
+						&& Setup->AggGeom.SphylElems.IsEmpty() && Setup->AggGeom.BoxElems.IsEmpty()))
+					{
+						continue;
+					}
+					const FString BoneName = Setup->BoneName.ToString();
+					if (ImGui::Selectable(BoneName.c_str(), CollisionBody == BoneName))
+					{
+						CollisionBody = BoneName;
+					}
+				}
+			}
+			ImGui::EndCombo();
+		}
+	}
+
+	// 적용된 Cloth의 프리뷰 실행·정지·초기화 버튼
+	const bool bRunning = PreviewComponent && PreviewComponent->HasClothSimulation();
+
+	ImGui::BeginDisabled(!PreviewComponent || Mesh->GetClothSectionBindings().IsEmpty());
+	const bool bToggle = ImGui::Button(bRunning ? "Stop" : "Simulate");
+	ImGui::SameLine();
+	ImGui::BeginDisabled(!bRunning);
+	const bool bReset = ImGui::Button("Reset");
+	ImGui::EndDisabled();
+	ImGui::EndDisabled();
+
+	if (bToggle && bRunning)
+	{
+		PreviewComponent->StopClothPreview();
+		ClothBindingMessage.clear();
+	}
+	else if (bToggle || bReset)
+	{
+		if (PreviewComponent->RestartClothPreview())
+		{
+			Editor.SetClothPaintMode(false);
+			ClothBindingMessage.clear();
+		}
+		else
+		{
+			ClothBindingMessage = "Cloth preview failed. Check the Output Log.";
+		}
+	}
+
+	if (!ClothBindingMessage.empty())
+	{
+		ImGui::TextWrapped("%s", ClothBindingMessage.c_str());
+	}
+
+	if (!bApply)
+	{
+		return;
+	}
+
+	if (PinCount == VertexCount)
+	{
+		ClothBindingMessage = "Leave at least one vertex unpinned.";
+		return;
+	}
+
+	FString SaveError;
+	const bool bSaved = Editor.ApplyClothBinding(SaveError);
+	ClothBindingMessage = bSaved ? "Cloth binding saved. Click Simulate to preview." : std::move(SaveError);
+}
+
 void FSkeletalMeshDetailsPanel::DrawContent()
 {
 	DrawPhysicsDebug();
-
+	DrawClothBinding();
 	const int32 BoneIndex = Editor.GetSelectedBoneIndex();
 
 	if (ImGui::Button("Reset Transform"))

@@ -333,6 +333,11 @@ void AVehiclePawn::BeginPlay()
 
 void AVehiclePawn::TickVehiclePhysics(float StepDelta)
 {
+	// 차체 충돌 해제 중 서스펜션 레이캐스트와 접지력 적용 생략
+	if (!GetActorEnableCollision())
+	{
+		return;
+	}
 	FVehiclePhysics& State = *VehiclePhysics;
 	PxScene& Scene = *State.Scene->GetPxScene();
 	PxSceneWriteLock Lock(Scene);

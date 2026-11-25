@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "Physics/PhysXSimEventCallback.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/ShapeComponent.h"
 #include "GameFramework/Actor.h"
 #include "Physics/PhysicsScene.h"
 #include "UObject/UObjectHash.h"
@@ -105,7 +106,8 @@ void FPhysXSimEventCallback::AddTriggerPair(const physx::PxTriggerPair& Pair)
     }
 
     const FComponentPair Components = FindComponentPair(Pair.triggerActor, Pair.otherActor);
-    if (!Components.A)
+    // 두 도형 사이의 겹침은 Trigger-Trigger까지 검사하는 UWorld::UpdateOverlaps가 소유
+    if (!Components.A || (Cast<UShapeComponent>(Components.A) && Cast<UShapeComponent>(Components.B)))
     {
         return;
     }
@@ -183,8 +185,49 @@ void FPhysXSimEventCallback::onTrigger(physx::PxTriggerPair* Pairs, physx::PxU32
     }
 }
 
+void FPhysXSimEventCallback::RefreshOverlapEvents(const UPrimitiveComponent* Component)
+{
+    for (FOverlapState& State : ActiveOverlaps)
+    {
+        // 고체의 이벤트 정책 변경 기록. 트리거 자체의 변경은 PhysX가 보고
+        if (State.Components.B == Component)
+        {
+            State.bRefreshEvents = true;
+            bOverlapSettingsChanged = true;
+        }
+    }
+}
+
+void FPhysXSimEventCallback::QueueChangedOverlapEvents()
+{
+    // 같은 스텝 사이의 연속 변경은 최종 상태로 한 번만 반영
+    for (FOverlapState& State : ActiveOverlaps)
+    {
+        if (!State.bRefreshEvents)
+        {
+            continue;
+        }
+        State.bRefreshEvents = false;
+        const FComponentPair& Pair = State.Components;
+        if (Pair.IsLive())
+        {
+            const AActor* A = Pair.A->GetOwner();
+            const AActor* B = Pair.B->GetOwner();
+            const bool bEnabled = A && B && A->GetActorEnableCollision() && B->GetActorEnableCollision()
+                && Pair.A->bGenerateOverlapEvents && Pair.B->bGenerateOverlapEvents;
+            PendingEvents.Add({ Pair, bEnabled ? EEvent::BeginOverlap : EEvent::EndOverlap });
+        }
+    }
+    bOverlapSettingsChanged = false;
+}
+
 void FPhysXSimEventCallback::DispatchPending()
 {
+    if (bOverlapSettingsChanged)
+    {
+        QueueChangedOverlapEvents();
+    }
+
     // 대기 큐 분리와 양쪽 수신 직전 생존 확인
     TArray<FPendingEvent> Events;
     Events.Swap(PendingEvents);
