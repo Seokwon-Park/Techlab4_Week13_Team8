@@ -10,6 +10,7 @@
 
 #include "Physics/PhysicsScene.h"
 #include "Engine/World.h"
+#include "GameFramework/Actor.h"
 
 namespace
 {
@@ -148,6 +149,8 @@ void UPrimitiveComponent::PostEditChangeProperty(const FProperty& Property)
 
 	if (Property.Name == "bSimulatePhysics")
 		SetSimulatePhysics(bSimulatePhysics);
+	if (Property.Name == "bUseCCD")
+		BodyInstance.SetUseCCD(bUseCCD);
 }
 
 void UPrimitiveComponent::SetCastShadow(bool NewValue)
@@ -180,7 +183,8 @@ void UPrimitiveComponent::DestroyRenderState()
 
 bool UPrimitiveComponent::ShouldCreatePhysicsState() const
 {
-	return GetWorld() && GetWorld()->GetPhysicsScene();
+	const AActor* Owner = GetOwner();
+	return GetWorld() && GetWorld()->GetPhysicsScene() && (!Owner || Owner->GetActorEnableCollision());
 }
 
 void UPrimitiveComponent::OnCreatePhysicsState()
@@ -191,6 +195,7 @@ void UPrimitiveComponent::OnCreatePhysicsState()
 	const EPhysicsBodyType Type = bSimulatePhysics ? EPhysicsBodyType::Dynamic : EPhysicsBodyType::Kinematic;
 
 	FPhysicsScene* Scene = GetWorld()->GetPhysicsScene();
+	BodyInstance.SetUseCCD(bUseCCD);
 	if (!BodyInstance.InitBody(*Setup, FTransform::FromMatrix(GetWorldMatrix()), this, *GetWorld()->GetPhysicsScene(), Type))
 	{
 		HTR_LOG(Warning, "InitBody failed: {} (non-uniform scale or invalid shape?)", GetClass()->Name);

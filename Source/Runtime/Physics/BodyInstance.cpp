@@ -376,3 +376,62 @@ void FBodyInstance::SetLinearVelocity(const FVector& NewVel, bool bAddToCurrent)
         DynamicActor->setLinearVelocity(FinalVelocity);
     }
 }
+
+namespace
+{
+    // 키네마틱이거나 시뮬레이션이 꺼진 바디는 nullptr
+    physx::PxRigidDynamic* GetSimulatingActor(physx::PxRigidActor* Actor)
+    {
+        physx::PxRigidDynamic* DynamicActor = Actor ? Actor->is<physx::PxRigidDynamic>() : nullptr;
+        if (!DynamicActor ||
+            DynamicActor->getRigidBodyFlags().isSet(physx::PxRigidBodyFlag::eKINEMATIC) ||
+            DynamicActor->getActorFlags().isSet(physx::PxActorFlag::eDISABLE_SIMULATION))
+        {
+            return nullptr;
+        }
+        return DynamicActor;
+    }
+}
+
+void FBodyInstance::AddImpulseAtPosition(const FVector& Impulse, const FVector& Position)
+{
+    if (!Actor) return;
+    const physx::PxSceneWriteLock WriteLock(*Scene->GetPxScene());
+    physx::PxRigidDynamic* DynamicActor = GetSimulatingActor(Actor);
+    const physx::PxVec3 PxImpulse = U2PVector(Impulse);
+    if (DynamicActor && PxImpulse.isFinite())
+        physx::PxRigidBodyExt::addForceAtPos(*DynamicActor, PxImpulse, U2PVector(Position), physx::PxForceMode::eIMPULSE);
+}
+
+void FBodyInstance::AddForceAtPosition(const FVector& Force, const FVector& Position)
+{
+    if (!Actor) return;
+    const physx::PxSceneWriteLock WriteLock(*Scene->GetPxScene());
+    physx::PxRigidDynamic* DynamicActor = GetSimulatingActor(Actor);
+    const physx::PxVec3 PxForce = U2PVector(Force);
+    if (DynamicActor && PxForce.isFinite())
+        physx::PxRigidBodyExt::addForceAtPos(*DynamicActor, PxForce, U2PVector(Position), physx::PxForceMode::eFORCE);
+}
+
+bool FBodyInstance::IsInstanceSimulatingPhysics() const
+{
+    if (!Actor) return false;
+    const physx::PxSceneReadLock ReadLock(*Scene->GetPxScene());
+    return GetSimulatingActor(Actor) != nullptr;
+}
+
+FVector FBodyInstance::GetUnrealWorldVelocity() const
+{
+    if (!Actor) return FVector::ZeroVector;
+    const physx::PxSceneReadLock ReadLock(*Scene->GetPxScene());
+    const physx::PxRigidDynamic* DynamicActor = Actor->is<physx::PxRigidDynamic>();
+    return DynamicActor ? P2UVector(DynamicActor->getLinearVelocity()) : FVector::ZeroVector;
+}
+
+float FBodyInstance::GetBodyMass() const
+{
+    if (!Actor) return 0.0f;
+    const physx::PxSceneReadLock ReadLock(*Scene->GetPxScene());
+    const physx::PxRigidDynamic* DynamicActor = Actor->is<physx::PxRigidDynamic>();
+    return DynamicActor ? DynamicActor->getMass() : 0.0f;
+}

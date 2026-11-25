@@ -75,6 +75,13 @@ struct FBodyInstance
     const FVector& GetScale3D() const { return Scale3D; }
     void SetLinearVelocity(const FVector& NewVel, bool bAddToCurrent);
 
+    // 시뮬레이션 중인 동적 바디에만 적용된다
+    void AddImpulseAtPosition(const FVector& Impulse, const FVector& Position);
+    void AddForceAtPosition(const FVector& Force, const FVector& Position);
+    bool IsInstanceSimulatingPhysics() const;
+    FVector GetUnrealWorldVelocity() const;
+    float GetBodyMass() const;
+
 private:
     friend class FPhysicsScene;
     friend struct FConstraintInstance;

@@ -23,6 +23,7 @@
 #include "Physics/BodyInstance.h"
 #include "Physics/ConstraintInstance.h"
 #include "Physics/PhysicsAsset.h"
+#include "Physics/PhysicsAssetFile.h"
 #include "Physics/PhysicsScene.h"
 #include "Engine/World.h"
 #include <extensions/PxDefaultSimulationFilterShader.h>   // PxSetGroup, PxSetGroupCollisionFlag
@@ -244,6 +245,8 @@ void USkeletalMeshComponent::Serialize(FStructuredArchive::FRecord Record)
 
 	if (Ar.IsLoading())
 	{
+		LoadPhysicsAssetOverride();
+
 		if (!AnimBlueprintPath.empty())
 		{
 			ReloadAnimBlueprint();
@@ -370,7 +373,34 @@ bool USkeletalMeshComponent::HasValidPhysicsBody() const
 
 UPhysicsAsset* USkeletalMeshComponent::GetPhysicsAsset() const
 {
+	if (PhysicsAssetOverrideAsset)
+		return PhysicsAssetOverrideAsset;
 	return GetSkeletalMesh() ? GetSkeletalMesh()->GetPhysicsAsset() : nullptr;
+}
+
+void USkeletalMeshComponent::LoadPhysicsAssetOverride()
+{
+	PhysicsAssetOverrideAsset = nullptr;
+	if (PhysicsAssetOverride.empty()) return;
+
+	UPhysicsAsset* Loaded = NewObject<UPhysicsAsset>(this);
+	FString Error;
+	if (!PhysicsAssetFile::Read(PhysicsAssetOverride, *Loaded, Error))
+	{
+		HTR_LOG(Warning, "PhysicsAssetOverride load failed: {} ({})", PhysicsAssetOverride, Error);
+		return;
+	}
+	PhysicsAssetOverrideAsset = Loaded;
+}
+
+void USkeletalMeshComponent::PostEditChangeProperty(const FProperty& Property)
+{
+	Super::PostEditChangeProperty(Property);
+	if (Property.Name == "PhysicsAssetOverride")
+	{
+		LoadPhysicsAssetOverride();
+		RecreatePhysicsState();
+	}
 }
 
 // UE FindRootBodyIndex: 본 순서(부모가 앞)대로 돌며 처음 만나는 바디

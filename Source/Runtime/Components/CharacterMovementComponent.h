@@ -59,6 +59,20 @@ public:
 	UPROPERTY(EditAnywhere)
 	float TerminalVelocity = 4000.0f;
 
+	// 이동 중 부딪힌 시뮬레이션 바디를 민다. 힘 계수는 cm 단위다
+	UPROPERTY(EditAnywhere)
+	bool bEnablePhysicsInteraction = true;
+	// 멈춰 있는 바디에 주는 임펄스 (kg·cm/s)
+	UPROPERTY(EditAnywhere)
+	float InitialPushForceFactor = 500.0f;
+	// 움직이는 바디에 주는 힘 (kg·cm/s²)
+	UPROPERTY(EditAnywhere)
+	float PushForceFactor = 750000.0f;
+	UPROPERTY(EditAnywhere)
+	bool bPushForceScaledToMass = false;
+	UPROPERTY(EditAnywhere)
+	bool bScalePushForceToVelocity = true;
+
 	FVector GetCurrentAcceleration() const { return Acceleration; }
 
 	ECharacterMovementMode GetMovementMode() const { return MovementMode; }
@@ -98,6 +112,9 @@ protected:
 	void DiscardRootMotion();
 	// Sweep 이동. 막히면 표면을 따라 한 번 미끄러진다
 	void SafeMoveWithSlide(const FVector& Delta, const FRotator& NewRotation);
+
+	void HandleImpact(const FHitResult& Hit, float TimeSlice = 0.0f, const FVector& MoveDelta = FVector::ZeroVector) override;
+	void ApplyImpactPhysicsForces(const FHitResult& Impact, const FVector& ImpactAcceleration, const FVector& ImpactVelocity);
 
 	// UE: 이동이 끝난 뒤 회전을 갱신한다 (bOrientRotationToMovement)
 	void PhysicsRotation(float DeltaTime);

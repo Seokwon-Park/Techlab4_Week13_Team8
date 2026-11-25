@@ -100,6 +100,10 @@ public:
 	FBodyInstance* GetBodyInstance(FName BoneName = NAME_None) const override;
 	bool HasValidPhysicsBody() const override;
 	UPhysicsAsset* GetPhysicsAsset() const;
+	void PostEditChangeProperty(const FProperty& Property) override;
+
+	UPROPERTY(EditAnywhere)
+	FString PhysicsAssetOverride;
 
 	// 래그돌 중 컴포넌트가 따라갈 바디(본 계층에서 가장 위에 있는 바디)와 그 바디 기준 컴포넌트 Transform
 	struct FRootBodyData
@@ -143,6 +147,9 @@ private:
 	UAnimInstance* AnimInstance = nullptr;
 
 	TArray<FTransform> BoneSpaceTransforms;
+
+	void LoadPhysicsAssetOverride();
+	UPhysicsAsset* PhysicsAssetOverrideAsset = nullptr;
 
 	FRootBodyData RootBodyData;
 	// [Hitori 추가] 래그돌을 켜기 직전 상태. 끌 때 똑바로 세우는 데 쓴다
