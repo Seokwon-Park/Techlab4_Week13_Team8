@@ -216,7 +216,10 @@ void FEditorTabContainer::DrawTabs()
 	for (IEditorTab* Tab : Tabs)
 	{
 		const bool bCanDetach = Tab->CanDetach();
-		ImGui::SetNextWindowClass(&TabClass);
+		ImGuiWindowClass ThisTabClass = TabClass;
+		if (Tab->IsLeadingTab())
+			ThisTabClass.TabItemFlagsOverrideSet = ImGuiTabItemFlags_Leading;
+		ImGui::SetNextWindowClass(&ThisTabClass);
 		ImGui::SetNextWindowDockID(DockSpaceId, bCanDetach ? ImGuiCond_FirstUseEver : ImGuiCond_Always);
 		ImGui::SetNextWindowSize(ImVec2(960.0f, 640.0f), ImGuiCond_FirstUseEver);
 
@@ -301,6 +304,14 @@ void FEditorTabContainer::DrawTabs()
 		ImGui::End();
 	}
 	bRendering = false;
+}
+
+bool FEditorTabContainer::ConfirmCloseAllTabs()
+{
+	for (IEditorTab* Tab : Tabs)
+		if (Tab && Tab->CanClose() && !Tab->ConfirmClose())
+			return false;
+	return true;
 }
 
 bool FEditorTabContainer::IsInDockSpace(const ImGuiWindow* Window, ImGuiID DockSpaceId)

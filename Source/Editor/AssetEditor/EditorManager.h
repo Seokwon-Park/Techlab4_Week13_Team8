@@ -9,6 +9,7 @@ class FEditorManager
 {
 public:
 	explicit FEditorManager(class UEditorEngine& InEditorEngine);
+	~FEditorManager();
 
 	// 애셋을 살펴볼 수 있는 새로운 에디터를 요청합니다. 
 	void OpenEditor(const FString& AssetPath);
@@ -55,7 +56,9 @@ private:
 	UEditorEngine& EditorEngine;
 	FEditorTabContainer TabContainer;
 	TUniquePtr<FLevelEditorTab> LevelEditorTab;
-	
+	// 탭 줄 맨 왼쪽의 Home 탭 (닫을 수 없다)
+	TUniquePtr<class FHomeTab> HomeTab;
+
 	TArray<TUniquePtr<FAssetEditor>> Editors;
 	TArray<FString> PendingOpens;
 	bool bShuttingDown = false;

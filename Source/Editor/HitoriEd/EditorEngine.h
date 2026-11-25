@@ -275,6 +275,9 @@ private:
 	void OpenScene();
 	void SaveCurrentScene();
 	void SaveSceneAs();
+	// 지금 레벨 뷰포트 화면을 프로젝트 썸네일(<프로젝트>/Saved/AutoScreenshot.png)로 저장한다.
+	// 레벨을 저장할 때 자동으로 부르고, File > Capture Project Thumbnail에서도 부른다. bReport면 결과를 로그에 남긴다.
+	void CaptureProjectThumbnail(bool bReport);
 
 	// 레벨 편집의 실행 취소. PIE 중에는 에디터 월드를 건드리지 않으므로 쓸 수 없다.
 	void UndoLevelEdit();

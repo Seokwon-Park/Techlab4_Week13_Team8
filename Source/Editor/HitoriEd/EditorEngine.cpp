@@ -2,6 +2,10 @@
 
 #include "Editor/HitoriEd/EditorEngine.h"
 #include "Editor/HitoriEd/Editor.h"
+#include "Editor/ProjectBrowser/ProjectThumbnail.h"
+#include "Engine/Viewport.h"
+#include "Render/RenderDevice.h"
+#include "Render/Texture2D.h"
 
 #include "Core/EngineStatics.h"
 #include "Core/EngineTimer.h"
@@ -171,6 +175,7 @@ void UEditorEngine::InitLevelEditorTab()
 	LevelEditorTab->OnOpenScene.AddDynamic(this, &UEditorEngine::OpenScene);
 	LevelEditorTab->OnSaveScene.AddDynamic(this, &UEditorEngine::SaveCurrentScene);
 	LevelEditorTab->OnSaveSceneAs.AddDynamic(this, &UEditorEngine::SaveSceneAs);
+	LevelEditorTab->OnCaptureThumbnail.Add([this]() { CaptureProjectThumbnail(true); });
 	LevelEditorTab->OnImportFbx.Add([this](EFbxImportMode Mode) { FEditorFileUtils::ImportFbx(Mode); });
 	LevelEditorTab->OnPackageGame.Add([this]() { Packager.Start("Release"); });
 	LevelEditorTab->SetIsPackagingQuery([this]() { return Packager.IsRunning(); });
@@ -1529,7 +1534,34 @@ void UEditorEngine::SaveCurrentScene()
 	}
 	// 처음 저장하면 경로가 생기지만 같은 씬이므로 실행 취소 기록은 그대로 둔다.
 	if (FEditorFileUtils::SaveScene(EditorWorld))
+	{
 		LevelUndoScenePath = FEditorFileUtils::CurrentScenePath;
+		CaptureProjectThumbnail(false);
+	}
+}
+
+void UEditorEngine::CaptureProjectThumbnail(bool bReport)
+{
+	if (!FPaths::HasProject() || !ViewportsPanel)
+		return;
+	// 지금 고른(마지막으로 누른) 레벨 뷰포트의 화면. 기즈모·격자도 화면에 보이는 그대로 찍힌다.
+	FViewport* Viewport = ViewportsPanel->GetViewport(ViewportsPanel->GetActiveViewIndex());
+	FTexture2D* Target = Viewport ? Viewport->GetRenderTargetTexture() : nullptr;
+	FRenderDevice* RenderDevice = GetEngineLoop().GetRenderDevice();
+	if (!Target || !RenderDevice)
+		return;
+
+	const std::filesystem::path File = ProjectThumbnail::AutoScreenshotPath(FPaths::ProjectDir());
+	FString Error;
+	if (ProjectThumbnail::Capture(RenderDevice->GetDevice(), RenderDevice->GetContext(), Target->GetRawPtr(), File, Error))
+	{
+		if (bReport)
+			HTR_LOG(Info, "Project thumbnail saved: {}", FPaths::ToUtf8(File));
+	}
+	else
+	{
+		HTR_LOG(Warning, "Project thumbnail not saved ({})", Error);
+	}
 }
 
 // 공통 파일 유틸리티로 새 경로에 씬을 저장한다.
@@ -1542,7 +1574,10 @@ void UEditorEngine::SaveSceneAs()
 	}
 	// 다른 이름으로 저장해도 같은 씬이므로 실행 취소 기록은 그대로 둔다.
 	if (FEditorFileUtils::SaveSceneAs(EditorWorld))
+	{
 		LevelUndoScenePath = FEditorFileUtils::CurrentScenePath;
+		CaptureProjectThumbnail(false);
+	}
 }
 
 // PIE 디버그 표시 (Settings > Debug Draw (PIE))

@@ -89,6 +89,8 @@ enum class EEditorIcon : uint8
 	ClassGameMode,
 	ClassComponent,
 	ClassSceneComponent,
+	// 에디터 탭 줄 맨 왼쪽 Home 탭
+	Home,
 
 	Count
 };

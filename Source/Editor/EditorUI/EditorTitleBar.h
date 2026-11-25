@@ -20,6 +20,8 @@ namespace EditorTitleBar
 
 	// 왼쪽 위 칸에 그릴 로고. 정하지 않으면 빈 칸으로 둔다.
 	void SetLogo(ImTextureID Logo);
+	// SetLogo로 넣은 로고. 없으면 ImTextureID_Invalid (Home 탭의 프로젝트 브라우저 화면이 쓴다).
+	ImTextureID GetLogo();
 
 	// 매 프레임, 메인 뷰포트를 쓰는 다른 창보다 먼저 호출한다.
 	// 띠 높이만큼 뷰포트 작업 영역이 줄어 WorkPos를 쓰는 창은 그 아래에 놓인다. Install 전에는 아무것도 하지 않는다.

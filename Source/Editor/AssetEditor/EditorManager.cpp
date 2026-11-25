@@ -2,6 +2,7 @@
 #include "Editor/BlueprintEditor/BlueprintEditor.h"
 #include "Engine/Blueprint.h"
 #include "Editor/AssetEditor/EditorManager.h"
+#include "Editor/ProjectBrowser/HomeTab.h"
 #include "Editor/StaticMeshEditor/StaticMeshEditor.h"
 #include "Editor/SkeletalMeshEditor/SkeletalMeshEditor.h"
 #include "Asset/AssetManager.h"
@@ -30,7 +31,11 @@ FEditorManager::FEditorManager(UEditorEngine& InEditorEngine)
 	: EditorEngine(InEditorEngine)
 	, LevelEditorTab(MakeUnique<FLevelEditorTab>())
 {
+	// UE처럼 탭 줄 맨 왼쪽에 집 아이콘 Home 탭(프로젝트 브라우저 화면)을 둔다. 시작할 때는 레벨 탭을 앞에 둔다.
+	HomeTab = MakeUnique<FHomeTab>(TabContainer, LevelEditorTab.get());
+	TabContainer.AddTab(HomeTab.get());
 	TabContainer.AddTab(LevelEditorTab.get());
+	TabContainer.ActivateTab(LevelEditorTab.get());
 }
 
 void FEditorManager::OpenEditor(const FString& AssetPath)
@@ -372,7 +377,15 @@ void FEditorManager::Shutdown()
 
 	TabContainer.RemoveTab(LevelEditorTab.get());
 	LevelEditorTab.reset();
+	if (HomeTab)
+	{
+		TabContainer.RemoveTab(HomeTab.get());
+		HomeTab.reset();
+	}
 }
+
+// FHomeTab의 완전한 타입이 필요해 cpp에서 정의한다.
+FEditorManager::~FEditorManager() = default;
 
 //void FEditorManager::DrawEditorUI()
 //{
