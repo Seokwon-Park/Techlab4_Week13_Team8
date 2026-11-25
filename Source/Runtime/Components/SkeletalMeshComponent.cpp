@@ -703,8 +703,66 @@ USkeletalMeshComponent::FClothInstance USkeletalMeshComponent::CreateClothInstan
 	Cloth->teleportToLocation(U2PVector(GetWorldLocation()), Rotation);
 	Cloth->setGravity(physx::PxVec3(0.0f, 0.0f, GravityZ));
 	Instance.Cloth = std::move(Cloth);
+	ApplyClothSelfCollision(Instance, LOD);
 	return Instance;
 }
+
+void USkeletalMeshComponent::ApplyClothSelfCollision(const FClothInstance& Instance,
+	const FSkeletalMeshLODRenderData& LOD) const
+{
+	// 씬 파일과 에디터에서 받은 설정의 SDK 범위 보정
+	const float Distance = std::isfinite(ClothSelfCollisionDistance)
+		? std::max(0.0f, ClothSelfCollisionDistance) : 0.0f;
+	const float Stiffness = std::isfinite(ClothSelfCollisionStiffness)
+		? std::clamp(ClothSelfCollisionStiffness, 0.0f, 1.0f) : 0.0f;
+	nv::cloth::Cloth& Cloth = *Instance.Cloth;
+	if (Distance > 0.0f && Stiffness > 0.0f && Cloth.getNumRestPositions() == 0)
+	{
+		// 바인드 상태에서 이미 가까운 입자 쌍을 제외할 섹션 기준 자세
+		TArray<physx::PxVec4> RestPositions;
+		RestPositions.Reserve(Instance.ParticleToRenderVertex.Num());
+		for (uint32 RenderVertex : Instance.ParticleToRenderVertex)
+		{
+			const FVector Position = LOD.BindVertices[RenderVertex].Position * Instance.SimulationScale;
+			RestPositions.Emplace(U2PVector(Position), 0.0f);
+		}
+		Cloth.setRestPositions({RestPositions.GetData(), RestPositions.GetData() + RestPositions.Num()});
+
+		// NvCloth CUDA의 부호 있는 16비트 셀 경계에 맞춘 대형 섹션 표본
+		constexpr uint32 MaxCudaSelfCollisionParticles = (std::numeric_limits<int16>::max)();
+		const uint32 ParticleCount = Cloth.getNumParticles();
+		if (Cloth.getFactory().getPlatform() == nv::cloth::Platform::CUDA && ParticleCount > MaxCudaSelfCollisionParticles)
+		{
+			TArray<uint32> Indices;
+			Indices.Reserve(MaxCudaSelfCollisionParticles);
+			for (uint32 Index = 0; Index < MaxCudaSelfCollisionParticles; ++Index)
+			{
+				Indices.Add(Index * (ParticleCount - 1) / (MaxCudaSelfCollisionParticles - 1));
+			}
+			Cloth.setSelfCollisionIndices({Indices.GetData(), Indices.GetData() + Indices.Num()});
+		}
+	}
+	Cloth.setSelfCollisionDistance(Distance);
+	Cloth.setSelfCollisionStiffness(Stiffness);
+}
+
+void USkeletalMeshComponent::PostEditChangeProperty(const FProperty& Property)
+{
+	Super::PostEditChangeProperty(Property);
+	if (!ClothSourceMesh
+		|| (Property.Name != "ClothSelfCollisionDistance" && Property.Name != "ClothSelfCollisionStiffness"))
+	{
+		return;
+	}
+
+	// 현재 자세를 유지한 채 실행 중인 천에 편집값 반영
+	const FSkeletalMeshLODRenderData& LOD = ClothSourceMesh->GetRenderData().LODRenderData[0];
+	for (const FClothInstance& Instance : ClothInstances)
+	{
+		ApplyClothSelfCollision(Instance, LOD);
+	}
+}
+
 void USkeletalMeshComponent::ReleaseClothSolver(bool bRefreshSkinningMode)
 {
 	ClothTickFunction.UnRegisterTickFunction();

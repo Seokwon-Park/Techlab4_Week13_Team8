@@ -100,6 +100,16 @@ public:
 	// Solver에 전달한 몸통 충돌 형상의 프리뷰 표시
 	void DrawClothBodyCollision(FLineBatcher& LineBatcher) const;
 
+	// 같은 천 섹션의 입자 분리 거리(미터), 0이면 자기충돌 해제
+	UPROPERTY(EditAnywhere, meta=(ClampMin=0, Delta=0.001))
+	float ClothSelfCollisionDistance = 0.0f;
+
+	// 자기충돌의 거리 보정 강도
+	UPROPERTY(EditAnywhere, meta=(ClampMin=0, ClampMax=1, Delta=0.01))
+	float ClothSelfCollisionStiffness = 1.0f;
+
+	void PostEditChangeProperty(const FProperty& Property) override;
+
 	using Super::Serialize;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
 
@@ -230,6 +240,7 @@ private:
 	FClothInstance CreateClothInstance(nv::cloth::Factory& Factory,
 		const FSkeletalMeshLODRenderData& LOD, const FClothSectionBinding& Binding,
 		float GravityZ,bool bForPreview = false) const;
+	void ApplyClothSelfCollision(const FClothInstance& Instance, const FSkeletalMeshLODRenderData& LOD) const;
 	void UpdateClothMotionConstraints();
 	void UpdateClothVertexPositions();
 	const TArray<FClothVertexPosition>* GetClothVertexPositions() const override
