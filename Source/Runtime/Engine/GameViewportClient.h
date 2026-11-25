@@ -44,6 +44,8 @@ public:
 	virtual void MouseMove(FViewport* Viewport, int32 X, int32 Y) override;
 	virtual bool InputKey(FViewport* Viewport, int32 Key, bool bDown) override;
 	virtual bool InputAxis(FViewport* Viewport, int32 ControllerId, EGameInputAxis AxisKey, float Delta, float DeltaTime) override;
+	// 게임에 전달된 이번 프레임의 마우스 이동량
+	FVector2 GetInputMouseDelta() const { return InputMouseDelta; }
 	bool ConsumeExitRequest() {
 		const bool bRequested = bExitRequested;
 		bExitRequested = false;
@@ -122,6 +124,7 @@ private:
 	UWidget* PressedWidget = nullptr;
 	int32 UIMouseX = 0;
 	int32 UIMouseY = 0;
+	FVector2 InputMouseDelta{};
 
 	UWorld* World = nullptr;
 	UGameInstance* GameInstance = nullptr;
