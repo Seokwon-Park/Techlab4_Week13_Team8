@@ -36,6 +36,28 @@ AActor::~AActor()
 	}
 }
 
+void AActor::SetActorEnableCollision(bool bEnabled)
+{
+	bActorEnableCollision = bEnabled;
+	// 차체와 본별 바디를 포함한 소유 컴포넌트의 충돌 상태 갱신
+	for (UActorComponent* Component : Components)
+	{
+		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component))
+		{
+			Primitive->UpdateCollisionSettings();
+		}
+	}
+}
+
+void AActor::PostEditChangeProperty(const FProperty& Property)
+{
+	Super::PostEditChangeProperty(Property);
+	if (Property.Name == "bActorEnableCollision")
+	{
+		SetActorEnableCollision(bActorEnableCollision);
+	}
+}
+
 void AActor::BeginPlay()
 {
 	if (bHasBegunPlay || !World || !World->HasBegunPlay()) return;

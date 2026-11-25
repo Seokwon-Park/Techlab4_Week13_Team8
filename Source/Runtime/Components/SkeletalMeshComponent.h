@@ -155,6 +155,7 @@ public:
 	// 이름이 없으면 루트 바디 (UE와 같음)
 	FBodyInstance* GetBodyInstance(FName BoneName = NAME_None) const override;
 	bool HasValidPhysicsBody() const override;
+	void UpdateCollisionSettings() override;
 	UPhysicsAsset* GetPhysicsAsset() const;
 
 	// 래그돌 중 컴포넌트가 따라갈 바디(본 계층에서 가장 위에 있는 바디)와 그 바디 기준 컴포넌트 Transform

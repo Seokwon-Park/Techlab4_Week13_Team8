@@ -1,6 +1,8 @@
 #include "EnginePCH.h"
 #include "Physics/BodyInstance.h"
 
+#include "Components/PrimitiveComponent.h"
+#include "GameFramework/Actor.h"
 #include "Physics/BodySetup.h"
 #include "Physics/PhysicalMaterial.h"
 #include "Physics/PhysicsSettings.h"
@@ -179,20 +181,8 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
         DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_CCD, !bKinematic && bUseCCD);
     }
 
-    // 질량 계산은 시뮬레이션 Shape만 보므로 질량을 정한 뒤에 끈다
-    if (CollisionEnabled == ECollisionEnabled::QueryOnly)
-    {
-        TArray<physx::PxShape*> Shapes;
-        Shapes.SetNum(static_cast<int32>(NewActor->getNbShapes()));
-        NewActor->getShapes(Shapes.GetData(), Shapes.Num());
-        for (physx::PxShape* Shape : Shapes)
-        {
-            Shape->setFlag(physx::PxShapeFlag::eSIMULATION_SHAPE, false);
-            physx::PxFilterData QueryFilter = Shape->getQueryFilterData();
-            QueryFilter.word3 |= QueryOnlyShapeQueryBit;
-            Shape->setQueryFilterData(QueryFilter);
-        }
-    }
+    // 질량·관성 계산이 끝난 형상에 실제 충돌 정책 적용
+    ApplyCollisionSettings(*NewActor, InOwnerComponent);
 
     // 씬 등록과 바디 역참조 설정의 쓰기 잠금
     const physx::PxSceneWriteLock WriteLock(*NativeScene);
@@ -223,6 +213,54 @@ void FBodyInstance::TermBody()
 
     Scene = nullptr;
     OwnerComponent = nullptr;
+}
+
+void FBodyInstance::ApplyCollisionSettings(physx::PxRigidActor& RigidActor, const UPrimitiveComponent* Component) const
+{
+    using namespace physx;
+    const AActor* Owner = Component ? Component->GetOwner() : nullptr;
+    const bool bEnabled = !Owner || Owner->GetActorEnableCollision();
+    const bool bQueryOnly = CollisionEnabled == ECollisionEnabled::QueryOnly;
+    const PxU32 ShapeCount = RigidActor.getNbShapes();
+    for (PxU32 Index = 0; Index < ShapeCount; ++Index)
+    {
+        PxShape* Shape = nullptr;
+        RigidActor.getShapes(&Shape, 1, Index);
+        // Trigger와 Simulation의 상호 배타적 전환 및 디버그 표시 유지
+        PxShapeFlags Flags = Shape->getFlags();
+        Flags.clear(PxShapeFlag::eSIMULATION_SHAPE);
+        Flags.clear(PxShapeFlag::eTRIGGER_SHAPE);
+        Flags.clear(PxShapeFlag::eSCENE_QUERY_SHAPE);
+        if (bEnabled)
+        {
+            Flags |= PxShapeFlag::eSCENE_QUERY_SHAPE;
+            if (!bQueryOnly)
+            {
+                Flags |= PxShapeFlag::eSIMULATION_SHAPE;
+            }
+        }
+        if (Flags != Shape->getFlags())
+        {
+            Shape->setFlags(Flags);
+        }
+
+        // 차량 쿼리에서 센서 제외 및 차체 전용 비트 보존
+        PxFilterData Filter = Shape->getQueryFilterData();
+        if (((Filter.word3 & QueryOnlyShapeQueryBit) != 0) != bQueryOnly)
+        {
+            Filter.word3 = (Filter.word3 & ~QueryOnlyShapeQueryBit) | (bQueryOnly ? QueryOnlyShapeQueryBit : 0u);
+            Shape->setQueryFilterData(Filter);
+        }
+    }
+}
+
+void FBodyInstance::UpdateCollisionSettings()
+{
+    if (Actor)
+    {
+        const physx::PxSceneWriteLock WriteLock(*Scene->GetPxScene());
+        ApplyCollisionSettings(*Actor, OwnerComponent);
+    }
 }
 
 FTransform FBodyInstance::GetWorldTransform() const

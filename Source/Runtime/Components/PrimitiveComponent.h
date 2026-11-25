@@ -105,6 +105,8 @@ public:
 	bool bGenerateOverlapEvents = true;
 	UPROPERTY(EditAnywhere)
 	bool bBlockComponent = false;
+	// 실행 중 충돌 응답 변경과 네이티브 형상 동기화
+	virtual void UpdateCollisionSettings();
 
 	UPROPERTY(EditAnywhere)
 	int32 TranslucencySortPriority = 0;
