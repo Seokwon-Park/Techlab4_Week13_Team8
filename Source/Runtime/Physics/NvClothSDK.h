@@ -13,4 +13,7 @@ namespace NvClothSDK
 
 	// 월드 Solver 생성용 비소유 Factory 조회
 	nv::cloth::Factory* GetFactory();
+
+	// 현재 Solver 생성에 사용하는 Factory의 백엔드 이름
+	const char* GetBackendName();
 }

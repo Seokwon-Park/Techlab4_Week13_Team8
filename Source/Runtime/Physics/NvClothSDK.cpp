@@ -233,4 +233,15 @@ namespace NvClothSDK
 	{
 		return GFactory;
 	}
+
+	const char* GetBackendName()
+	{
+		if (!GFactory)
+		{
+			return "Unavailable";
+		}
+
+		// CUDA 초기화 실패 시 CPU로 전환된 결과까지 반영
+		return GFactory->getPlatform() == nv::cloth::Platform::CUDA ? "CUDA" : "CPU";
+	}
 }

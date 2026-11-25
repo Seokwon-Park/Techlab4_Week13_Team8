@@ -44,7 +44,7 @@ namespace
 	struct FStartupOptions
 	{
 		std::filesystem::path Project;
-		bool bPreferClothCuda = false;
+		bool bPreferClothCuda = true;
 	};
 
 	// 프로젝트 경로와 Cloth 백엔드 시작 옵션의 추출
