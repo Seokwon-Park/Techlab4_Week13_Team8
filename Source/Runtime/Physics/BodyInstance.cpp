@@ -150,9 +150,12 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
 
     if (physx::PxRigidDynamic* DynamicActor = NewActor->is<physx::PxRigidDynamic>())
     {
-        const float OverrideMass = InBodySetup.MassInKgOverride;
+        // 재질 밀도(g/cm³)를 미터 단위 PhysX 밀도(kg/m³)로 변환
+        constexpr float KgPerM3PerGramPerCm3 = 1000.0f;
+        const float MassOrDensity = InBodySetup.bOverrideMass ? InBodySetup.MassInKgOverride
+            : (PhysMaterial ? PhysMaterial->Density : 1.0f) * KgPerM3PerGramPerCm3;
         if (NewActor->getNbShapes() == static_cast<physx::PxU32>(ShapesExcludedFromMass.Num()) ||
-            (InBodySetup.bOverrideMass && (!std::isfinite(OverrideMass) || OverrideMass <= 0.0f)))
+            !std::isfinite(MassOrDensity) || MassOrDensity <= 0.0f)
         {
             return false;
         }
@@ -163,10 +166,9 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
             Shape->setFlag(physx::PxShapeFlag::eSIMULATION_SHAPE, false);
         }
 
-        constexpr float DefaultDensityKgPerM3 = 1000.0f;
         const bool bMassReady = InBodySetup.bOverrideMass
-            ? physx::PxRigidBodyExt::setMassAndUpdateInertia(*DynamicActor, OverrideMass)
-            : physx::PxRigidBodyExt::updateMassAndInertia(*DynamicActor, DefaultDensityKgPerM3);
+            ? physx::PxRigidBodyExt::setMassAndUpdateInertia(*DynamicActor, MassOrDensity)
+            : physx::PxRigidBodyExt::updateMassAndInertia(*DynamicActor, MassOrDensity);
         if (!bMassReady)
         {
             return false;
