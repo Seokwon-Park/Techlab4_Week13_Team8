@@ -356,6 +356,7 @@ void FViewportsPanel::DrawStatOverlay(ImDrawList* DrawList, const ImVec2& ViewMi
 			const char* Label = World->IsPaused() ? "  Paused | Last tick" : "  Last tick";
 			Lines.Add({ std::format("{}  {} steps  {:.2f} ms", Label,
 				PhysicsScene->GetLastTickStepCount(), PhysicsScene->GetLastTickStepTimeMs()), ValueColor });
+			Lines.Add({ std::format("  Hit / Overlap  {:.2f} ms", PhysicsScene->GetLastTickEventTimeMs()), ValueColor });
 		}
 		else
 		{

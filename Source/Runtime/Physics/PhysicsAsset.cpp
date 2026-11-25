@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "PhysicsAsset.h"
+#include "Physics/PhysicalMaterial.h"
 
 void UPhysicsAsset::DisableCollision(int32 BodyIndexA, int32 BodyIndexB)
 {
@@ -61,13 +62,68 @@ void UPhysicsAsset::Serialize(FStructuredArchive::FRecord Record)
 
 	Record << SA_VALUE("PreviewMesh", PreviewMeshPath);
 
+	// 한 에셋에서 공유하는 재질의 중복 저장 방지
+	TArray<UPhysicalMaterial*> Materials;
+	if (Ar.IsSaving())
+	{
+		for (const USkeletalBodySetup* Body : SkeletalBodySetups)
+		{
+			if (Body->PhysMaterial)
+			{
+				Materials.AddUnique(Body->PhysMaterial);
+			}
+		}
+	}
+	if (auto Field = Record.TryEnterField("PhysicalMaterials", !Materials.IsEmpty()))
+	{
+		int32 Count = Materials.Num();
+		auto Array = Field.GetValue().EnterArray(Count);
+		if (Ar.IsLoading())
+		{
+			Materials.SetNum(Count);
+		}
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			if (Ar.IsLoading())
+			{
+				// 같은 에셋을 다시 읽을 때 같은 재질 슬롯 재사용
+				Materials[Index] = NewObject<UPhysicalMaterial>(this, FName("EmbeddedPhysicalMaterial", Index + 1));
+				if (!Materials[Index])
+				{
+					Ar.SetError();
+					return;
+				}
+			}
+			UPhysicalMaterial::StaticClass()->SerializeTaggedProperties(Array.EnterElement(), Materials[Index]);
+		}
+	}
+
 	int32 NumBodies = Ar.IsSaving() ? SkeletalBodySetups.Num() : 0;
 	auto Bodies = Record.EnterArray("SkeletalBodySetups", NumBodies);
 	if (Ar.IsLoading()) SkeletalBodySetups.SetNum(NumBodies);
 	for (int32 i = 0; i < NumBodies; ++i)
 	{
 		if (Ar.IsLoading()) SkeletalBodySetups[i] = NewObject<USkeletalBodySetup>(this);
-		SkeletalBodySetups[i]->Serialize(Bodies.EnterElement().EnterRecord());
+		auto BodyRecord = Bodies.EnterElement().EnterRecord();
+		USkeletalBodySetup* Body = SkeletalBodySetups[i];
+		Body->Serialize(BodyRecord);
+		// 재질 필드가 없는 기존 바디는 자체 마찰·반발값 사용
+		int32 MaterialIndex = Ar.IsSaving() ? Materials.Find(Body->PhysMaterial) : INDEX_NONE;
+		if (auto Field = BodyRecord.TryEnterField("PhysMaterialIndex", MaterialIndex != INDEX_NONE))
+		{
+			Field.GetValue() << MaterialIndex;
+			if (Ar.IsLoading())
+			{
+				if (!Materials.IsValidIndex(MaterialIndex))
+				{
+					Ar.SetError();
+				}
+				else
+				{
+					Body->PhysMaterial = Materials[MaterialIndex];
+				}
+			}
+		}
 	}
 
 	int NumConstraints = Ar.IsSaving() ? ConstraintSetup.Num() : 0;

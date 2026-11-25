@@ -4,7 +4,7 @@
 #include "Math/Box.h"
 #include "Math/Transform.h"
 #include <Containers/Array.h>
-
+#include "Containers/Map.h"
 
 struct FSkeletalMeshSection
 {
@@ -36,7 +36,30 @@ struct FSkinWeight
 	// 현재 BoneIndex는 전체 Bones 배열의 번호다. Section별 GPU palette 도입 시 해당 Section의 번호로 재매핑한다.
 	uint8 BoneIndex[MaxBoneInfluences] = {};
 	float Weight[MaxBoneInfluences] = {};
+
+	// 정점에 영향을 주는 스키닝 행렬의 가중합
+	FMatrix BuildSkinMatrix(const TArray<FMatrix>& RefToLocal) const
+	{
+		FMatrix Result = RefToLocal[BoneIndex[0]] * Weight[0];
+		for (int32 Influence = 1; Influence < MaxBoneInfluences; ++Influence)
+		{
+			if (Weight[Influence] > 0.0f)
+			{
+				Result += RefToLocal[BoneIndex[Influence]] * Weight[Influence];
+			}
+		}
+		return Result;
+	}
 };
+
+// 렌더 섹션별 Cloth 고정점과 정점 이동 반경
+struct FClothSectionBinding
+{
+	int32 SectionIndex = INDEX_NONE;
+	TArray<uint32> PinnedRenderVertices;
+	TMap<uint32, float> MaxDistanceByRenderVertex;
+};
+
 
 struct FSkeletalMeshData
 {
@@ -48,7 +71,13 @@ struct FSkeletalMeshData
 	TArray<FBoneInfo> Bones;
 	FBox BindAABB;
 	FString SourcePath;
+	TArray<FClothSectionBinding> ClothSectionBindings;
 
+	static bool ValidateClothSectionBindings(const TArray<FClothSectionBinding>& Bindings,
+		const TArray<FSkeletalMeshSection>& Sections, const TArray<uint32>& Indices, int32 NumVertices);
+
+	bool HasSameClothGeometry(const TArray<FVertex>& OtherVertices,
+		const TArray<uint32>& OtherIndices, const TArray<FSkeletalMeshSection>& OtherSections) const;
 	bool Validate(FString& OutError) const;
 };
 

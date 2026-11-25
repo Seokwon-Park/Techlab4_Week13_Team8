@@ -18,4 +18,3 @@ public:
 	UPROPERTY(EditAnywhere)
 	float SensorWidthMm = 36.0f;
 };
-

@@ -1,6 +1,8 @@
 #include "EnginePCH.h"
 #include "Physics/BodyInstance.h"
 
+#include "Components/PrimitiveComponent.h"
+#include "GameFramework/Actor.h"
 #include "Physics/BodySetup.h"
 #include "Physics/PhysicalMaterial.h"
 #include "Physics/PhysicsSettings.h"
@@ -148,9 +150,12 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
 
     if (physx::PxRigidDynamic* DynamicActor = NewActor->is<physx::PxRigidDynamic>())
     {
-        const float OverrideMass = InBodySetup.MassInKgOverride;
+        // 재질 밀도(g/cm³)를 미터 단위 PhysX 밀도(kg/m³)로 변환
+        constexpr float KgPerM3PerGramPerCm3 = 1000.0f;
+        const float MassOrDensity = InBodySetup.bOverrideMass ? InBodySetup.MassInKgOverride
+            : (PhysMaterial ? PhysMaterial->Density : 1.0f) * KgPerM3PerGramPerCm3;
         if (NewActor->getNbShapes() == static_cast<physx::PxU32>(ShapesExcludedFromMass.Num()) ||
-            (InBodySetup.bOverrideMass && (!std::isfinite(OverrideMass) || OverrideMass <= 0.0f)))
+            !std::isfinite(MassOrDensity) || MassOrDensity <= 0.0f)
         {
             return false;
         }
@@ -161,10 +166,9 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
             Shape->setFlag(physx::PxShapeFlag::eSIMULATION_SHAPE, false);
         }
 
-        constexpr float DefaultDensityKgPerM3 = 1000.0f;
         const bool bMassReady = InBodySetup.bOverrideMass
-            ? physx::PxRigidBodyExt::setMassAndUpdateInertia(*DynamicActor, OverrideMass)
-            : physx::PxRigidBodyExt::updateMassAndInertia(*DynamicActor, DefaultDensityKgPerM3);
+            ? physx::PxRigidBodyExt::setMassAndUpdateInertia(*DynamicActor, MassOrDensity)
+            : physx::PxRigidBodyExt::updateMassAndInertia(*DynamicActor, MassOrDensity);
         if (!bMassReady)
         {
             return false;
@@ -179,20 +183,8 @@ bool FBodyInstance::InitBody(const UBodySetup& InBodySetup, const FTransform& In
         DynamicActor->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_CCD, !bKinematic && bUseCCD);
     }
 
-    // 질량 계산은 시뮬레이션 Shape만 보므로 질량을 정한 뒤에 끈다
-    if (CollisionEnabled == ECollisionEnabled::QueryOnly)
-    {
-        TArray<physx::PxShape*> Shapes;
-        Shapes.SetNum(static_cast<int32>(NewActor->getNbShapes()));
-        NewActor->getShapes(Shapes.GetData(), Shapes.Num());
-        for (physx::PxShape* Shape : Shapes)
-        {
-            Shape->setFlag(physx::PxShapeFlag::eSIMULATION_SHAPE, false);
-            physx::PxFilterData QueryFilter = Shape->getQueryFilterData();
-            QueryFilter.word3 |= QueryOnlyShapeQueryBit;
-            Shape->setQueryFilterData(QueryFilter);
-        }
-    }
+    // 질량·관성 계산이 끝난 형상에 실제 충돌 정책 적용
+    ApplyCollisionSettings(*NewActor, InOwnerComponent);
 
     // 씬 등록과 바디 역참조 설정의 쓰기 잠금
     const physx::PxSceneWriteLock WriteLock(*NativeScene);
@@ -223,6 +215,61 @@ void FBodyInstance::TermBody()
 
     Scene = nullptr;
     OwnerComponent = nullptr;
+}
+
+void FBodyInstance::ApplyCollisionSettings(physx::PxRigidActor& RigidActor, const UPrimitiveComponent* Component) const
+{
+    using namespace physx;
+    const AActor* Owner = Component ? Component->GetOwner() : nullptr;
+    const bool bEnabled = !Owner || Owner->GetActorEnableCollision();
+    const bool bQueryOnly = CollisionEnabled == ECollisionEnabled::QueryOnly;
+    const bool bTrigger = bEnabled && bQueryOnly && Component && !Component->bBlockComponent
+        && Component->bGenerateOverlapEvents;
+    const PxU32 ShapeCount = RigidActor.getNbShapes();
+    for (PxU32 Index = 0; Index < ShapeCount; ++Index)
+    {
+        PxShape* Shape = nullptr;
+        RigidActor.getShapes(&Shape, 1, Index);
+        // Trigger와 Simulation의 상호 배타적 전환 및 디버그 표시 유지
+        PxShapeFlags Flags = Shape->getFlags();
+        Flags.clear(PxShapeFlag::eSIMULATION_SHAPE);
+        Flags.clear(PxShapeFlag::eTRIGGER_SHAPE);
+        Flags.clear(PxShapeFlag::eSCENE_QUERY_SHAPE);
+        if (bEnabled)
+        {
+            Flags |= PxShapeFlag::eSCENE_QUERY_SHAPE;
+            if (!bQueryOnly)
+            {
+                Flags |= PxShapeFlag::eSIMULATION_SHAPE;
+            }
+            else if (bTrigger)
+            {
+                Flags |= PxShapeFlag::eTRIGGER_SHAPE;
+            }
+        }
+        if (Flags != Shape->getFlags())
+        {
+            Shape->setFlags(Flags);
+        }
+
+        // 차량 쿼리에서 센서 제외 및 차체 전용 비트 보존
+        PxFilterData Filter = Shape->getQueryFilterData();
+        if (((Filter.word3 & QueryOnlyShapeQueryBit) != 0) != bQueryOnly)
+        {
+            Filter.word3 = (Filter.word3 & ~QueryOnlyShapeQueryBit) | (bQueryOnly ? QueryOnlyShapeQueryBit : 0u);
+            Shape->setQueryFilterData(Filter);
+        }
+    }
+}
+
+void FBodyInstance::UpdateCollisionSettings()
+{
+    if (Actor)
+    {
+        const physx::PxSceneWriteLock WriteLock(*Scene->GetPxScene());
+        ApplyCollisionSettings(*Actor, OwnerComponent);
+        Scene->RefreshOverlapEvents(OwnerComponent);
+    }
 }
 
 FTransform FBodyInstance::GetWorldTransform() const

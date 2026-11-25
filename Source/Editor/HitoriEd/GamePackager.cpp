@@ -2,6 +2,9 @@
 #include "Editor/HitoriEd/GamePackager.h"
 
 #include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <vector>
 
 #include "Core/Misc/Paths.h"
 
@@ -97,11 +100,18 @@ bool FGamePackager::StartCopyOnly(const std::filesystem::path& Root)
 			namespace fs = std::filesystem;
 			std::error_code Ec;
 			fs::remove_all(Out, Ec);
-			fs::create_directories(Out, Ec);
-			if (Ec || !fs::copy_file(GameExe, Out / L"HitoriGame.exe", fs::copy_options::overwrite_existing, Ec))
+			if (!Ec)
 			{
-				CopyResult = "HitoriGame.exe";
+				fs::create_directories(Out, Ec);
+			}
+			if (Ec)
+			{
+				CopyResult = FPaths::ToUtf8(Out);
 				bCopyFailed = true;
+			}
+			else
+			{
+				bCopyFailed = !CopyGameRuntimeDlls(Root, GameExe, Out);
 			}
 			// 엔진 셰이더(Resources)와 엔진 콘텐츠(EngineContent)는 엔진 폴더에서, 프로젝트 콘텐츠는 프로젝트 폴더에서 가져온다.
 			// 게임 exe는 옆에 있는 .hproject를 찾아 그 폴더를 프로젝트 폴더로 쓴다.
@@ -122,8 +132,76 @@ bool FGamePackager::StartCopyOnly(const std::filesystem::path& Root)
 				CopyResult = FPaths::ToUtf8(ProjectFile.filename());
 				bCopyFailed = true;
 			}
+			// DLL과 콘텐츠가 준비된 뒤 게임 실행 파일 배치
+			if (!bCopyFailed && !fs::copy_file(GameExe, Out / GameExe.filename(), fs::copy_options::overwrite_existing, Ec))
+			{
+				CopyResult = FPaths::ToUtf8(GameExe.filename());
+				bCopyFailed = true;
+			}
 			bCopyDone = true;
 		});
+	return true;
+}
+
+bool FGamePackager::CopyGameRuntimeDlls(const std::filesystem::path& Root, const std::filesystem::path& GameExe,
+	const std::filesystem::path& Out)
+{
+	namespace fs = std::filesystem;
+	const fs::path Manifest = Root / L"Resources/Packaging/GameRuntimeDlls.txt";
+	std::ifstream List(Manifest);
+	if (!List)
+	{
+		CopyResult = FPaths::ToUtf8(Manifest);
+		return false;
+	}
+
+	// 사전 빌드 EXE가 실제 링크한 DLL 이름 조회. 게임이나 의존 DLL의 코드 실행 생략
+	HMODULE Image = LoadLibraryExW(GameExe.c_str(), nullptr, DONT_RESOLVE_DLL_REFERENCES);
+	if (!Image)
+	{
+		CopyResult = FPaths::ToUtf8(GameExe);
+		return false;
+	}
+	const auto* Base = reinterpret_cast<const BYTE*>(Image);
+	const auto* Dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(Base);
+	const auto* Nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(Base + Dos->e_lfanew);
+	const auto& Directory = Nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+	std::vector<FString> Imports;
+	const auto* Entries = reinterpret_cast<const IMAGE_IMPORT_DESCRIPTOR*>(Base + Directory.VirtualAddress);
+	for (size_t Index = 0; Index < Directory.Size / sizeof(*Entries) && Entries[Index].Name; ++Index)
+	{
+		Imports.emplace_back(reinterpret_cast<const char*>(Base + Entries[Index].Name));
+	}
+	FreeLibrary(Image);
+
+	// 둘째 열의 Debug 이름을 게임이 참조할 때만 선택. 공통 DLL은 첫 열 사용
+	bool bCopied = false;
+	FString Line;
+	while (std::getline(List, Line))
+	{
+		std::istringstream Names(Line);
+		FString Dll, DebugDll;
+		if (!(Names >> Dll))
+		{
+			continue;
+		}
+		if (Names >> DebugDll && std::find(Imports.begin(), Imports.end(), DebugDll) != Imports.end())
+		{
+			Dll = DebugDll;
+		}
+		std::error_code Ec;
+		if (!fs::copy_file(GameExe.parent_path() / Dll, Out / Dll, fs::copy_options::overwrite_existing, Ec))
+		{
+			CopyResult = Dll;
+			return false;
+		}
+		bCopied = true;
+	}
+	if (!bCopied || List.bad())
+	{
+		CopyResult = FPaths::ToUtf8(Manifest);
+		return false;
+	}
 	return true;
 }
 

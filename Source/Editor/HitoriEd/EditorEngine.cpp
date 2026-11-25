@@ -93,6 +93,7 @@ namespace
 #include "GameFramework/Actor/DecalActor.h"
 #include "GameFramework/Actor/TextRenderActor.h"
 #include "GameFramework/Actor/ExponentialHeightFogActor.h"
+#include "GameFramework/Actor/WindDirectionalSource.h"
 #include "GameFramework/Character.h"
 #include "LevelSequence/LevelSequenceActor.h"
 
@@ -536,6 +537,7 @@ void UEditorEngine::InitCommands()
 		SpawnEntry("Lights", "Sky Light", ASkyLightActor::StaticClass()),
 		SpawnEntry("Visual Effects", "Particle Actor", AParticleActor::StaticClass()),
 		SpawnEntry("Visual Effects", "Exponential Height Fog", AExponentialHeightFogActor::StaticClass()),
+		SpawnEntry("Visual Effects", "Wind Directional Source", AWindDirectionalSource::StaticClass()),
 		SpawnEntry("Visual Effects", "Decal", ADecalActor::StaticClass()),
 	};
 

@@ -5,7 +5,7 @@
 #include "SkinnedMeshComponent.generated.h"
 
 class FSkeletalMeshObject;
-
+struct FClothVertexPosition;
 UCLASS()
 class USkinnedMeshComponent : public UMeshComponent
 {
@@ -52,6 +52,12 @@ public:
 
 protected:
 	virtual void RefreshBoneTransforms();
+	// 컴포넌트가 전역 설정에 우선해 CPU 스키닝을 요구하는지 여부
+	virtual bool RequiresCPUSkinning() const { return false; }
+	virtual const TArray<FClothVertexPosition>* GetClothVertexPositions() const
+	{
+		return nullptr;
+	}
 	void SendRenderDynamicData();
 	virtual void OnSkeletalMeshChanged() {};
 
@@ -64,5 +70,7 @@ private:
 	UPROPERTY()
 	USkeletalMesh* SkeletalMesh = nullptr;
 	TUniquePtr<FSkeletalMeshObject> MeshObject;
+	// GPU 생성 실패로 CPU가 쓰일 때에도 마지막 요청 모드 보존
+	bool bMeshObjectRequestedGPUSkinning = false;
 	bool bBoneTransformsDirty = true;
 };

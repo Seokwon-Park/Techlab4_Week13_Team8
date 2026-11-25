@@ -1,6 +1,6 @@
 #include "EnginePCH.h"
 #include "SkeletalMeshData.h"
-
+#include <cstring>
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -86,10 +86,108 @@ bool FSkeletalMeshData::Validate(FString& OutError) const
 			return false;
 		}
 	}
-
+	// 메시 범위 검증 이후의 Cloth 바인딩 검증
+	if (!ValidateClothSectionBindings(ClothSectionBindings, Sections, Indices, NumVertices))
+	{
+		OutError = "SkeletalMeshData: invalid cloth section bindings";
+		return false;
+	}
 	return true;
 }
+bool FSkeletalMeshData::ValidateClothSectionBindings(const TArray<FClothSectionBinding>& Bindings,
+	const TArray<FSkeletalMeshSection>& Sections, const TArray<uint32>& Indices, int32 NumVertices)
+{
+	if (Bindings.IsEmpty())
+	{
+		return true;
+	}
 
+	// 섹션 중복과 렌더 정점의 소속을 확인할 테이블
+	TArray<uint8> BoundSections;
+	BoundSections.Init(0, Sections.Num());
+	TArray<int32> ClothSectionByVertex;
+	ClothSectionByVertex.Init(INDEX_NONE, NumVertices);
+
+	for (const FClothSectionBinding& Binding : Bindings)
+	{
+		const int32 SectionIndex = Binding.SectionIndex;
+		if (!Sections.IsValidIndex(SectionIndex) || BoundSections[SectionIndex])
+		{
+			return false;
+		}
+
+		const FSkeletalMeshSection& Section = Sections[SectionIndex];
+		if (Section.IndexCount == 0 || Section.IndexCount % 3 != 0)
+		{
+			return false;
+		}
+
+		const uint32 EndIndex = Section.StartIndex + Section.IndexCount;
+		for (uint32 Index = Section.StartIndex; Index < EndIndex; ++Index)
+		{
+			ClothSectionByVertex[Indices[Index]] = SectionIndex;
+		}
+
+		// 고정점과 이동 반경의 섹션 소속 확인
+		for (const uint32 Vertex : Binding.PinnedRenderVertices)
+		{
+			if (Vertex >= static_cast<uint32>(NumVertices) || ClothSectionByVertex[Vertex] != SectionIndex)
+			{
+				return false;
+			}
+		}
+		for (const auto& [Vertex, Radius] : Binding.MaxDistanceByRenderVertex)
+		{
+			if (Vertex >= static_cast<uint32>(NumVertices) || ClothSectionByVertex[Vertex] != SectionIndex
+				|| !std::isfinite(Radius) || Radius <= 0.0f)
+			{
+				return false;
+			}
+		}
+		BoundSections[SectionIndex] = 1;
+	}
+
+	// 하나의 Cloth 정점을 공유하는 다른 렌더 섹션 확인
+	for (int32 SectionIndex = 0; SectionIndex < Sections.Num(); ++SectionIndex)
+	{
+		const FSkeletalMeshSection& Section = Sections[SectionIndex];
+		const uint32 EndIndex = Section.StartIndex + Section.IndexCount;
+		for (uint32 Index = Section.StartIndex; Index < EndIndex; ++Index)
+		{
+			const int32 ClothSection = ClothSectionByVertex[Indices[Index]];
+			if (ClothSection != INDEX_NONE && ClothSection != SectionIndex)
+			{
+				return false;
+			}
+		}
+	}
+	return true;
+}
+bool FSkeletalMeshData::HasSameClothGeometry(const TArray<FVertex>& OtherVertices,
+	const TArray<uint32>& OtherIndices, const TArray<FSkeletalMeshSection>& OtherSections) const
+{
+	// 저장된 렌더 정점 번호를 그대로 사용할 수 있는 배열 대응
+	if (BindVertices.Num() != OtherVertices.Num() || !(Indices == OtherIndices)
+		|| Sections.Num() != OtherSections.Num())
+	{
+		return false;
+	}
+
+	for (int32 Index = 0; Index < Sections.Num(); ++Index)
+	{
+		const FSkeletalMeshSection& A = Sections[Index];
+		const FSkeletalMeshSection& B = OtherSections[Index];
+		if (A.StartIndex != B.StartIndex || A.IndexCount != B.IndexCount
+			|| A.MaterialSlotIndex != B.MaterialSlotIndex)
+		{
+			return false;
+		}
+	}
+
+	return BindVertices.IsEmpty()
+		|| std::memcmp(BindVertices.GetData(), OtherVertices.GetData(),
+			sizeof(FVertex) * static_cast<size_t>(BindVertices.Num())) == 0;
+}
 namespace
 {
 	// 관절에서 ±BlendHalf 안이면 아래·위 본을 선형으로 섞고, 아니면 자기 칸의 본 하나

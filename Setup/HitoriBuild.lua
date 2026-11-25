@@ -56,6 +56,7 @@ IncludeDir["miniaudio"]       = E("Source/ThirdParty/miniaudio")
 IncludeDir["nanosvg"]         = E("Source/ThirdParty/nanosvg")
 IncludeDir["PhysX"]           = E("Source/ThirdParty/PhysX/include")
 IncludeDir["PxShared"]        = E("Source/ThirdParty/PhysX/pxshared/include")
+IncludeDir["NvCloth"]         = E("Source/ThirdParty/NvCloth/include")
 Hitori.IncludeDir = IncludeDir
 
 
@@ -266,6 +267,24 @@ function Hitori.LinkPhysX()
 	filter {}
 end
 
+-- NvCloth SDK의 구성별 링크와 DLL 복사
+function Hitori.LinkNvCloth()
+	includedirs { IncludeDir.NvCloth }
+
+	local SdkRoot = E("Source/ThirdParty/NvCloth")
+	for _, Config in ipairs(Hitori.Configurations) do
+		local SdkConfig = SdkConfigOf(Config)
+		local LibraryName = SdkConfig == "debug" and "NvClothDEBUG_x64" or "NvCloth_x64"
+		local DllPath = path.join(SdkRoot, "bin", SdkConfig, LibraryName .. ".dll")
+
+		filter ("configurations:" .. Config)
+			libdirs { path.join(SdkRoot, "lib", SdkConfig) }
+			links { LibraryName .. ".lib" }
+			postbuildcommands { '{COPYFILE} "' .. DllPath .. '" "%{cfg.targetdir}"' }
+	end
+	filter {}
+end
+
 -- FBX SDK 헤더. FBX 해석은 에디터에서 하고 Runtime/Game은 SDK에 의존하지 않는다.
 function Hitori.FbxSdkCompileSettings()
 	includedirs { path.join(FbxSdkRoot, "include") }
@@ -410,6 +429,7 @@ function Hitori.EngineProject(Ctx)
 			IncludeDir.sol2,
 			IncludeDir.PhysX,
 			IncludeDir.PxShared,
+			IncludeDir.NvCloth,
 		}
 		BuildConfigIncludeDirs(Ctx)
 
@@ -589,6 +609,7 @@ function Hitori.EditorApp(Ctx, Name, Opts)
 		Hitori.WholeArchive({ "HitoriEditorCore", "HitoriEngine" })
 
 		Hitori.LinkPhysX()
+		Hitori.LinkNvCloth()
 		Hitori.LinkSystemLibs()
 
 		local ExtraCommands = {}
@@ -645,6 +666,7 @@ function Hitori.GameApp(Ctx, Name, Opts)
 		Hitori.WholeArchive({ "HitoriEngine" })
 
 		Hitori.LinkPhysX()
+		Hitori.LinkNvCloth()
 		Hitori.LinkSystemLibs()
 end
 
