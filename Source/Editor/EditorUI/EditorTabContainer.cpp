@@ -2,6 +2,8 @@
 #include "Editor/EditorUI/EditorTabContainer.h"
 #include "Editor/EditorUI/EditorTitleBar.h"
 #include "Editor/EditorUI/EditorIcons.h"
+#include "Editor/EditorUI/EditorPanel.h"
+#include <string_view>
 
 namespace
 {
@@ -40,6 +42,101 @@ namespace
 		EditorIcons::Draw(DL, Icon, Center, IconSize, Color);
 		DL->PopClipRect();
 	}
+
+	// ---------------- 도킹 패널 탭 아이콘 ----------------
+
+	// 패널 탭 아이콘 크기 (글자 크기 배율)와 아이콘 뒤 간격
+	constexpr float PanelTabIconScale = 1.0f;
+	constexpr float PanelTabIconGap = 5.0f;
+
+	// "Details###StaticMeshPanel:..." -> "Details"
+	std::string_view DisplayName(const char* WindowName)
+	{
+		std::string_view Name(WindowName);
+		if (const size_t Hash = Name.find("##"); Hash != std::string_view::npos)
+			Name = Name.substr(0, Hash);
+		return Name;
+	}
+
+	// 표시 이름으로 패널 종류 아이콘을 고른다. UE5 탭 아이콘과 같은 뜻의 아이콘을 쓴다.
+	EEditorIcon FindPanelIcon(std::string_view Name)
+	{
+		struct FEntry { std::string_view Name; EEditorIcon Icon; };
+		static constexpr FEntry Table[] = {
+			{ "Details",          EEditorIcon::Details },
+			{ "Outliner",         EEditorIcon::Outliner },
+			{ "Hierarchy",        EEditorIcon::Outliner },
+			{ "Bone Hierarchy",   EEditorIcon::Outliner },
+			{ "World Settings",   EEditorIcon::World },
+			{ "Output Log",       EEditorIcon::OutputLog },
+			{ "Settings",         EEditorIcon::Settings },
+			{ "Preview Controls", EEditorIcon::Settings },
+			{ "Content Drawer",   EEditorIcon::BrowseContent },
+			{ "Asset Browser",    EEditorIcon::BrowseContent },
+			{ "Sequencer",        EEditorIcon::Cinematics },
+			{ "Timeline",         EEditorIcon::Animation },
+			{ "Curve Editor",     EEditorIcon::Curve },
+			{ "Viewport",         EEditorIcon::Viewport },
+			{ "Viewports",        EEditorIcon::Viewport },
+			{ "Info",             EEditorIcon::Info },
+			{ "Graph",            EEditorIcon::Graph },
+			{ "AnimGraph",        EEditorIcon::Graph },
+			{ "Components",       EEditorIcon::ClassComponent },
+			{ "My Blueprint",     EEditorIcon::ClassActor },
+			{ "Palette",          EEditorIcon::Widget },
+			{ "Canvas",           EEditorIcon::Widget },
+			{ "Emitters",         EEditorIcon::Particle },
+			{ "Skeleton Tree",    EEditorIcon::SkeletalMesh },
+			{ "Editor Controls",  EEditorIcon::Keyboard },
+		};
+		for (const FEntry& Entry : Table)
+			if (Entry.Name == Name) return Entry.Icon;
+		return EEditorIcon::None;
+	}
+}
+
+void EditorPanelUI::ReserveDockTabIcon(const char* WindowName)
+{
+	// 창은 첫 Begin에서 생기므로 첫 프레임만 자리 없이 그려지고 다음 프레임부터 비워진다.
+	ImGuiWindow* Window = ImGui::FindWindowByName(WindowName);
+	if (!Window) return;
+	const bool bHasIcon = FindPanelIcon(DisplayName(WindowName)) != EEditorIcon::None;
+	Window->TabLabelIndent = bHasIcon
+		? ImGui::GetFontSize() * PanelTabIconScale + PanelTabIconGap * EditorIcons::GetScale()
+		: 0.0f;
+}
+
+void EditorPanelUI::DrawDockTabIcon()
+{
+	ImGuiWindow* Window = ImGui::GetCurrentWindow();
+	if (!Window || Window->TabLabelIndent <= 0.0f) return;
+	ImGuiDockNode* Node = Window->DockNode;
+	if (!Node || !Node->TabBar || !Node->HostWindow || Node->IsHiddenTabBar() || Node->IsNoTabBar()) return;
+	const ImGuiTabItem* Item = ImGui::TabBarFindTabByID(Node->TabBar, Window->TabId);
+	if (!Item) return;
+	const EEditorIcon Icon = FindPanelIcon(DisplayName(Window->Name));
+	if (Icon == EEditorIcon::None) return;
+
+	const ImGuiTabBar* TabBar = Node->TabBar;
+	const ImRect& Bar = TabBar->BarRect;
+	const float IconSize = ImGui::GetFontSize() * PanelTabIconScale;
+	const float X = Bar.Min.x + Item->Offset - TabBar->ScrollingAnim + TabBar->FramePadding.x + IconSize * 0.5f;
+	const ImVec2 Center(X, (Bar.Min.y + Bar.Max.y) * 0.5f);
+
+	// 고른 탭은 밝게, 나머지는 UE5처럼 조금 흐리게
+	const bool bSelected = TabBar->VisibleTabId == Window->TabId;
+	const ImU32 Color = ImGui::GetColorU32(ImGuiCol_Text, bSelected ? 0.9f : 0.6f);
+
+	// 탭이 줄 끝에서 잘려 보이면 아이콘도 그 탭 안에서만 보이게 자른다.
+	const float TabMinX = Bar.Min.x + Item->Offset - TabBar->ScrollingAnim;
+	const ImVec2 ClipMin(ImMax(Bar.Min.x, TabMinX), Bar.Min.y);
+	const ImVec2 ClipMax(ImMin(Bar.Max.x, TabMinX + Item->Width), Bar.Max.y);
+	if (ClipMin.x >= ClipMax.x) return;
+
+	ImDrawList* DL = Node->HostWindow->DrawList;     // 탭 줄을 그린 창 위에 덧그린다
+	DL->PushClipRect(ClipMin, ClipMax, true);
+	EditorIcons::Draw(DL, Icon, Center, IconSize, Color);
+	DL->PopClipRect();
 }
 
 void FEditorTabContainer::AddTab(IEditorTab* Tab)

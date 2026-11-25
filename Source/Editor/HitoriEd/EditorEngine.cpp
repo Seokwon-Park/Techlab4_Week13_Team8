@@ -473,6 +473,20 @@ void UEditorEngine::InitCommands()
 	Stop.CanExecute = [this]()->bool {return PlayWorld; };
 	Stop.Execute = [this]() { RequestEndPlayMap(); };
 
+	// UE: Simulate = Alt+S. 플레이어를 조종하지 않고 에디터 카메라로 월드가 도는 것을 본다.
+	Simulate = { "Simulate", "Start simulating the game", nullptr, White, { EKeyCode::S, false, true } };
+	Simulate.CanExecute = [this]()->bool { return !PlayWorld; };
+	Simulate.Execute = [this]() { RequestSimulateSession(); };
+
+	// UE5처럼 Eject(PIE -> SIE)와 Possess(SIE -> PIE)가 한 자리를 번갈아 쓴다. 단축키 F8은 PIE 입력 처리가 받는다.
+	Eject = { "Eject", "Detach from the player controller, allowing regular editor controls", nullptr, White, { EKeyCode::F8 } };
+	Eject.CanExecute = [this]()->bool { return PlayWorld && !bIsSimulatingInEditor && !IsPIEInWindow(); };
+	Eject.Execute = [this]() { bToggleSIERequested = true; };
+
+	Possess = { "Possess", "Possess the player controller", nullptr, White, { EKeyCode::F8 } };
+	Possess.CanExecute = [this]()->bool { return PlayWorld && bIsSimulatingInEditor; };
+	Possess.Execute = [this]() { bToggleSIERequested = true; };
+
 	// 툴바 아이콘은 도형으로 그린다 (EditorIcons).
 	const ImVec4 StopRed = { 0.95f, 0.42f, 0.48f, 1.0f };
 	Save.IconId = EEditorIcon::Save;
@@ -483,11 +497,18 @@ void UEditorEngine::InitCommands()
 	StepFrame.IconId = EEditorIcon::Step;
 	Stop.IconId = EEditorIcon::Stop;
 	Stop.IconTint = StopRed;
+	Simulate.IconId = EEditorIcon::Simulate;
+	Eject.IconId = EEditorIcon::Eject;
+	Possess.IconId = EEditorIcon::Possess;
 
 	// UE5처럼 Play 자리에는 Play / Pause / Resume 중 지금 쓸 수 있는 하나만 보인다.
 	Play.IsVisible = [this]() { return !PlayWorld; };
 	Pause.IsVisible = [this]() { return PlayWorld && !bIsPaused; };
 	Resume.IsVisible = [this]() { return PlayWorld && bIsPaused; };
+	// UE5처럼 Stop 오른쪽 한 자리를 Simulate(멈춤) / Eject(플레이) / Possess(시뮬레이트)가 번갈아 쓴다.
+	Simulate.IsVisible = [this]() { return !PlayWorld; };
+	Eject.IsVisible = [this]() { return PlayWorld && !bIsSimulatingInEditor; };
+	Possess.IsVisible = [this]() { return PlayWorld && bIsSimulatingInEditor; };
 
 	// UE5 "Quickly add to the project" 메뉴. PIE 중에는 에디터 월드를 건드리지 않는다.
 	auto SpawnEntry = [this](const char* Category, const char* Label, UClass* Class) -> FToolbarMenuEntry
@@ -553,7 +574,7 @@ void UEditorEngine::InitCommands()
 	LevelEditorToolbar.SetSaveCommand(Save);
 	LevelEditorToolbar.SetModeTools(&GLevelEditorModeTools());
 	LevelEditorToolbar.SetCreateMenus({ AddMenu, CinematicsMenu });
-	LevelEditorToolbar.SetCommands({ Play, Resume, Pause, StepFrame, Stop });
+	LevelEditorToolbar.SetCommands({ Play, Resume, Pause, StepFrame, Stop, Simulate, Eject, Possess });
 	LevelEditorToolbar.SetPlayModeBinding(
 		[this]() { return PlayMode; },
 		[this](EPlayModeType Mode) { PlayMode = Mode; },
@@ -569,7 +590,7 @@ void UEditorEngine::Tick(const float DeltaTime)
 		RequestEndPlayMap();
 	// 에디터 단축키 (UE와 같은 키: Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Alt+S, Alt+P, Pause).
 	// Stop(Esc)은 PIE 입력 처리에서 따로 받으므로 여기서 빼서 두 번 실행되지 않게 한다.
-	EditorCommandUI::ProcessShortcuts({ &NewScene, &OpenSceneCommand, &Play, &Pause, &Resume });
+	EditorCommandUI::ProcessShortcuts({ &NewScene, &OpenSceneCommand, &Play, &Simulate, &Pause, &Resume });
 	// 에셋 에디터 탭도 Ctrl+Z, Ctrl+S를 쓰므로 레벨 에디터 탭에 포커스가 있을 때만 레벨을 저장하고 되돌린다.
 	{
 		if (IsLevelEditorFocused())

@@ -87,6 +87,8 @@ public:
 
 	//Play 버튼을 눌렀을때 Play Session 실행을 요청한다.
 	inline void RequestPlaySession() { bPlaySessionRequested = true; }
+	// Simulate 버튼. UE처럼 PIE를 시작하자마자 SIE로 바꿔, 플레이어를 조종하지 않고 에디터 카메라로 월드가 도는 것을 본다.
+	inline void RequestSimulateSession() { bPlaySessionRequested = true; bSimulateSessionRequested = true; }
 	inline void RequestEndPlayMap() { bRequestEndPlayMapQueued = true; bIsPaused = false; }
 
 	// 대기 중인 Play 요청이 있으면 PIE를 시작한다. Tick이 프레임 시작에 부른다.
@@ -101,7 +103,8 @@ public:
 
 	// PIE(게임을 조작)와 SIE(에디터처럼 둘러보고 선택)를 오간다. F8이 부른다.
 	// UE의 UEditorEngine::ToggleBetweenPIEandSIE와 같은 자리다.
-	void ToggleBetweenPIEandSIE();
+	// bMoveEditorCamera: SIE로 갈 때 에디터 카메라를 플레이어가 보던 자리로 옮길지. Simulate로 시작할 때는 옮기지 않는다.
+	void ToggleBetweenPIEandSIE(bool bMoveEditorCamera = true);
 
 	// 아래 셋은 에디터 전체가 공유하는 상태를 읽는 접근자다. 레벨 뷰포트 클라이언트가 그릴 때 쓴다.
 	// UE도 선택과 설정은 에디터 전역이 갖고 뷰포트 클라이언트가 읽어 간다(GEditor->GetSelectedActors(),
@@ -260,8 +263,14 @@ private:
 	FEditorCommand Resume;
 	FEditorCommand StepFrame;
 	FEditorCommand Stop;
+	FEditorCommand Simulate;
+	FEditorCommand Eject;
+	FEditorCommand Possess;
 
 	bool bPlaySessionRequested = false;
+	bool bSimulateSessionRequested = false;
+	// 툴바 Eject/Possess 버튼. 다음 PIE 입력 처리(TickPIEInput)에서 ToggleBetweenPIEandSIE를 부른다.
+	bool bToggleSIERequested = false;
 	bool bRequestEndPlayMapQueued = false;
 	bool bStepRequested = false;
 	bool bIsPaused = false;

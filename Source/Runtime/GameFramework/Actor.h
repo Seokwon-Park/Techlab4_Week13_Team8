@@ -111,6 +111,10 @@ public:
 	const FString& GetFolderPath() const { return FolderPath; }
 	void SetFolderPath(const FString& InFolderPath) { FolderPath = InFolderPath; }
 
+	// 플레이를 시작하면서(GameMode, Pawn 등) 또는 플레이 중에 생성된 액터면 true. 에디터 레벨에서 복제된 액터는 false.
+	// UE Outliner처럼 이 액터들을 노란 글씨로 보여 주는 데 쓴다. 저장하지 않는다.
+	bool WasSpawnedDuringPlay() const { return bSpawnedDuringPlay; }
+
 	// 컴포넌트 충돌 이벤트를 액터 단위로 받는 지점 (C가 호출, A가 Lua로 넘김)
 	virtual void NotifyActorBeginOverlap(AActor* OtherActor);
 	virtual void NotifyActorEndOverlap(AActor* OtherActor);
@@ -136,5 +140,6 @@ private:
 	UPROPERTY(EditAnywhere)
 	bool bActorEnableCollision = true;
 	bool bHasBegunPlay = false;
+	bool bSpawnedDuringPlay = false;
 
 };

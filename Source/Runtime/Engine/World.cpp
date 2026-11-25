@@ -165,6 +165,7 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 	// 2. Actor에 World/Level 연결
 	NewActor->World = this;
 	NewActor->Level = PersistentLevel;
+	NewActor->bSpawnedDuringPlay = IsGameWorld() && (bBegunPlay || bStartingPlay);
 
 	// 3. Transform 적용
 	const FTransform SpawnTransform = Transform ? *Transform : FTransform::Identity;
@@ -1002,6 +1003,7 @@ bool UWorld::LineTraceSingle(const FRay& WorldRay, FHitResult& OutHit,
 void UWorld::BeginPlay()
 {
 	if (!IsGameWorld() || bBegunPlay) return;
+	bStartingPlay = true;
 
 	//TODO : PlayerPawn, PlayerController Class 설정을 GameMode로 옮겨 수정 가능하게 바꿔야 한다.
 	if (!PlayerPawn)
@@ -1022,9 +1024,12 @@ void UWorld::BeginPlay()
 	{
 		FTransform Transform = MainCamera ? MainCamera->GetActorTransform() : FTransform::Identity;
 		// 놓인 Pawn이 없으면 GameMode의 Default Pawn Class로 만든다.
-		UClass* PawnClass = GameMode
-			? AGameModeBase::ResolveClass(GameMode->DefaultPawnClass, APawn::StaticClass(), ADefaultPawn::StaticClass())
-			: ADefaultPawn::StaticClass();
+		// Default Pawn Class가 None이면 메시 없는 관전 Pawn을 만들어 에디터처럼 자유 시점으로 날아다닌다.
+		UClass* PawnClass = ADefaultPawn::StaticClass();
+		if (GameMode)
+			PawnClass = GameMode->DefaultPawnClass.empty()
+				? ASpectatorPawn::StaticClass()
+				: AGameModeBase::ResolveClass(GameMode->DefaultPawnClass, APawn::StaticClass(), ADefaultPawn::StaticClass());
 		PlayerPawn = Cast<APawn>(SpawnActor(PawnClass, NAME_None, &Transform));
 	}
 	if (!PlayerController) 
@@ -1051,6 +1056,7 @@ void UWorld::BeginPlay()
 		if (Level)
 			for (AActor* Actor : Level->GetActors())
 				if (Actor) InitialActors.Add(Actor);
+	bStartingPlay = false;
 	bBegunPlay = true;
 	for (AActor* Actor : InitialActors)
 		Actor->BeginPlay();

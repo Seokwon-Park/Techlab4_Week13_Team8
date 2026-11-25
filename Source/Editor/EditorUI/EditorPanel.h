@@ -36,12 +36,20 @@ namespace EditorPanelUI
 
 	inline void PopTabPadding() { ImGui::PopStyleVar(); }
 
+	// UE5처럼 도킹 탭 이름 앞에 패널 종류 아이콘을 그린다 (EditorTabContainer.cpp).
+	// 아이콘은 표시 이름("Details###..."의 "Details")으로 고르고, 표에 없는 패널은 아이콘 없이 그린다.
+	// Begin 전에 부르면 탭에 아이콘 자리를 비워 두고, Begin 뒤에 부르면 그 자리에 아이콘을 그린다.
+	void ReserveDockTabIcon(const char* WindowName);
+	void DrawDockTabIcon();
+
 	// ImGui::Begin 대신 쓴다. 패널 내용은 원래 패딩으로 그려진다.
 	inline bool BeginPanel(const char* Name, bool* bOpen = nullptr, ImGuiWindowFlags Flags = 0)
 	{
+		ReserveDockTabIcon(Name);
 		PushTabPadding();
 		const bool bVisible = ImGui::Begin(Name, bOpen, Flags);
 		PopTabPadding();
+		DrawDockTabIcon();
 		return bVisible;
 	}
 

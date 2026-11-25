@@ -109,6 +109,17 @@ namespace
 		"ClassComponent",
 		"ClassSceneComponent",
 		"Home",
+		"Simulate",
+		"Eject",
+		"Possess",
+		"Details",
+		"Outliner",
+		"OutputLog",
+		"Viewport",
+		"Info",
+		"Graph",
+		"Curve",
+		"Keyboard",
 	};
 	static_assert(IM_ARRAYSIZE(IconFileNames) == static_cast<int>(EEditorIcon::Count), "아이콘 파일 이름 표를 enum과 맞춰야 한다");
 

@@ -89,7 +89,7 @@ void UEditorEngine::UpdatePIEViewCamera()
 
 // PIE와 SIE 사이를 오간다. UE처럼 게임 화면과 레벨 에디터 뷰포트가 자리를 바꾼다.
 // SIE에서는 PIE 월드를 레벨 에디터 뷰포트 클라이언트가 그리고, 카메라 이동과 선택도 편집할 때와 같다.
-void UEditorEngine::ToggleBetweenPIEandSIE()
+void UEditorEngine::ToggleBetweenPIEandSIE(bool bMoveEditorCamera)
 {
 	// UE처럼 레벨 에디터 뷰포트 안에서 도는 PIE만 전환할 수 있다. 별도 창 PIE에는 바꿔 끼울 뷰포트가 없다.
 	if (!PlayWorld || IsPIEInWindow()) return;
@@ -111,7 +111,8 @@ void UEditorEngine::ToggleBetweenPIEandSIE()
 		// 누르고 있던 게임 입력을 지운다.
 		GameViewport.LostFocus();
 		// 에디터 카메라를 플레이어가 보던 위치로 옮겨, 보던 화면 그대로 SIE가 시작되게 한다.
-		UpdatePIEViewCamera();
+		if (bMoveEditorCamera)
+			UpdatePIEViewCamera();
 		// 뷰포트 패널이 게임 화면 대신 에디터 뷰포트의 화면을 보여 주게 한다.
 		if (ViewportsPanel)
 			ViewportsPanel->ClearGameViewportClient();
@@ -122,6 +123,12 @@ void UEditorEngine::ToggleBetweenPIEandSIE()
 
 void UEditorEngine::TickPIEInput(float DeltaTime)
 {
+	// 툴바의 Eject/Possess는 마우스가 툴바 위에 있어 아래 포커스 검사를 통과하지 못하므로 먼저 처리한다.
+	if (bToggleSIERequested)
+	{
+		bToggleSIERequested = false;
+		ToggleBetweenPIEandSIE();
+	}
 	FWorldContext* Context = GetPIEWorldContext();
 	if (!Context || !Context->GameViewport) return;
 	FGameViewportClient& GameViewport = *Context->GameViewport;
@@ -316,10 +323,21 @@ void UEditorEngine::StartQueuedPlaySessionRequest()
 {
 	if (!bPlaySessionRequested) return;
 	bPlaySessionRequested = false;
+	const bool bSimulate = bSimulateSessionRequested;
+	bSimulateSessionRequested = false;
 
 	if (!PlayWorld)
 	{
+		// SIE는 레벨 에디터 뷰포트 안에서만 돌 수 있으므로 Simulate는 Play Mode와 상관없이 선택한 뷰포트에서 시작한다.
+		const EPlayModeType SavedPlayMode = PlayMode;
+		if (bSimulate)
+			PlayMode = EPlayModeType::InViewport;
 		StartPlayInEditorSession();
+		PlayMode = SavedPlayMode;
+
+		// 에디터 카메라는 보던 자리에 그대로 두고 SIE로 바꾼다 (마우스도 잡지 않는다).
+		if (bSimulate && PlayWorld && !bIsSimulatingInEditor)
+			ToggleBetweenPIEandSIE(false);
 	}
 }
 

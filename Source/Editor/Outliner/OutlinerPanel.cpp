@@ -700,7 +700,10 @@ void FOutlinerPanel::DrawRowLabel(const FRow& Row, float RowHeight, bool bDimmed
     {
         Label = Row.Actor->GetName();
     }
-    const ImU32 TextColor = ImGui::GetColorU32(bDimmed ? ImGuiCol_TextDisabled : ImGuiCol_Text);
+    ImU32 TextColor = ImGui::GetColorU32(bDimmed ? ImGuiCol_TextDisabled : ImGuiCol_Text);
+    // UE처럼 플레이 중에 생겨난 액터(GameMode, Pawn, PlayerController 등)는 노란 글씨로 보여 준다.
+    if (Row.Type == ERowType::Actor && Row.Actor->WasSpawnedDuringPlay())
+        TextColor = bDimmed ? IM_COL32(242, 196, 64, 115) : IM_COL32(242, 196, 64, 255);
     DL->AddText(ImVec2(X, MidY - ImGui::GetFontSize() * 0.5f), TextColor, Label.c_str());
     // 표 칸이 줄 높이를 알도록 자리를 잡아 둔다.
     ImGui::SetCursorScreenPos(CellStart);

@@ -225,7 +225,7 @@ void USkeletalMeshComponent::Serialize(FStructuredArchive::FRecord Record)
 	if (Ar.IsSaving() && (!AnimBlueprintPath.empty() || ManagedAnimGraph))
 	{
 		AnimInstance = nullptr;
-	}
+	}  
 
 	Super::Serialize(Record);
 
