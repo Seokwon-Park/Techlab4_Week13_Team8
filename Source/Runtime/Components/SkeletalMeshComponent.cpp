@@ -582,10 +582,9 @@ USkeletalMeshComponent::FClothInstance USkeletalMeshComponent::CreateClothInstan
 	const FSkeletalMeshSection& Section = LOD.Sections[Binding.SectionIndex];
 	FClothInstance Instance;
 
-	// FBX 프리뷰 정점의 센티미터-미터 변환
-	constexpr float FbxCentimetersToMeters = 0.01f;
-
-	Instance.SimulationScale = GetWorldScale3D() * (bForPreview ? FbxCentimetersToMeters : 1.0f);
+	// FBX 프리뷰 공간과 게임 월드의 미터 단위 통일
+	const float WorldToCloth = bForPreview ? CmToWorld : 1.0f;
+	Instance.SimulationScale = GetWorldScale3D() * WorldToCloth;
 	const FVector & Scale = Instance.SimulationScale;
 	if (Scale.X <= 0.0f || Scale.Y <= 0.0f || Scale.Z <= 0.0f)
 	{
@@ -700,7 +699,7 @@ USkeletalMeshComponent::FClothInstance USkeletalMeshComponent::CreateClothInstan
 		Phases.Emplace(static_cast<uint16>(Phase));
 	}
 	Cloth->setPhaseConfig({ Phases.GetData(), Phases.GetData() + Phases.Num() });
-	Cloth->teleportToLocation(U2PVector(GetWorldLocation()), Rotation);
+	Cloth->teleportToLocation(U2PVector(GetWorldLocation() * WorldToCloth), Rotation);
 	Cloth->setGravity(physx::PxVec3(0.0f, 0.0f, GravityZ));
 	Instance.Cloth = std::move(Cloth);
 	ApplyClothSelfCollision(Instance, LOD);
@@ -1320,26 +1319,24 @@ void USkeletalMeshComponent::TickClothing()
 
 void USkeletalMeshComponent::AdvanceCloth(int32 StepCount, float StepDelta)
 {
-	if (ClothInstances.IsEmpty())
+	// 고정 스텝 사이의 기존 Cloth 자세와 렌더 정점 유지
+	if (ClothInstances.IsEmpty() || (StepCount == 0 && !ClothVertexPositions.IsEmpty()))
 	{
 		return;
 	}
+	UpdateClothMotionConstraints();
 
-	// 첫 결과 또는 완료된 물리 스텝의 결과 갱신
-	bool bUpdateClothVertices = ClothVertexPositions.IsEmpty();
-	if (StepCount > 0 || bUpdateClothVertices)
+	// 이전 몸통 개수로 월드 슬롯을 분리한 뒤 새 몸통 갱신
+	for (FClothInstance& Instance : ClothInstances)
 	{
-		UpdateClothMotionConstraints();
-		// 이전 몸통 개수로 월드 슬롯을 분리한 뒤 새 몸통 갱신
-		for (FClothInstance& Instance : ClothInstances)
-		{
-			RemoveClothWorldCollision(*Instance.Cloth);
-		}
-		BuildClothBodyCollision();
-		UploadClothBodyCollision();
+		RemoveClothWorldCollision(*Instance.Cloth);
 	}
+	BuildClothBodyCollision();
+	UploadClothBodyCollision();
+
 	const UWorld* World = GetWorld();
-	const physx::PxVec3 TargetLocation = U2PVector(GetWorldLocation());
+	const float WorldToCloth = World && World->GetWorldType() == EWorldType::EditorPreview ? CmToWorld : 1.0f;
+	const physx::PxVec3 TargetLocation = U2PVector(GetWorldLocation() * WorldToCloth);
 	const FQuat TargetRotation = GetWorldRotation().Quaternion();
 	// 같은 컴포넌트에서 생성되고 함께 이동하는 모든 섹션의 공통 기준 자세
 	const nv::cloth::Cloth& FirstCloth = *ClothInstances[0].Cloth;
@@ -1375,25 +1372,22 @@ void USkeletalMeshComponent::AdvanceCloth(int32 StepCount, float StepDelta)
 	}
 	for (int32 StepIndex = 0; StepIndex < StepCount; ++StepIndex)
 	{
-		if (!WorldShapes.IsEmpty())
+		// 강체의 월드 자세를 해당 고정 스텝의 Cloth 좌표계로 변환
+		const physx::PxTransform StepPose = GetStepPose(StepIndex);
+		for (int32 Section = 0; Section < ClothInstances.Num(); ++Section)
 		{
-			// 강체의 월드 자세를 해당 고정 스텝의 Cloth 좌표계로 변환
-			const physx::PxTransform StepPose = GetStepPose(StepIndex);
-			for (int32 Section = 0; Section < ClothInstances.Num(); ++Section)
+			nv::cloth::Cloth& Cloth = *ClothInstances[Section].Cloth;
+			const bool bUpdateWorldShapes = StepIndex == 0
+				|| Cloth.getTranslation() != StepPose.p || !(Cloth.getRotation() == StepPose.q);
+			Cloth.setTranslation(StepPose.p);
+			Cloth.setRotation(StepPose.q);
+			if (bUpdateWorldShapes && !WorldShapes.IsEmpty() && !WorldShapes[Section].IsEmpty())
 			{
-				nv::cloth::Cloth& Cloth = *ClothInstances[Section].Cloth;
-				const bool bUpdateWorldShapes = StepIndex == 0
-					|| Cloth.getTranslation() != StepPose.p || !(Cloth.getRotation() == StepPose.q);
-				Cloth.setTranslation(StepPose.p);
-				Cloth.setRotation(StepPose.q);
-				if (bUpdateWorldShapes && !WorldShapes[Section].IsEmpty())
+				if (StepIndex > 0)
 				{
-					if (StepIndex > 0)
-					{
-						RemoveClothWorldCollision(Cloth);
-					}
-					AppendClothWorldCollision(Cloth, StepPose, WorldShapes[Section]);
+					RemoveClothWorldCollision(Cloth);
 				}
+				AppendClothWorldCollision(Cloth, StepPose, WorldShapes[Section]);
 			}
 		}
 
@@ -1412,16 +1406,13 @@ void USkeletalMeshComponent::AdvanceCloth(int32 StepCount, float StepDelta)
 
 		// 모든 청크 계산 이후의 스텝 완료
 		ClothSolver->endSimulation();
-		bUpdateClothVertices = true;
 	}
-	if (bUpdateClothVertices)
-	{
-		UpdateClothVertexPositions();
 
-		if (GetMeshObject())
-		{
-			SendRenderDynamicData();
-		}
+	// 첫 표시 또는 마지막 스텝의 렌더 정점 반영
+	UpdateClothVertexPositions();
+	if (GetMeshObject())
+	{
+		SendRenderDynamicData();
 	}
 }
 void USkeletalMeshComponent::OnCreatePhysicsState()
