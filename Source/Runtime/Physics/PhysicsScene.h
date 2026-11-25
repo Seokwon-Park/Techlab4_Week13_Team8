@@ -59,6 +59,7 @@ public:
 	}
 	int32 GetLastTickStepCount() const { return LastTickStepCount; }
 	double GetLastTickStepTimeMs() const { return LastTickStepTimeMs; }
+	float GetInterpolationAlpha() const;
 	// 바디 생성과 차량 쿼리용 비소유 씬 접근
 	physx::PxScene* GetPxScene() const { return Scene; }
 

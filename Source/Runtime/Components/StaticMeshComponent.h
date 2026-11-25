@@ -21,6 +21,9 @@ public:
 	void SetStaticMesh(UStaticMesh* InStaticMesh);
 	UStaticMesh* GetStaticMesh() const { return StaticMesh; }
 	virtual UStaticMesh* GetRenderMesh() const override { return StaticMesh; }
+	const FTransform* GetRenderTransformOverride() const { return RenderTransformOverride.get(); }
+	void SetRenderTransformOverride(const FTransform& WorldTransform);
+	void ClearRenderTransformOverride();
 
 	virtual int32 GetNumMaterials() const override;
 	virtual FString GetMaterialSlotName(int32 SlotIndex) const override;
@@ -35,6 +38,7 @@ public:
 	UBodySetup* GetBodySetup() override { return StaticMesh ? StaticMesh->GetBodySetup() : nullptr; }
 
 private:
+	TUniquePtr<FTransform> RenderTransformOverride;
 	UPROPERTY(EditAnywhere)
 	UStaticMesh* StaticMesh = nullptr;
 	// Mesh의 Section별 Material과 Texture를 보존해 각각의 렌더 패킷으로 제출한다.

@@ -40,6 +40,7 @@ enum class EPSOType : uint8
 	DepthOfFieldGather,
 	DepthOfFieldPostfilter,
 	DepthOfFieldRecombine,
+	DepthOfFieldVisualize,
 	Count
 };
 

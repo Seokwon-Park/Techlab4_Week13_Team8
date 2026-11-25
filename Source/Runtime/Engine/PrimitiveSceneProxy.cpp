@@ -47,7 +47,9 @@ void FPrimitiveSceneProxy::GetDynamicMeshElements(FRenderQueue& Queue, const FVi
 
 void FPrimitiveSceneProxy::UpdateTransform()
 {
-    LocalToWorld = Component->GetWorldMatrix();
+    const UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(Component);
+    const FTransform* RenderTransform = StaticMeshComponent ? StaticMeshComponent->GetRenderTransformOverride() : nullptr;
+    LocalToWorld = RenderTransform ? RenderTransform->GetLocalMatrix() : Component->GetWorldMatrix();
     WorldToLocal = LocalToWorld.Inverse();
     const FBox LocalBounds = Mesh ? Mesh->GetRenderBounds() : Component->CalcLocalBounds();
     Bounds = MakeWorldBounds(LocalBounds.GetWorldAABB(LocalToWorld));

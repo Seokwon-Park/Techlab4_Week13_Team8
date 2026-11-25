@@ -6,6 +6,9 @@
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Asset/LOD/StaticMeshLODSelector.h"
 
+#include <algorithm>
+#include <iterator>
+
 
 // StaticMesh 컴포넌트를 초기화한다.
 UStaticMeshComponent::UStaticMeshComponent()
@@ -39,6 +42,30 @@ void UStaticMeshComponent::SetStaticMesh(UStaticMesh* InStaticMesh)
 	ClearOverrideMaterials();
 	MarkRenderStateDirty();
 	OnTransformDirty();
+}
+
+void UStaticMeshComponent::SetRenderTransformOverride(const FTransform& WorldTransform)
+{
+	if (RenderTransformOverride)
+	{
+		const FTransform& Previous = *RenderTransformOverride;
+		if (Previous.Location == WorldTransform.Location && Previous.Scale == WorldTransform.Scale &&
+			std::equal(std::begin(Previous.Rotation.V), std::end(Previous.Rotation.V), WorldTransform.Rotation.V))
+			return;
+		*RenderTransformOverride = WorldTransform;
+	}
+	else
+		RenderTransformOverride = MakeUnique<FTransform>(WorldTransform);
+	OnTransformDirty();
+}
+
+void UStaticMeshComponent::ClearRenderTransformOverride()
+{
+	if (RenderTransformOverride)
+	{
+		RenderTransformOverride.reset();
+		OnTransformDirty();
+	}
 }
 
 int32 UStaticMeshComponent::GetNumMaterials() const
