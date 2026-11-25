@@ -47,24 +47,27 @@ public:
 	}
 	int32 GetLastTickStepCount() const { return LastTickStepCount; }
 	double GetLastTickStepTimeMs() const { return LastTickStepTimeMs; }
+	float GetInterpolationAlpha() const;
 	// 바디 생성과 차량 쿼리용 비소유 씬 접근
 	physx::PxScene* GetPxScene() const { return Scene; }
 
 	// 월드 공간 정점 충돌 검사
 	bool Raycast(const FRay& WorldRay, float MaxDistance, FHitResult& OutHit,
-		const AActor* IgnoreActor = nullptr) const;
+		const AActor* IgnoreActor = nullptr, bool bBlockingOnly = false) const;
 
 	// 월드공간 구체 충돌 검사
 	bool SweepSphere(const FRay& WorldRay, float MaxDistance, float Radius, FHitResult& OutHit,
-		const AActor* IgnoreActor = nullptr) const;
+		const AActor* IgnoreActor = nullptr, bool bBlockingOnly = false) const;
 
 	// 월드공간 박스 충돌 검사
 	bool SweepBox(const FRay& WorldRay, float MaxDistance, const FVector& HalfExtent,
-		const FQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor = nullptr) const;
+		const FQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor = nullptr,
+		bool bBlockingOnly = false) const;
 
 	// 월드공간 캡슐 충돌 검사
 	bool SweepCapsule(const FRay& WorldRay, float MaxDistance, float Radius, float HalfHeight,
-		const FQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor = nullptr) const;
+		const FQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor = nullptr,
+		bool bBlockingOnly = false) const;
 
 	// 물리 계산 전후 Delegate
 	FPhysicsStepDelegate OnPreStep;
@@ -84,7 +87,7 @@ private:
 
 	// PhysX 쿼리, 엔진 히트 결과
 	bool QuerySingle(const FRay& WorldRay, float MaxDistance, const physx::PxGeometry* SweepGeometry,
-		const physx::PxQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor) const;
+		const physx::PxQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor, bool bBlockingOnly) const;
 
 	// 액터 사용자 데이터의 소유 컴포넌트 조회
 	UPrimitiveComponent* FindHitComponent(const physx::PxRigidActor* Actor) const;

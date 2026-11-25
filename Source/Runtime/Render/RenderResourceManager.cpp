@@ -57,6 +57,7 @@ constexpr FPipelineTableEntry PipelineTable[] =
 	{ EPSOType::DepthOfFieldGather, "Resources/Shader/DepthOfFieldGather.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque, EDepthStencilState::Disabled },
 	{ EPSOType::DepthOfFieldPostfilter, "Resources/Shader/DepthOfFieldPostfilter.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque, EDepthStencilState::Disabled },
 	{ EPSOType::DepthOfFieldRecombine, "Resources/Shader/DepthOfFieldRecombine.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque, EDepthStencilState::Disabled },
+	{ EPSOType::DepthOfFieldVisualize, "Resources/Shader/DepthOfFieldVisualize.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque, EDepthStencilState::Disabled },
 };
 
 static_assert(sizeof(PipelineTable) / sizeof(PipelineTable[0]) == static_cast<size_t>(EPSOType::Count));

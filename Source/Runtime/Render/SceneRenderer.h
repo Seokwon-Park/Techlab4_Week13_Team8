@@ -204,4 +204,5 @@ private:
 	// 패스들이 서로에게 남기는 값. bHasFog는 안개 패스가 실행 중에, bUseFXAA는 후처리 패스를 등록할 때 채운다.
 	bool bHasFog = false;
 	bool bUseFXAA = false;
+	bool bVisualizingDOF = false;
 };

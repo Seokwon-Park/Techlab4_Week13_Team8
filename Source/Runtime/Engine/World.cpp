@@ -732,9 +732,25 @@ bool UWorld::DestroyActor(AActor* Actor)
 	return true;
 }
 
-// 다른 World의 객체를 제외하고 Component 교차 중 최근접 결과를 선택한다.
 bool UWorld::SweepSingle(const FRay& WorldRay, float MaxDistance, float Radius, FHitResult& OutHit, AActor* IgnoreActor,
 	bool bBlockingOnly)
+{
+	const FPhysicsScene* Physics = GetPhysicsScene();
+	if (!Physics)
+		return SweepSingleLegacy(WorldRay, MaxDistance, Radius, OutHit, IgnoreActor, bBlockingOnly, false);
+
+	// 바디가 있는 컴포넌트를 기존 방식으로도 검사하면 확장 AABB가 늘 먼저 맞아 PhysX 결과가 묻힌다
+	FHitResult PhysicsHit;
+	const bool bPhysicsHit = Physics->SweepSphere(WorldRay, MaxDistance, Radius, PhysicsHit, IgnoreActor, bBlockingOnly);
+	const bool bLegacyHit = SweepSingleLegacy(WorldRay, MaxDistance, Radius, OutHit, IgnoreActor, bBlockingOnly, true);
+	if (bPhysicsHit && (!bLegacyHit || PhysicsHit.Distance <= OutHit.Distance))
+		OutHit = PhysicsHit;
+	return bPhysicsHit || bLegacyHit;
+}
+
+// 다른 World의 객체를 제외하고 Component 교차 중 최근접 결과를 선택한다.
+bool UWorld::SweepSingleLegacy(const FRay& WorldRay, float MaxDistance, float Radius, FHitResult& OutHit, AActor* IgnoreActor,
+	bool bBlockingOnly, bool bSkipPhysicsBodies)
 {
 	OutHit = FHitResult(1.0f);
 	if (MaxDistance <= 0.0f || !std::isfinite(MaxDistance) || Radius < 0.0f || !std::isfinite(Radius)) return false;
@@ -752,6 +768,7 @@ bool UWorld::SweepSingle(const FRay& WorldRay, float MaxDistance, float Radius, 
 			if (!Component->IsRegistered() || Component->GetWorld() != this || !Component->bBlockComponent ||
 				!Owner || Owner == IgnoreActor || !Owner->GetActorEnableCollision()) continue;
 			if (!Cast<UShapeComponent>(Component) && !Component->GetMeshData()) continue;
+			if (bSkipPhysicsBodies && Component->HasValidPhysicsBody()) continue;
 
 			const FBox Bounds = Component->CalcBounds();
 			const FVector Min = Bounds.Min - Extent, Max = Bounds.Max + Extent;
@@ -801,7 +818,8 @@ bool UWorld::SweepSingle(const FRay& WorldRay, float MaxDistance, float Radius, 
 			UPrimitiveComponent* Component = Proxy ? Proxy->GetComponent() : nullptr;
 			if (!Component || !Component->IsShown(true) ||
 				!Component->GetOwner() || !Component->GetOwner()->GetActorEnableCollision() ||
-				Component->GetOwner() == IgnoreActor || Component->GetOwner()->GetWorld() != this)
+				Component->GetOwner() == IgnoreActor || Component->GetOwner()->GetWorld() != this ||
+				(bSkipPhysicsBodies && Component->HasValidPhysicsBody()))
 				return false;
 			if (!Proxy->GetMesh())
 			{

@@ -119,6 +119,10 @@ void FSettingsPanel::OnRender()
 	ImGui::SliderFloat("Display Gamma", &Settings.DisplayGamma, 1.0f, 3.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::EndDisabled();
 	ImGui::Checkbox("Depth of Field", &Settings.bShowDepthOfField);
+	ImGui::BeginDisabled(!Settings.bShowDepthOfField);
+	ImGui::Checkbox("Visualize DOF (PIE)", &Settings.bVisualizeDOF);
+	ImGui::TextDisabled("Green: Near | Gray: In-Focus | Blue: Far");
+	ImGui::EndDisabled();
 	ImGui::Checkbox("Vignette", &Settings.bShowVignette);
 	ImGui::Checkbox("Camera Fade / Letterbox", &Settings.bShowCameraOverlay);
 	ImGui::Checkbox("Skeletal Mesh", &Settings.bShowSkeletalMesh);

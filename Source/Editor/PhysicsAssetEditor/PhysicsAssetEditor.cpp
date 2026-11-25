@@ -84,12 +84,8 @@ bool FPhysicsAssetEditor::InitializeResources()
 	if (!PhysicsAsset)
 	{
 		UPhysicsAsset* NewAsset = NewObject<UPhysicsAsset>(Mesh);
-		FPhysAssetCreateParams Params;
-		// 20cm = 사람 메시 대각선(약 256)의 8%. 작게 import된 메시는 같은 비율로 낮춘다
-		const FBox& BindBox = Mesh->GetRenderData().LODRenderData[0].BindAABB;
-		Params.MinBoneSize = std::min(Params.MinBoneSize, (BindBox.Max - BindBox.Min).Size() * 0.08f);
 		FString Error;
-		if (!FPhysicsAssetUtils::CreateFromSkeletalMesh(NewAsset, Mesh, Params, Error, false))
+		if (!FPhysicsAssetUtils::CreateFromSkeletalMesh(NewAsset, Mesh, MakeCreateParams(), Error, false))
 		{
 			HTR_LOG(Warning, "Physics asset generation failed: {} ({})", GetAssetPath(), Error);
 		}
@@ -100,6 +96,15 @@ bool FPhysicsAssetEditor::InitializeResources()
 	}
 
 	return true;
+}
+
+FPhysAssetCreateParams FPhysicsAssetEditor::MakeCreateParams() const
+{
+	FPhysAssetCreateParams Params;
+	// 20cm = 사람 메시 대각선(약 256)의 8%. 작게 import된 메시는 같은 비율로 낮춘다
+	const FBox& BindBox = Mesh->GetRenderData().LODRenderData[0].BindAABB;
+	Params.MinBoneSize = std::min(Params.MinBoneSize, (BindBox.Max - BindBox.Min).Size() * 0.08f);
+	return Params;
 }
 
 FString FPhysicsAssetEditor::GetSaveFilePath() const
@@ -415,6 +420,90 @@ void FPhysicsAssetEditor::DeleteConstraint(int32 ConstraintIndex)
 
 	FPhysicsAssetUtils::DestroyConstraint(PhysicsAsset, ConstraintIndex);
 	ClearSelection();
+	MarkDirty();
+}
+
+void FPhysicsAssetEditor::RegenerateBody(int32 BodyIndex)
+{
+	if (bSimulating || !PhysicsAsset || BodyIndex < 0 || BodyIndex >= PhysicsAsset->SkeletalBodySetups.Num())
+	{
+		return;
+	}
+
+	USkeletalBodySetup* BodySetup = PhysicsAsset->SkeletalBodySetups[BodyIndex];
+	const int32 BoneIndex = FindBoneIndexByName(BodySetup->BoneName);
+	if (BoneIndex == INDEX_NONE)
+	{
+		return;
+	}
+
+	const FKAggregateGeom OldGeom = BodySetup->AggGeom;
+	BodySetup->AggGeom = FKAggregateGeom();
+	if (!FPhysicsAssetUtils::CreateCollisionFromBone(BodySetup, Mesh, BoneIndex, MakeCreateParams().VertWeight))
+	{
+		BodySetup->AggGeom = OldGeom;
+		HTR_LOG(Warning, "Cannot regenerate a body: bone has no skinned vertices: {}", Mesh->GetRefSkeleton()[BoneIndex].Name);
+		return;
+	}
+
+	SelectBody(BodyIndex);
+	MarkDirty();
+}
+
+void FPhysicsAssetEditor::RegenerateAllBodies()
+{
+	if (bSimulating || !PhysicsAsset)
+	{
+		return;
+	}
+
+	const int Result = MessageBoxW(GetActiveWindow(),
+		L"Delete all bodies and constraints and generate them again?\nShape, constraint and collision edits will be lost.",
+		L"Physics Asset", MB_OKCANCEL | MB_ICONWARNING);
+	if (Result != IDOK)
+	{
+		return;
+	}
+
+	ClearSelection();
+	for (int32 BodyIndex = PhysicsAsset->SkeletalBodySetups.Num() - 1; BodyIndex >= 0; --BodyIndex)
+	{
+		FPhysicsAssetUtils::DestroyBody(PhysicsAsset, BodyIndex);
+	}
+	for (int32 ConstraintIndex = PhysicsAsset->ConstraintSetup.Num() - 1; ConstraintIndex >= 0; --ConstraintIndex)
+	{
+		FPhysicsAssetUtils::DestroyConstraint(PhysicsAsset, ConstraintIndex);
+	}
+	PhysicsAsset->CollisionDisableTable.Empty();
+
+	FString Error;
+	if (!FPhysicsAssetUtils::CreateFromSkeletalMesh(PhysicsAsset, Mesh, MakeCreateParams(), Error, false))
+	{
+		HTR_LOG(Warning, "Physics asset generation failed: {} ({})", GetAssetPath(), Error);
+	}
+	MarkDirty();
+}
+
+bool FPhysicsAssetEditor::HasConstraintBetween(int32 BodyIndexA, int32 BodyIndexB) const
+{
+	const FName BoneA = PhysicsAsset->SkeletalBodySetups[BodyIndexA]->BoneName;
+	const FName BoneB = PhysicsAsset->SkeletalBodySetups[BodyIndexB]->BoneName;
+	return PhysicsAsset->FindConstraintIndex(BoneA, BoneB) != INDEX_NONE ||
+		PhysicsAsset->FindConstraintIndex(BoneB, BoneA) != INDEX_NONE;
+}
+
+void FPhysicsAssetEditor::MakeNewConstraint(int32 ChildBodyIndex, int32 ParentBodyIndex)
+{
+	const int32 BodyCount = PhysicsAsset ? PhysicsAsset->SkeletalBodySetups.Num() : 0;
+	if (bSimulating || ChildBodyIndex < 0 || ChildBodyIndex >= BodyCount || ParentBodyIndex < 0 ||
+		ParentBodyIndex >= BodyCount || ChildBodyIndex == ParentBodyIndex || HasConstraintBetween(ChildBodyIndex, ParentBodyIndex))
+	{
+		return;
+	}
+
+	const int32 ConstraintIndex = FPhysicsAssetUtils::CreateNewConstraint(PhysicsAsset, PhysicsAsset->SkeletalBodySetups[ChildBodyIndex]->BoneName);
+	InitConstraintSetup(PhysicsAsset->ConstraintSetup[ConstraintIndex], ChildBodyIndex, ParentBodyIndex, false);
+	SelectConstraint(ConstraintIndex);
 	MarkDirty();
 }
 

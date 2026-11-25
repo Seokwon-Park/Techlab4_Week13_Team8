@@ -100,6 +100,7 @@ public:
 	bool LineTraceSingle(const FRay& WorldRay, FHitResult& OutHit,
 		FBillboardTraceTransform ResolveBillboard = nullptr, const void* ViewContext = nullptr);
 	// bBlockingOnly: bBlockComponent인 도형/메시만 검사한다. 기본값은 기존 투사체 동작을 유지한다.
+	// PhysX 바디가 있는 컴포넌트는 PhysX로, 없는 컴포넌트는 기존 방식으로 검사해 가까운 쪽을 쓴다.
 	bool SweepSingle(const FRay& WorldRay, float MaxDistance, float Radius, FHitResult& OutHit, AActor* IgnoreActor = nullptr,
 		bool bBlockingOnly = false);
 
@@ -179,6 +180,8 @@ public:
 	void ResetWorldSettings();
 
 private:
+	bool SweepSingleLegacy(const FRay& WorldRay, float MaxDistance, float Radius, FHitResult& OutHit, AActor* IgnoreActor,
+		bool bBlockingOnly, bool bSkipPhysicsBodies);
 
 	void GameWorldTick(float DeltaTime);
 	void EditorWorldTick(float DeltaTime);
