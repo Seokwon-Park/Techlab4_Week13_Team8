@@ -530,6 +530,7 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 			return false;
 	}
 
+	bVisualizingDOF = false;
 	FRenderGraphTextureRef ToneMapInput = LightingHDR;
 	const FDepthOfFieldSettings& DOF = View.DepthOfField;
 	const float SensorWidth = DOF.SensorWidthMm * 0.001f; // mm -> m
@@ -566,6 +567,30 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 					RenderCommand::BindVertexBuffer(nullptr);
 					RenderCommand::Draw(3);
 				})) return false;
+
+			if (ViewFamily.EngineShowFlags.VisualizeDOF)
+			{
+				FPipelineState* VisualizePipeline = FRenderResourceManager::GetPSO(EPSOType::DepthOfFieldVisualize);
+				if (VisualizePipeline && VisualizePipeline->Shader &&
+					VisualizePipeline->Shader->Name == "Resources/Shader/DepthOfFieldVisualize.hlsl")
+				{
+					FRenderGraphRasterPassDesc VisualizePass{};
+					VisualizePass.Name = "DOF.Visualize";
+					VisualizePass.ReadTextures = { LightingHDR, CoC };
+					VisualizePass.ColorAttachments = { { SceneColor, ERenderGraphLoadAction::Clear, { 0.0f, 0.0f, 0.0f, 1.0f } } };
+					if (!Graph.AddRasterPass(std::move(VisualizePass), [this, VisualizePipeline]
+						{
+							if (!bCorePassSucceeded) return;
+
+							RenderCommand::BindPipelineState(*VisualizePipeline);
+							RenderCommand::BindVertexBuffer(nullptr);
+							RenderCommand::Draw(3);
+						})) return false;
+
+					bVisualizingDOF = true;
+					return true;
+				}
+			}
 
 			FPipelineState* GatherPipeline = FRenderResourceManager::GetPSO(EPSOType::DepthOfFieldGather);
 			if (GatherPipeline && GatherPipeline->Shader &&
@@ -1090,6 +1115,7 @@ bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Re
 		// Deferred 조명 패스는 Unlit 변형이 없다. 조명이 필요 없으므로 Uber Shader의 Unlit 변형으로 바로 그린다.
 		CoreOptions.RenderingPath = ERenderingPath::Forward;
 	}
+	bVisualizingDOF = false;
 	if (!AddCorePasses(Graph, Renderer, Targets, CoreOptions, Skybox)) // 기본적으로 그려져야 되는 Core Pass 들
 		return false;
 	
@@ -1101,7 +1127,7 @@ bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Re
 	bUseFXAA = false;
 
 	// 불투명 물체 위에 높이 안개를 입힌다.
-	if (ViewFamily.ViewMode != VMI_WorldNormal && ViewFamily.EngineShowFlags.Rendering && ViewFamily.EngineShowFlags.Fog &&
+	if (ViewFamily.ViewMode != VMI_WorldNormal && !bVisualizingDOF && ViewFamily.EngineShowFlags.Rendering && ViewFamily.EngineShowFlags.Fog &&
 		!RenderFog(Graph, Renderer, Targets, SceneColor, Depth)) return false;
 
 	// Before DOF 머티리얼은 Lit의 HDR 패스에서 이미 그렸다.
@@ -1184,7 +1210,7 @@ bool FSceneRenderer::AddPostProcessingPasses(FRenderGraphBuilder& Graph, FRender
 		if (!Graph.AddRasterPass(std::move(Pass), Callbacks.DepthVisualization)) return false;
 	}
 
-	if (ViewFamily.ViewMode != VMI_WorldNormal && ViewFamily.ViewMode != VMI_SceneDepth &&
+	if (ViewFamily.ViewMode != VMI_WorldNormal && ViewFamily.ViewMode != VMI_SceneDepth && !bVisualizingDOF &&
 		View.NeedsCameraOverlay(ViewFamily.EngineShowFlags.Vignette, ViewFamily.EngineShowFlags.CameraOverlay))
 	{
 		const uint32 Width = Targets.SceneColor->GetWidth();
@@ -1203,7 +1229,7 @@ bool FSceneRenderer::AddPostProcessingPasses(FRenderGraphBuilder& Graph, FRender
 	// 썼는지를 bUseFXAA에 남긴다. Render가 그래프를 실행한 뒤 이 값을 보고 SceneColor와 FXAA 출력을 맞바꾼다.
 	FFXAARenderer* FXAA = Renderer->GetFXAA();
 	FTexture2D* ColorTarget = Targets.SceneColor.get();
-	bUseFXAA = ViewFamily.EngineShowFlags.AntiAliasing && ViewFamily.ViewMode != VMI_SceneDepth && ViewFamily.ViewMode != VMI_WorldNormal &&
+	bUseFXAA = ViewFamily.EngineShowFlags.AntiAliasing && ViewFamily.ViewMode != VMI_SceneDepth && ViewFamily.ViewMode != VMI_WorldNormal && !bVisualizingDOF &&
 		FXAA && FXAA->PrepareOutput(ColorTarget);
 	if (bUseFXAA)
 	{
