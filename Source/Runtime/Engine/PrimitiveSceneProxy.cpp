@@ -63,7 +63,7 @@ void FPrimitiveSceneProxy::UpdateRenderState()
     RenderState.reset();
     UpdateCommonFlags();
     UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(Component);
-    if (StaticMeshComponent) Mesh = StaticMeshComponent->GetStaticMesh();
+    if (StaticMeshComponent) Mesh = StaticMeshComponent->GetRenderMesh();
     if (Mesh != PreviousMesh)
     {
         if (PreviousMesh) PreviousMesh->UnregisterProxy(this);

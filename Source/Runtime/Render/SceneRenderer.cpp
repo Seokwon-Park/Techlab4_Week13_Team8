@@ -517,9 +517,12 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 
 		// 불투명 물체를 조명까지 계산해 Color에 바로 그린다.
 		if (!RenderBasePass(Graph, Renderer, Options, SceneTextures, bUseDepthPrepass)) return false;
-
-		if (ViewFamily.EngineShowFlags.Decals && !RenderDecals(Graph, Renderer, Options, SceneTextures)) return false;
 	}
+	if (ViewFamily.EngineShowFlags.Rendering && ViewFamily.EngineShowFlags.Decals && !World->GetScene().Decals.IsEmpty() &&
+		(Options.RenderingPath == ERenderingPath::Forward || ViewFamily.ViewMode == VMI_Lit) &&
+		!RenderDecals(Graph, Renderer, Options, SceneTextures)) return false;
+	if (ViewFamily.ViewMode == VMI_Lit && ViewFamily.EngineShowFlags.Rendering && ViewFamily.EngineShowFlags.Decals &&
+		!RenderTireMarks(Graph, Renderer, SceneTextures)) return false;
 
 	if (ViewFamily.ViewMode == VMI_Lit && ViewFamily.EngineShowFlags.Rendering)
 	{
@@ -928,7 +931,7 @@ bool FSceneRenderer::ComputeLightGrid(FRenderGraphBuilder& Graph, FRenderer* Ren
 	return true;
 }
 
-// 데칼을 받는 물체 위에 데칼을 덧그린다. Forward 경로에서 쓴다. UE의 FMobileSceneRenderer::RenderDecals와 같은 자리다.
+// 조명 계산을 끝낸 불투명 표면 위에 깊이 테스트를 사용해 데칼을 덧그린다.
 bool FSceneRenderer::RenderDecals(FRenderGraphBuilder& Graph, FRenderer* Renderer, const FSceneRenderOptions& Options,
 	const FSceneTextures& SceneTextures)
 {
@@ -943,10 +946,19 @@ bool FSceneRenderer::RenderDecals(FRenderGraphBuilder& Graph, FRenderer* Rendere
 	Decal.Viewport = {};
 	if (!Graph.AddRasterPass(std::move(Decal), [this, Renderer, bDecalCulling = Options.bDecalCulling, 
 		bDecalNarrowCulling = Options.bDecalNarrowCulling, bDecalBVHCulling = Options.bDecalBVHCulling,
-		bDecalOBBTree = Options.bDecalOBBTree]
+		bDecalOBBTree = Options.bDecalOBBTree, bDeferred = Options.RenderingPath == ERenderingPath::Deferred]
 		{
 			SCOPE_CYCLE_COUNTER(STAT_DecalPass);
-			if (!bCorePassSucceeded || ForwardBatches.IsEmpty()) return;
+			if (!bCorePassSucceeded) return;
+			// 데칼 VS는 World, View, Projection을 b0에서 읽으므로 두 경로 모두 Forward 배치 형식을 사용한다.
+			TArray<FMeshDrawBatch> DeferredReceivers;
+			if (bDeferred)
+			{
+				FMeshPassProcessor Processor;
+				if (!Processor.Build(View, RenderData.RenderQueue, &RenderData, EMeshPassType::Forward, DeferredReceivers)) return;
+			}
+			const TArray<FMeshDrawBatch>& Receivers = bDeferred ? DeferredReceivers : ForwardBatches;
+			if (Receivers.IsEmpty()) return;
 
 			FPipelineState* DecalPipeline = FRenderResourceManager::GetPSO(EPSOType::Decal);
 			FPipelineState* DecalAdditivePipeline = FRenderResourceManager::GetPSO(EPSOType::DecalAdditive);
@@ -958,7 +970,7 @@ bool FSceneRenderer::RenderDecals(FRenderGraphBuilder& Graph, FRenderer* Rendere
 
 			FConstantBuffer* Constants = Renderer->GetDecalConstants();
 			TArray<FMeshDrawBatch> DecalBatches;
-			DecalBatches.Reserve(ForwardBatches.Num());
+			DecalBatches.Reserve(Receivers.Num());
 			FDecalData Data{};
 
 			const FScene& Scene = World->GetScene();
@@ -968,15 +980,14 @@ bool FSceneRenderer::RenderDecals(FRenderGraphBuilder& Graph, FRenderer* Rendere
 			std::sort(SortedDecals.begin(), SortedDecals.end(), CompareDecalSortOrder);
 
 			TArray <FMeshDrawBatch> DecalHeaders;
-			DecalHeaders.Reserve(ForwardBatches.Num());
+			DecalHeaders.Reserve(Receivers.Num());
 			TArray <FDecalItemRef> ItemRefs;
 
 			TArray <uint32> TouchedBatches;
 
-			// ForwardBatches를 순회로 각 배치의 아이템 중 데칼을 받을 수 있는 아이템들 수집
-			for (uint32 BatchIndex = 0; BatchIndex < ForwardBatches.Num(); BatchIndex++)
+			for (int32 BatchIndex = 0; BatchIndex < Receivers.Num(); ++BatchIndex)
 			{
-				const FMeshDrawBatch& Src = ForwardBatches[BatchIndex];
+				const FMeshDrawBatch& Src = Receivers[BatchIndex];
 				DecalHeaders.Add(Src);
 				FMeshDrawBatch& Header = DecalHeaders.Last();
 				Header.Items.Reset();
@@ -986,7 +997,7 @@ bool FSceneRenderer::RenderDecals(FRenderGraphBuilder& Graph, FRenderer* Rendere
 				{
 					const FMeshDrawBatch::FItem& Item = Src.Items[ItemIndex];
 					if (!Item.bReceivesDecals) continue;
-					ItemRefs.Add({ Item.Proxy, BatchIndex, ItemIndex });
+					ItemRefs.Add({ Item.Proxy, static_cast<uint32>(BatchIndex), ItemIndex });
 				}
 			}
 
@@ -1015,7 +1026,7 @@ bool FSceneRenderer::RenderDecals(FRenderGraphBuilder& Graph, FRenderer* Rendere
 				// 아이템 하나 검사 
 				const auto ConsiderItem = [&](const FDecalItemRef& Ref)
 					{
-						const FMeshDrawBatch::FItem& Item = ForwardBatches[Ref.Batch].Items[Ref.Item];
+						const FMeshDrawBatch::FItem& Item = Receivers[Ref.Batch].Items[Ref.Item];
 						RenderData.RenderStats.DecalItemsTested++;
 
 						if (!bDecalBVHCulling && bDecalCulling) {
@@ -1097,6 +1108,60 @@ bool FSceneRenderer::RenderDecals(FRenderGraphBuilder& Graph, FRenderer* Rendere
 			}
 		})) return false;
 	return true;
+}
+
+bool FSceneRenderer::RenderTireMarks(FRenderGraphBuilder& Graph, FRenderer* Renderer, const FSceneTextures& SceneTextures)
+{
+	const FScene& Scene = World->GetScene();
+	if (Scene.GetTireMarks().IsEmpty() || !Scene.TireMarkTexture) return true;
+	FConstantBuffer* ViewBuffer = Renderer->GetTireMarkViewConstants();
+	FStructuredBuffer* MarkBuffer = Renderer->GetTireMarkBuffer();
+	FShaderProgram* Shader = FRenderResourceManager::GetShaderProgram("Resources/Shader/TireMarkShader.hlsl");
+	if (!ViewBuffer || !MarkBuffer || !Shader || !Shader->VertexShader || !Shader->PixelShader) return true;
+
+	FRenderGraphRasterPassDesc Pass = MakeViewportPass("TireMarks", SceneTextures.Color);
+	Pass.ReadTextures = { SceneTextures.Depth };
+	return Graph.AddRasterPass(std::move(Pass), [this, &Scene, Shader, ViewBuffer, MarkBuffer, Extent = SceneTextures.Extent]
+		{
+			if (!bCorePassSucceeded) return;
+			SCOPED_GPU_STAT(GPUStats::STAT_GPU_Decal);
+			FTireMark Visible[FTireMark::MaxCount];
+			uint32 Count = 0;
+			for (const FTireMark& Mark : Scene.GetTireMarks())
+			{
+				const FVector Center(Mark.CenterAndDepth.X, Mark.CenterAndDepth.Y, Mark.CenterAndDepth.Z);
+				const float DistanceSquared = (Center - View.ViewLocation).SizeSquared();
+				const float Opacity = FMath::Clamp((75.0f * 75.0f - DistanceSquared) / (75.0f * 75.0f - 55.0f * 55.0f), 0.0f, 1.0f);
+				const FVector HalfBounds(Mark.CenterAndDepth.W + Mark.AlongAndLength.W + Mark.AcrossAndWidth.W);
+				if (Opacity <= 0.0f || !IsAABBInFrustum({ Center, HalfBounds }, View.Frustum)) continue;
+				Visible[Count] = Mark;
+				Visible[Count++].NormalAndOpacity.W = Opacity;
+			}
+			RenderData.RenderStats.DecalCount += Scene.GetTireMarks().Num();
+			if (!Count) return;
+
+			const FTireMarkViewData Data{ View.ViewProjectionMatrix, View.ViewProjectionMatrix.Inverse(),
+				FVector4(1.0f / Extent.X, 1.0f / Extent.Y, 0.0f, 0.0f) };
+			RenderCommand::UpdateBufferData(ViewBuffer, &Data, sizeof(Data));
+			RenderCommand::UpdateBufferData(MarkBuffer, Visible, Count * sizeof(FTireMark));
+			const auto Stages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
+			RenderCommand::BindConstantBuffer(0, ViewBuffer, Stages);
+			RenderCommand::BindShaderResource(1, Scene.TireMarkTexture, EShaderBindFlagBits::Pixel);
+			RenderCommand::BindShaderResource(2, MarkBuffer, Stages);
+			RenderCommand::BindSamplerState(0, ESamplerState::LinearClamp, EShaderBindFlagBits::Pixel);
+			FPipelineState Pipeline;
+			Pipeline.Shader = Shader;
+			Pipeline.Topology = EPrimitiveTopology::TriangleList;
+			Pipeline.RasterizerState = ERasterizerState::SolidNone;
+			Pipeline.BlendState = EBlendState::AlphaBlend;
+			Pipeline.DepthStencilState = EDepthStencilState::Disabled;
+			RenderCommand::BindPipelineState(Pipeline);
+			RenderCommand::BindVertexBuffer(nullptr);
+			RenderCommand::Draw(Count * 6);
+			RenderCommand::UnbindShaderResources(0, 3, Stages);
+			RenderData.RenderStats.DecalsRendered += Count;
+			++RenderData.RenderStats.DecalDrawCalls;
+		});
 }
 
 bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Renderer,

@@ -130,6 +130,7 @@ private:
 	// 데칼 (Forward)
 	bool RenderDecals(FRenderGraphBuilder& Graph, FRenderer* Renderer, const FSceneRenderOptions& Options,
 		const FSceneTextures& SceneTextures);
+	bool RenderTireMarks(FRenderGraphBuilder& Graph, FRenderer* Renderer, const FSceneTextures& SceneTextures);
 
 	// ---------- AddViewportPasses가 AddCorePasses 다음에 순서대로 부르는 패스 함수 ----------
 	// 여기부터는 톤맵이 끝난 화면 색상(SceneColor)에 그린다.
