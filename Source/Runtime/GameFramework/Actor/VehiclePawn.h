@@ -26,6 +26,10 @@ public:
 	void EndPlay() override;
 
 private:
+	UPROPERTY(EditAnywhere) bool bRacingDemo = false;
+	UPROPERTY(EditAnywhere) bool bRacingOpponent = false;
+	UPROPERTY(EditAnywhere) bool bUseIntegratedWheelMesh = false;
+
 	static constexpr uint32 WheelCount = 4;
 	UVehicleWheelMeshComponent* WheelMeshes[WheelCount]{};
 
@@ -34,4 +38,5 @@ private:
 
 	void TickVehiclePhysics(float StepDelta);
 	void SyncWheelMeshes(float StepDelta);
+	void HandleChassisContact(const FVector& Point, const FVector& Inward, float Impulse);
 };

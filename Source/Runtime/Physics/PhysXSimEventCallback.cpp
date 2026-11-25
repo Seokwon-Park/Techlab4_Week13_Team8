@@ -4,6 +4,7 @@
 #include "Components/ShapeComponent.h"
 #include "GameFramework/Actor.h"
 #include "Physics/PhysicsScene.h"
+#include "Physics/PhysXConversion.h"
 #include "UObject/UObjectHash.h"
 #include <extensions/PxDefaultSimulationFilterShader.h>
 
@@ -29,6 +30,8 @@ physx::PxFilterFlags FPhysXSimEventCallback::FilterShader(
     {
         OutPairFlags |= PxPairFlag::eNOTIFY_TOUCH_FOUND;
         OutPairFlags |= PxPairFlag::eDETECT_CCD_CONTACT;
+        if ((FilterDataA.word3 | FilterDataB.word3) & FPhysicsScene::ContactReportBit)
+            OutPairFlags |= PxPairFlag::eNOTIFY_CONTACT_POINTS;
     }
     return Result;
 }
@@ -87,7 +90,25 @@ void FPhysXSimEventCallback::onContact(const physx::PxContactPairHeader& Header,
             const FComponentPair Components = FindComponentPair(Header.actors[0], Header.actors[1]);
             if (Components.A)
             {
-                PendingEvents.Add({ Components, EEvent::Hit });
+                FPendingEvent Event{ Components, EEvent::Hit };
+                PxContactPairPoint Contacts[16];
+                const PxU32 Extracted = Pair.extractContacts(Contacts, 16);
+                for (PxU32 ContactIndex = 0; ContactIndex < Extracted; ++ContactIndex)
+                {
+                    const PxContactPairPoint& Contact = Contacts[ContactIndex];
+                    const float Impulse = Contact.impulse.magnitude();
+                    if (Impulse <= Event.ContactImpulse)
+                        continue;
+
+                    Event.ContactImpulse = Impulse;
+                    for (int32 Side = 0; Side < 2; ++Side)
+                    {
+                        const PxTransform Pose = Header.actors[Side]->getGlobalPose();
+                        Event.LocalPoints[Side] = P2UVector(Pose.transformInv(Contact.position));
+                        Event.LocalNormals[Side] = P2UVector(Pose.q.rotateInv(Side == 0 ? Contact.normal : -Contact.normal));
+                    }
+                }
+                PendingEvents.Add(Event);
             }
             return;
         }
@@ -236,19 +257,19 @@ void FPhysXSimEventCallback::DispatchPending()
         const FComponentPair& Pair = Event.Components;
         if (Pair.IsLive())
         {
-            DispatchTo(Event.Type, *Pair.A, *Pair.B);
+            DispatchTo(Event, 0, *Pair.A, *Pair.B);
         }
         if (Pair.IsLive())
         {
-            DispatchTo(Event.Type, *Pair.B, *Pair.A);
+            DispatchTo(Event, 1, *Pair.B, *Pair.A);
         }
     }
 }
 
-void FPhysXSimEventCallback::DispatchTo(EEvent Type, UPrimitiveComponent& Self, UPrimitiveComponent& Other) const
+void FPhysXSimEventCallback::DispatchTo(const FPendingEvent& Event, int32 Side, UPrimitiveComponent& Self, UPrimitiveComponent& Other) const
 {
     // 충돌 설정에 관계없는 기존 겹침 상태 정리
-    if (Type == EEvent::EndOverlap)
+    if (Event.Type == EEvent::EndOverlap)
     {
         Self.EndComponentOverlap(&Other);
         return;
@@ -262,8 +283,13 @@ void FPhysXSimEventCallback::DispatchTo(EEvent Type, UPrimitiveComponent& Self, 
         return;
     }
 
-    if (Type == EEvent::Hit)
+    if (Event.Type == EEvent::Hit)
     {
+        if (Event.ContactImpulse > 0.0f)
+        {
+            Self.OnComponentContact.Broadcast(Event.LocalPoints[Side], Event.LocalNormals[Side], Event.ContactImpulse);
+            if (!Event.Components.IsLive()) return;
+        }
         Self.DispatchHit(&Other);
     }
     else if (Self.bGenerateOverlapEvents && Other.bGenerateOverlapEvents)

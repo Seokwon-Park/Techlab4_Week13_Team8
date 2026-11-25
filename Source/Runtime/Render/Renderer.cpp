@@ -218,6 +218,8 @@ void FRenderer::InitScenePasses(const FString& SkyPanoramaPath)
 	CameraOverlay->Init(this);
 	ToneMapConstants = RenderCommand::CreateConstantBuffer(sizeof(FToneMapData));
 	DecalConstants = RenderCommand::CreateConstantBuffer(sizeof(FDecalData));
+	TireMarkViewConstants = RenderCommand::CreateConstantBuffer(sizeof(FTireMarkViewData));
+	TireMarkBuffer = RenderCommand::CreateDynamicStructuredBuffer(FTireMark::MaxCount, sizeof(FTireMark));
 	DepthOfFieldSetupConstants = RenderCommand::CreateConstantBuffer(sizeof(DepthOfFieldSetupData));
 	SceneText = MakeUnique<FTextRenderer>();
 	SceneText->Init();
