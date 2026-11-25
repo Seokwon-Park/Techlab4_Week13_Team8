@@ -37,6 +37,7 @@ public:
 	void RefreshSkinningMode();
 
 	void MarkBoneTransformsDirty() { bBoneTransformsDirty = true; }
+	bool AreBoneTransformsDirty() const { return bBoneTransformsDirty; }
 	void UpdateBoneTransformsNow();
 
 	static void SetGPUSkinningEnabled(bool bEnable);

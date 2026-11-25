@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "CapsuleComponent.h"
+#include "Physics/AggregateGeom.h"
 #include "Physics/Collision.h"
 #include "Render/LineBatcher.h"
 
@@ -31,4 +32,20 @@ void UCapsuleComponent::DrawDebug(FLineBatcher* LineBatcher, const FVector4& Col
 
 	LineBatcher->AddCapsule((Cap.A + Cap.B) * 0.5f, Up, Right,
 		Cap.Radius, GetScaledCapsuleHalfHeight(), Color);
+}
+
+void UCapsuleComponent::PostEditChangeProperty(const FProperty& Property)
+{
+	Super::PostEditChangeProperty(Property);
+	if (Property.Name == "CapsuleHalfHeight" || Property.Name == "CapsuleRadius")
+		RecreatePhysicsState();
+}
+
+void UCapsuleComponent::UpdateBodySetup(FKAggregateGeom& AggGeom) const
+{
+	// CapsuleHalfHeight는 반구 끝까지, Length는 두 반구 중심 사이 거리다
+	FKSphylElem Elem;
+	Elem.Radius = CapsuleRadius;
+	Elem.Length = std::max(0.0f, 2.0f * (CapsuleHalfHeight - CapsuleRadius));
+	AggGeom.SphylElems.Add(Elem);
 }

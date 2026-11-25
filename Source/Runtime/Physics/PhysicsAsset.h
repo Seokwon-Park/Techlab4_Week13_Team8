@@ -55,6 +55,7 @@ class UPhysicsAsset : public UObject
 public:
 	TArray<USkeletalBodySetup*> SkeletalBodySetups;
 	TArray<UPhysicsConstraintTemplate*> ConstraintSetup;
+	FString PreviewMeshPath;
 
 	TMap<FRigidBodyIndexPair, bool, FRigidBodyIndexPairHash> CollisionDisableTable;
 	void DisableCollision(int32 BodyIndexA, int32 BodyIndexB);

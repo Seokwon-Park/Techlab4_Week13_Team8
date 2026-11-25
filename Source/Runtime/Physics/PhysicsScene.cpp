@@ -149,36 +149,36 @@ UPrimitiveComponent* FPhysicsScene::FindHitComponent(const physx::PxRigidActor* 
 }
 
 bool FPhysicsScene::Raycast(const FRay& WorldRay, float MaxDistance, FHitResult& OutHit,
-	const AActor* IgnoreActor) const
+	const AActor* IgnoreActor, bool bBlockingOnly) const
 {
 	return QuerySingle(WorldRay, MaxDistance, nullptr, physx::PxQuat(physx::PxIdentity),
-		OutHit, IgnoreActor);
+		OutHit, IgnoreActor, bBlockingOnly);
 }
 
 bool FPhysicsScene::SweepSphere(const FRay& WorldRay, float MaxDistance, float Radius,
-	FHitResult& OutHit, const AActor* IgnoreActor) const
+	FHitResult& OutHit, const AActor* IgnoreActor, bool bBlockingOnly) const
 {
 	// 반경 0의 광선 처리
 	if (Radius == 0.0f)
 	{
-		return Raycast(WorldRay, MaxDistance, OutHit, IgnoreActor);
+		return Raycast(WorldRay, MaxDistance, OutHit, IgnoreActor, bBlockingOnly);
 	}
 
 	const physx::PxSphereGeometry Geometry(Radius);
 	return QuerySingle(WorldRay, MaxDistance, &Geometry, physx::PxQuat(physx::PxIdentity),
-		OutHit, IgnoreActor);
+		OutHit, IgnoreActor, bBlockingOnly);
 }
 
 bool FPhysicsScene::SweepBox(const FRay& WorldRay, float MaxDistance, const FVector& HalfExtent,
-	const FQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor) const
+	const FQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor, bool bBlockingOnly) const
 {
 	// 월드 크기의 반크기와 시작 회전으로 박스 구성
 	const physx::PxBoxGeometry Geometry(U2PVector(HalfExtent));
-	return QuerySingle(WorldRay, MaxDistance, &Geometry, U2PQuat(Rotation), OutHit, IgnoreActor);
+	return QuerySingle(WorldRay, MaxDistance, &Geometry, U2PQuat(Rotation), OutHit, IgnoreActor, bBlockingOnly);
 }
 
 bool FPhysicsScene::SweepCapsule(const FRay& WorldRay, float MaxDistance, float Radius,
-	float HalfHeight, const FQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor) const
+	float HalfHeight, const FQuat& Rotation, FHitResult& OutHit, const AActor* IgnoreActor, bool bBlockingOnly) const
 {
 	// 반구를 포함한 반높이 검증과 구체 경계 처리
 	if (!std::isfinite(HalfHeight) || !std::isfinite(Radius) ||
@@ -189,19 +189,19 @@ bool FPhysicsScene::SweepCapsule(const FRay& WorldRay, float MaxDistance, float 
 	}
 	if (HalfHeight == Radius)
 	{
-		return SweepSphere(WorldRay, MaxDistance, Radius, OutHit, IgnoreActor);
+		return SweepSphere(WorldRay, MaxDistance, Radius, OutHit, IgnoreActor, bBlockingOnly);
 	}
 
 	// 원통 반길이 산출과 PhysX X축의 Hitori Z축 보정
 	const physx::PxCapsuleGeometry Geometry(Radius, HalfHeight - Radius);
 	const physx::PxQuat NativeRotation = U2PQuat(Rotation) * U2PSphylBasis;
-	return QuerySingle(WorldRay, MaxDistance, &Geometry, NativeRotation, OutHit, IgnoreActor);
+	return QuerySingle(WorldRay, MaxDistance, &Geometry, NativeRotation, OutHit, IgnoreActor, bBlockingOnly);
 }
 
 
 bool FPhysicsScene::QuerySingle(const FRay& WorldRay, float MaxDistance,
 	const physx::PxGeometry* SweepGeometry, const physx::PxQuat& Rotation, FHitResult& OutHit,
-	const AActor* IgnoreActor) const
+	const AActor* IgnoreActor, bool bBlockingOnly) const
 {
 	// 이전 결과 초기화와 PhysX 입력 확인
 	OutHit = FHitResult();
@@ -222,7 +222,7 @@ bool FPhysicsScene::QuerySingle(const FRay& WorldRay, float MaxDistance,
 	OutHit.Init(P2UVector(Start), P2UVector(End));
 
 	// 정적·동적 Shape의 사전 필터 구성
-	FCollisionQueryFilterCallback Filter(*this, IgnoreActor);
+	FCollisionQueryFilterCallback Filter(*this, IgnoreActor, bBlockingOnly);
 	const physx::PxQueryFilterData FilterData(physx::PxQueryFlag::eSTATIC |
 		physx::PxQueryFlag::eDYNAMIC | physx::PxQueryFlag::ePREFILTER);
 

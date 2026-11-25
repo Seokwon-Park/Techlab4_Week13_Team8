@@ -124,7 +124,7 @@ void FSkeletalPreviewEditor::FocusMesh()
 	}
 
 	// 메시의 AABB를 가져와서 BoxSphereBounds로 변환
-	const FBox& Box = Mesh->GetRenderData().LODRenderData[0].BindAABB;
+	const FBox Box = GetPreviewBounds();
 	const FVector Extent = (Box.Max - Box.Min) * 0.5f;
 	FBoxSphereBounds Bound
 	{
@@ -132,6 +132,12 @@ void FSkeletalPreviewEditor::FocusMesh()
 		.BoxExtent = Extent,
 		.SphereRadius = Extent.Size()
 	};
+
+	// 작은 메시는 가까이 다가가면 기본 NearClip(0.1)에 잘리므로 크기에 비례해 줄인다.
+	// FarClip / NearClip이 1e5를 넘으면 ExtractFrustumPlanes의 Far 평면 법선 길이가 1e-6 아래로 떨어져 assert에 걸린다
+	const float NearClip = FMath::Clamp(Bound.SphereRadius * 0.01f, 0.001f, 0.1f);
+	ViewportClient->SetNearClip(NearClip);
+	ViewportClient->SetFarClip(NearClip * 1.0e5f);
 
 	// AABB로 ViewportClient의 카메라를 메시에 포커싱
 	ViewportClient->FocusOnBounds(Bound);
@@ -148,9 +154,10 @@ bool FSkeletalPreviewEditor::InitializePreview()
 	MeshComponent = Cast<USkeletalMeshComponent>(PreviewScene.AddComponent(USkeletalMeshComponent::StaticClass()));
 	if (!MeshComponent) return false;
 	MeshComponent->SetSkeletalMesh(Mesh);
+	MeshComponent->SetRelativeScale3D(FVector(PreviewScale, PreviewScale, PreviewScale));
 	MeshComponent->RefreshBoneTransformsNow();
 
-	const FBox& MeshBox = LODs[0].BindAABB;                       // 멤버였던 MeshBox
+	const FBox MeshBox = GetPreviewBounds();
 	BoneSphereSize = FMath::Max((MeshBox.Max - MeshBox.Min).Size() * 0.0025f, 0.001f);
 
 	BuildBoneItems();
@@ -166,6 +173,12 @@ void FSkeletalPreviewEditor::ShutdownResources()
 	FAssetEditor::ShutdownResources();
 }
 
+
+FBox FSkeletalPreviewEditor::GetPreviewBounds() const
+{
+	const FBox& BindBox = Mesh->GetRenderData().LODRenderData[0].BindAABB;
+	return MeshComponent ? BindBox.GetWorldAABB(MeshComponent->GetWorldMatrix()) : BindBox;
+}
 
 bool FSkeletalPreviewEditor::CanProcessViewportInput() const
 {

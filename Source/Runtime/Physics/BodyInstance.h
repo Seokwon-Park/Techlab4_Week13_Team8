@@ -21,6 +21,16 @@ enum class EPhysicsBodyType
     Kinematic
 };
 
+enum class ECollisionEnabled : uint8
+{
+    QueryOnly,
+    QueryAndPhysics
+};
+
+// QueryOnly 바디의 Shape는 query filter data word3에 이 비트를 켠다.
+// PxBatchQuery 사전 필터(차량 서스펜션 레이캐스트)는 Shape 플래그를 못 보고 filter data만 받기 때문이다
+inline constexpr uint32 QueryOnlyShapeQueryBit = 1u << 30;
+
 // 단일 리지드 액터의 수명과 강체 자세 관리
 struct FBodyInstance
 {
@@ -55,9 +65,14 @@ struct FBodyInstance
     // 차량 설정용 빌린 액터 포인터, 미초기화·정적 바디는 nullptr
     physx::PxRigidDynamic* GetRigidDynamic();
 
+    // InitBody 전에 정한다. 바꾸려면 바디를 다시 만든다
+    ECollisionEnabled CollisionEnabled = ECollisionEnabled::QueryAndPhysics;
+
     int32 InstanceBodyIndex = INDEX_NONE;
     int32 InstanceBoneIndex = INDEX_NONE;
     bool IsValidBodyInstance() const { return Actor != nullptr; }
+    // Shape 크기에 구워 넣은 스케일. PhysX 자세에는 스케일이 없어서 따로 보관한다
+    const FVector& GetScale3D() const { return Scale3D; }
     void SetLinearVelocity(const FVector& NewVel, bool bAddToCurrent);
 
 private:
@@ -68,6 +83,7 @@ private:
     FPhysicsScene* Scene = nullptr;
     UPrimitiveComponent* OwnerComponent = nullptr;
     physx::PxRigidActor* Actor = nullptr;
+    FVector Scale3D = FVector(1.0f, 1.0f, 1.0f);
 
     // 동적 모드에서 적용할 CCD 사용 여부
     bool bUseCCD = false;

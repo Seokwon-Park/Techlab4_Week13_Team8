@@ -116,6 +116,19 @@ void UPrimitiveComponent::OnTransformDirty()
 {
 	if (SceneProxy)
 		SceneProxy->GetScene()->MarkDirty(SceneProxy);
+
+	// 시뮬레이션 바디는 PhysX가 위치를 정하고 SyncComponentToRBPhysics가 컴포넌트로 가져온다.
+	// 여기서 다시 쓰면 그 결과를 덮어쓴다
+	if (bSimulatePhysics || !BodyInstance.IsValidBodyInstance())
+		return;
+
+	const FTransform WorldTransform = FTransform::FromMatrix(GetWorldMatrix());
+	if ((WorldTransform.Scale - BodyInstance.GetScale3D()).SizeSquared() > 1e-8f)
+	{
+		RecreatePhysicsState();
+		return;
+	}
+	BodyInstance.SetBodyTransform(WorldTransform);
 }
 
 bool UPrimitiveComponent::MoveComponent(const FVector& Delta, const FRotator& NewRotation, bool bSweep, FHitResult* Hit)

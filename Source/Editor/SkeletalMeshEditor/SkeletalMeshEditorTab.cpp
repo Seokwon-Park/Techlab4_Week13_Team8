@@ -32,6 +32,11 @@ void FSkeletalMeshEditorTab::DrawMenuBar()
 {
 	if (ImGui::BeginMenu("Viewer"))
 	{
+		if (ImGui::MenuItem("Open Physics Asset"))
+		{
+			MeshEditor.OpenPhysicsAssetEditor();
+		}
+		ImGui::Separator();
 		if (ImGui::MenuItem("Close Viewer"))
 		{
 			MeshEditor.Close();

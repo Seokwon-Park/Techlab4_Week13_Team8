@@ -11,6 +11,7 @@
 #include <extensions/PxDefaultErrorCallback.h>
 #include <extensions/PxDefaultCpuDispatcher.h>
 #include <extensions/PxExtensionsAPI.h>
+#include <vehicle/PxVehicleSDK.h>
 
 #if defined(ENGINE_DEBUG)
 #include <pvd/PxPvd.h>
@@ -28,6 +29,7 @@ namespace PhysXSDK
 	static physx::PxPhysics* GPhysics = nullptr;
 	static physx::PxDefaultCpuDispatcher* GCpuDispatcher = nullptr;
 	static bool bExtensionsInitialized = false;
+	static bool bVehicleInitialized = false;
 
 	// 물리 SDK에 전달할 PVD 객체
 	static physx::PxPvd* GPvd = nullptr;
@@ -109,6 +111,16 @@ namespace PhysXSDK
 			return false;
 		}
 
+		bVehicleInitialized = physx::PxInitVehicleSDK(*GPhysics);
+		if (!bVehicleInitialized)
+		{
+			HTR_LOG(Error, "PxInitVehicleSDK failed");
+			Shutdown();
+			return false;
+		}
+		physx::PxVehicleSetBasisVectors(
+			physx::PxVec3(0.0f, 0.0f, 1.0f), physx::PxVec3(1.0f, 0.0f, 0.0f));
+
 		// 프로젝트 워커 수에 따른 CPU 디스패처 생성. 기본 0개
 		GCpuDispatcher = physx::PxDefaultCpuDispatcherCreate(Settings.CpuDispatcherWorkerCount);
 		if (!GCpuDispatcher)
@@ -129,6 +141,12 @@ namespace PhysXSDK
 		{
 			GCpuDispatcher->release();
 			GCpuDispatcher = nullptr;
+		}
+
+		if (bVehicleInitialized)
+		{
+			physx::PxCloseVehicleSDK();
+			bVehicleInitialized = false;
 		}
 
 		if (bExtensionsInitialized)

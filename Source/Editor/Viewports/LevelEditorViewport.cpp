@@ -190,10 +190,17 @@ void FLevelEditorViewportClient::Draw(const FSceneView* View, FScenePassCallback
 				DrawCollisionShapes(GetWorld(), LineBatcher, SelectedActor);
 				DrawSpringArms(GetWorld(), LineBatcher, SelectedActor);
 
-				if (EngineShowFlags.PhysicsBodies)
+				if (EngineShowFlags.PhysicsBodies || EngineShowFlags.Constraints)
 				{
 					FPhysicsDebugDraw PhysicsDebugDraw;
-					PhysicsDebugDraw.DrawPhysicsBodies(GetWorld(), LineBatcher, SelectedActor);
+					if (EngineShowFlags.PhysicsBodies)
+					{
+						PhysicsDebugDraw.DrawPhysicsBodies(GetWorld(), LineBatcher, SelectedActor);
+					}
+					if (EngineShowFlags.Constraints)
+					{
+						PhysicsDebugDraw.DrawConstraintLimits(GetWorld(), LineBatcher);
+					}
 				}
 
 				LineBatcher->OnRender(SceneView.ViewProjectionMatrix);

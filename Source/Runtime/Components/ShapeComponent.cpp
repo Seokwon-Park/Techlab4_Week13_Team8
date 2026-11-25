@@ -2,11 +2,26 @@
 #include "ShapeComponent.h"
 #include "Render/LineBatcher.h"
 #include "UObject/UObjectIterator.h"
+#include "Physics/BodySetup.h"
 
 UShapeComponent::UShapeComponent()
 {
 	bCastShadow = false;
 	bReceiveShadow = false;
+	// 시뮬레이션에 넣으면 움직이는 Shape가 Dynamic 바디를 밀고, 캡슐이 자기 래그돌과 부딪힌다
+	BodyInstance.CollisionEnabled = ECollisionEnabled::QueryOnly;
+}
+
+UShapeComponent::~UShapeComponent() = default;
+
+UBodySetup* UShapeComponent::GetBodySetup()
+{
+	if (!ShapeBodySetup)
+		ShapeBodySetup.reset(NewObject<UBodySetup>(this));
+
+	ShapeBodySetup->AggGeom = FKAggregateGeom();
+	UpdateBodySetup(ShapeBodySetup->AggGeom);
+	return ShapeBodySetup.get();
 }
 
 FBox UShapeComponent::GetWorldAABB() const

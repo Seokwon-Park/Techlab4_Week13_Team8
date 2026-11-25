@@ -371,6 +371,16 @@ FBodyInstance* USkeletalMeshComponent::GetBodyInstance(FName BoneName) const
 	return Bodies.IsValidIndex(Index) ? Bodies[Index] : nullptr;
 }
 
+bool USkeletalMeshComponent::HasValidPhysicsBody() const
+{
+	for (const FBodyInstance* Body : Bodies)
+	{
+		if (Body && Body->IsValidBodyInstance())
+			return true;
+	}
+	return false;
+}
+
 UPhysicsAsset* USkeletalMeshComponent::GetPhysicsAsset() const
 {
 	return GetSkeletalMesh() ? GetSkeletalMesh()->GetPhysicsAsset() : nullptr;

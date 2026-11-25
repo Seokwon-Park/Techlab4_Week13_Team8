@@ -8,6 +8,8 @@
 #include "Core/EngineLog.h"
 #include "UObject/Object.h"
 
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGraph.h"
 #include "Script/LuaScriptInstance.h"
 #include "Script/LuaBindings.h"
 
@@ -49,10 +51,17 @@ void AActor::BeginPlay()
 		PrimaryActorTick.bCanEverTick = true;
 	}
 
+	// Blueprint 그래프에 Event Tick이나 Delay가 있으면 매 프레임 불러야 한다.
+	const bool bBlueprintGraph = FBlueprint::IsBlueprintClass(GetClass());
+	if (bBlueprintGraph && FBlueprintGraphRuntime::NeedsTick(GetClass()))
+		PrimaryActorTick.bCanEverTick = true;
+
 	RegisterAllActorTickFunctions(true);
 
 	if (Script)
 		Script->Call("BeginPlay");
+	if (bBlueprintGraph)
+		FBlueprintGraphRuntime::OnBeginPlay(this);
 }
 
 void AActor::TickActor(float DeltaTime)
@@ -60,10 +69,14 @@ void AActor::TickActor(float DeltaTime)
 	Tick(DeltaTime);
 	if (Script)
 		Script->Tick(DeltaTime);
+	if (FBlueprint::IsBlueprintClass(GetClass()))
+		FBlueprintGraphRuntime::OnTick(this, DeltaTime);
 }
 
 void AActor::EndPlay()
 {
+	if (FBlueprint::IsBlueprintClass(GetClass()))
+		FBlueprintGraphRuntime::OnEndPlay(this);
 	if (!Script)
 		return;
 
@@ -510,6 +523,8 @@ void AActor::NotifyActorBeginOverlap(AActor* OtherActor)
 	//          sol.hpp는 LuaScriptInstance.cpp 안에서만 include하도록 비템플릿 진입점을 거친다
 	if (Script)
 		Script->Call("OnBeginOverlap", OtherActor);
+	if (FBlueprint::IsBlueprintClass(GetClass()))
+		FBlueprintGraphRuntime::OnActorBeginOverlap(this, OtherActor);
 }
 
 void AActor::NotifyActorEndOverlap(AActor* OtherActor)
@@ -517,6 +532,8 @@ void AActor::NotifyActorEndOverlap(AActor* OtherActor)
 	// TODO(A): if (Script) Script->Call("OnEndOverlap", OtherActor);
 	if (Script)
 		Script->Call("OnEndOverlap", OtherActor);
+	if (FBlueprint::IsBlueprintClass(GetClass()))
+		FBlueprintGraphRuntime::OnActorEndOverlap(this, OtherActor);
 }
 
 void AActor::NotifyHit(AActor* OtherActor)

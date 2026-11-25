@@ -8,6 +8,6 @@ class AMyPlayerController : public APlayerController
 {
 	GENERATED_BODY()
 
-public:
-	virtual void InputKey(int32 Key, bool bDown) override;
+	// 키 처리는 Enhanced Input으로 옮겼다. Jump / Attack은 AMyCharacter::SetupPlayerInputComponent에서 바인딩한다.
+	// 게임 전용 Controller 입력이 필요하면 SetupInputComponent를 override한다.
 };

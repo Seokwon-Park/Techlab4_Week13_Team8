@@ -42,11 +42,13 @@ public:
 	void ResetPose();
 	void ResetBone(int32 BoneIndex);
 
-	void SetGizmoMode(UE::Widget::EWidgetMode Mode);
+	void SetGizmoMode(UE::Widget::EWidgetMode Mode) override;
 	void SetGizmoSpace(ECoordSystem Space);
-	UE::Widget::EWidgetMode  GetGizmoMode() const { return ModeTools.GetWidgetMode(); }
+	UE::Widget::EWidgetMode  GetGizmoMode() const override { return ModeTools.GetWidgetMode(); }
 	ECoordSystem GetGizmoSpace() const { return ModeTools.GetCoordSystem(); }
-	bool IsGizmoDragging() const { return BoneGizmo.IsUsing(); }
+	bool IsGizmoDragging() const override { return BoneGizmo.IsUsing(); }
+
+	void OpenPhysicsAssetEditor();
 
 protected:
 	// 이 에디터에 연결된 탭을 생성합니다.

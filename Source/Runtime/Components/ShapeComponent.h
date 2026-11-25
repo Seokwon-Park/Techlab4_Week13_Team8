@@ -5,6 +5,7 @@
 #include "ShapeComponent.generated.h"
 
 class FLineBatcher;
+struct FKAggregateGeom;
 
 // World의 모든 도형을 그린다. Selected가 있으면 bDrawOnlyIfSelected인 도형은 그 액터 것만
 void DrawCollisionShapes(UWorld* World, FLineBatcher* LineBatcher, const AActor* Selected);
@@ -16,6 +17,10 @@ class UShapeComponent : public UPrimitiveComponent
 	GENERATED_BODY()
 public:
 	UShapeComponent();
+	~UShapeComponent() override;
+
+	// 형상이 애셋이 아니라 컴포넌트 프로퍼티에 있어서 컴포넌트마다 전용 BodySetup을 둔다
+	UBodySetup* GetBodySetup() override;
 
 	// 넓은 범위 판정용. 월드 스케일과 회전이 반영된 AABB
 	virtual FBox GetWorldAABB() const;
@@ -34,9 +39,15 @@ public:
 protected:
 	virtual bool ShouldCreateRenderState() const override { return false; }
 
+	// 현재 프로퍼티로 AggGeom을 채운다. 비어 있으면 바디를 만들지 않는다
+	virtual void UpdateBodySetup(FKAggregateGeom& AggGeom) const {}
+
 	// 중심, 원이 놓일 평면의 두 축, 반지름, 시작~끝 각도(라디안)
 	static void AddWireArc(FLineBatcher* LineBatcher, const FVector& Center, const FVector& AxisA, const FVector& AxisB,
 		float Radius, float StartRad, float EndRad, const FVector4& Color, int32 Segments = 24);
+
+private:
+	TUniquePtr<UBodySetup> ShapeBodySetup;
 };
 
 

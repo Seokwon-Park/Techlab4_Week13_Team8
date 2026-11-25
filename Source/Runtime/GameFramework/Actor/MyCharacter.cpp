@@ -9,6 +9,10 @@
 #include "Components/CharacterMovementComponent.h"
 #include "Collision/HitResult.h"
 #include "Animation/AnimGraphInstance.h"
+#include "Input/EnhancedInputComponent.h"
+#include "Input/InputAction.h"
+#include "Input/InputMappingContext.h"
+#include "Input/InputAssetLibrary.h"
 
 AMyCharacter::AMyCharacter()
 {
@@ -34,6 +38,21 @@ AMyCharacter::AMyCharacter()
 	// UE 3인칭 템플릿 값: 몸은 마우스가 아니라 이동(가속) 방향을 향해 초당 500도까지 돈다
 	CharacterMovementComponent->bOrientRotationToMovement = true;
 	CharacterMovementComponent->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
+}
+
+void AMyCharacter::SetupPlayerInputComponent(UEnhancedInputComponent* PlayerInputComponent)
+{
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+	if (!PlayerInputComponent) return;
+
+	CharacterMappingContext = FInputAssetLibrary::LoadMappingContext(CharacterMappingContextPath);
+	JumpAction = FInputAssetLibrary::LoadInputAction(JumpActionPath);
+	AttackAction = FInputAssetLibrary::LoadInputAction(AttackActionPath);
+
+	AddInputMappingContext(CharacterMappingContext, 1);
+	// 이전 MyPlayerController처럼 눌린 순간에만 한 번 실행한다
+	PlayerInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AMyCharacter::Jump);
+	PlayerInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &AMyCharacter::Attack);
 }
 
 void AMyCharacter::BeginPlay()

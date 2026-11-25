@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "Editor/SkeletalMeshEditor/SkeletalMeshEditor.h"
 #include "SkeletalMeshEditorTab.h"
+#include "Editor/AssetEditor/EditorManager.h"
 #include "Asset/AssetUtils.h"
 #include "Asset/FbxImporter/FbxMeshBake.h"
 #include "Collision/Ray.h"
@@ -407,6 +408,11 @@ void FSkeletalMeshEditor::OnRenderLine(FLineBatcher& LineBatcher)
 	{
 		DrawMarker(MaxDistance.first, CapColor);
 	}
+}
+
+void FSkeletalMeshEditor::OpenPhysicsAssetEditor()
+{
+	EditorManager.OpenPhysicsAssetEditor(GetAssetPath(), Mesh);
 }
 
 TUniquePtr<IEditorTab> FSkeletalMeshEditor::CreateTab()

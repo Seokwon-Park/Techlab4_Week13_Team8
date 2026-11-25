@@ -16,6 +16,8 @@ enum EFunctionFlags : uint32
     FUNC_None           = 0,
     FUNC_CallInEditor   = 1 << 0, // 디테일 패널에 버튼으로 표시. 인자가 없어야 한다
     FUNC_ScriptCallable = 1 << 1, // Lua에서 actor:함수이름(...)으로 호출
+    FUNC_BlueprintCallable = 1 << 2, // Blueprint 그래프에서 실행 핀이 있는 노드로 호출
+    FUNC_BlueprintPure  = 1 << 3, // Blueprint 그래프에서 실행 핀 없이 값만 내는 노드로 호출 (반환값이 있어야 한다)
 };
 
 // UFUNCTION 인자·반환값 타입. UE는 UFunction의 인자도 FProperty 자식으로 두지만,
@@ -59,6 +61,8 @@ struct FFunction
     FString Name;
     uint32 Flags = FUNC_None;
     TArray<EScriptValueType> ParamTypes;
+    // 인자 이름 (HHT가 선언에서 읽는다). Blueprint 노드의 핀 이름이 된다. 비었거나 개수가 다르면 "Arg 0"처럼 쓴다.
+    TArray<FString> ParamNames;
     EScriptValueType ReturnType = EScriptValueType::None; // None이면 void
     FNativeFunctionThunk Thunk = nullptr;
 

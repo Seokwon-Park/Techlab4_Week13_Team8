@@ -134,6 +134,16 @@ public:
 		Functions.Add(TNativeFunction<Func>::Make(InName, InFlags));
 	}
 
+	// 인자 이름까지 넘기는 형태: InClass->AddFunction<&ThisClass::Foo>("Foo", FUNC_BlueprintCallable, { "Speed" });
+	template <auto Func>
+	void AddFunction(const FString& InName, uint32 InFlags, std::initializer_list<const char*> InParamNames)
+	{
+		FFunction Function = TNativeFunction<Func>::Make(InName, InFlags);
+		for (const char* ParamName : InParamNames)
+			Function.ParamNames.Add(ParamName);
+		Functions.Add(std::move(Function));
+	}
+
 protected:
 	virtual UObject* CreateDefaultObject();
 private:

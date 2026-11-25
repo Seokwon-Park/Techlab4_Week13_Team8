@@ -2,14 +2,26 @@ Texture2D<float4> LightingHDR : register(t0);
 Texture2D<float> CoCTexture : register(t1);
 
 static const float MaxCoCRadius = 16.0f;
-static const int TapCount = 17;
+static const int TapCount = 37;
 static const float2 DiskTaps[TapCount] =
 {
-    float2(0, 0),
-    float2(0.125, 0), float2(-0.125, 0), float2(0, 0.125), float2(0, -0.125),
-    float2(0.22, 0.22), float2(-0.22, 0.22), float2(-0.22, -0.22), float2(0.22, -0.22),
-    float2(0.625, 0), float2(-0.625, 0), float2(0, 0.625), float2(0, -0.625),
-    float2(0.707, 0.707), float2(-0.707, 0.707), float2(-0.707, -0.707), float2(0.707, -0.707)
+    // Center (1)
+    float2(0.0f, 0.0f),
+    // Ring 1 (6, r = 1/3)
+    float2( 0.333333f,  0.000000f), float2( 0.166667f,  0.288675f), float2(-0.166667f,  0.288675f),
+    float2(-0.333333f,  0.000000f), float2(-0.166667f, -0.288675f), float2( 0.166667f, -0.288675f),
+    // Ring 2 (12, r = 2/3)
+    float2( 0.666667f,  0.000000f), float2( 0.577350f,  0.333333f), float2( 0.333333f,  0.577350f),
+    float2( 0.000000f,  0.666667f), float2(-0.333333f,  0.577350f), float2(-0.577350f,  0.333333f),
+    float2(-0.666667f,  0.000000f), float2(-0.577350f, -0.333333f), float2(-0.333333f, -0.577350f),
+    float2( 0.000000f, -0.666667f), float2( 0.333333f, -0.577350f), float2( 0.577350f, -0.333333f),
+    // Ring 3 (18, r = 1)
+    float2( 1.000000f,  0.000000f), float2( 0.939693f,  0.342020f), float2( 0.766044f,  0.642788f),
+    float2( 0.500000f,  0.866025f), float2( 0.173648f,  0.984808f), float2(-0.173648f,  0.984808f),
+    float2(-0.500000f,  0.866025f), float2(-0.766044f,  0.642788f), float2(-0.939693f,  0.342020f),
+    float2(-1.000000f,  0.000000f), float2(-0.939693f, -0.342020f), float2(-0.766044f, -0.642788f),
+    float2(-0.500000f, -0.866025f), float2(-0.173648f, -0.984808f), float2( 0.173648f, -0.984808f),
+    float2( 0.500000f, -0.866025f), float2( 0.766044f, -0.642788f), float2( 0.939693f, -0.342020f)
 };
 
 struct FGatherOutput
