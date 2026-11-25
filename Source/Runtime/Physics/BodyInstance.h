@@ -49,6 +49,8 @@ struct FBodyInstance
 
     // 씬 등록 해제와 액터 정리
     void TermBody();
+    // 등록된 형상의 충돌·쿼리 플래그 동기화
+    void UpdateCollisionSettings();
 
     // 월드 위치·회전 조회
     FTransform GetWorldTransform() const;
@@ -85,6 +87,8 @@ struct FBodyInstance
 private:
     friend class FPhysicsScene;
     friend struct FConstraintInstance;
+
+    void ApplyCollisionSettings(physx::PxRigidActor& RigidActor, const UPrimitiveComponent* Component) const;
 
     // 비소유 씬·컴포넌트 참조와 소유 액터
     FPhysicsScene* Scene = nullptr;

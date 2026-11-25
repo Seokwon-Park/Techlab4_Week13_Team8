@@ -62,8 +62,20 @@ bool FGameViewportClient::InputKey(FViewport* Viewport, int32 Key, bool bDown)
 
 bool FGameViewportClient::InputAxis(FViewport* Viewport, int32 ControllerId, EGameInputAxis AxisKey, float Delta, float DeltaTime)
 {
-	if (HandleUIAxis(AxisKey, Delta))
+	const bool bHandledByUI = HandleUIAxis(AxisKey, Delta);
+	// PIE와 Game이 축별로 한 번씩 전달하는 프레임 델타
+	if (AxisKey == EGameInputAxis::MouseX)
+	{
+		InputMouseDelta.X = bHandledByUI ? 0.0f : Delta;
+	}
+	else if (AxisKey == EGameInputAxis::MouseY)
+	{
+		InputMouseDelta.Y = bHandledByUI ? 0.0f : Delta;
+	}
+	if (bHandledByUI)
+	{
 		return true;
+	}
 
 	if (World)
 	{
@@ -78,6 +90,7 @@ bool FGameViewportClient::InputAxis(FViewport* Viewport, int32 ControllerId, EGa
 
 void FGameViewportClient::LostFocus()
 {
+	InputMouseDelta = {};
 	if (World)
 	{
 		if (APlayerController* PC = World->GetPlayerController())

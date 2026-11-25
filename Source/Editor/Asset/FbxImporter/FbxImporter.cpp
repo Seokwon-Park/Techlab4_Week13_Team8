@@ -1469,7 +1469,8 @@ bool FFbxImporter::ImportToAssets(const FString& Path, EFbxImportMode Mode, FFbx
 		const auto Primary = Mode == EFbxImportMode::Static ? StaticPath : SkeletalPath;
 		FFbxBakedMesh Previous;
 		FString ReadError;
-		if (!bTestAnimationImport && FFbxMeshBake::Read(Utf8Path(Primary), Previous, ReadError) && SameSource(Source, Previous.Source)
+		const bool bReadPrevious = FFbxMeshBake::Read(Utf8Path(Primary), Previous, ReadError);
+		if (!bTestAnimationImport && bReadPrevious && SameSource(Source, Previous.Source)
 			&& Previous.Kind == (Mode == EFbxImportMode::Static ? EFbxMeshKind::Static : EFbxMeshKind::Skeletal))
 		{
 			bool Complete = Mode != EFbxImportMode::Static || Previous.Source.Outputs == static_cast<uint32>(EFbxMeshKind::Static);
@@ -1635,6 +1636,19 @@ bool FFbxImporter::ImportToAssets(const FString& Path, EFbxImportMode Mode, FFbx
 			FFbxBakedMesh Skeletal;
 			Skeletal.Kind = EFbxMeshKind::Skeletal;
 			if (!Importer.BuildSkeletalMesh(Skeletal.SkeletalMesh, Warnings, OutError)) { OutResult.Warnings.Append(Warnings); return false; }
+			// 정점 대응이 유지된 경우의 기존 Cloth 바인딩 보존
+			if (bReadPrevious && Previous.Kind == EFbxMeshKind::Skeletal
+				&& !Previous.SkeletalMesh.ClothSectionBindings.IsEmpty())
+			{
+				FSkeletalMeshData& NewMesh = Skeletal.SkeletalMesh;
+				const FSkeletalMeshData& OldMesh = Previous.SkeletalMesh;
+				if (!OldMesh.HasSameClothGeometry(NewMesh.BindVertices, NewMesh.Indices, NewMesh.Sections))
+				{
+					OutError = "FBX reimport would invalidate the saved Cloth bindings. The existing asset was kept.";
+					return false;
+				}
+				NewMesh.ClothSectionBindings = OldMesh.ClothSectionBindings;
+			}
 			OutResult.Warnings.Append(Warnings);
 			Outputs.Add(std::move(Skeletal));
 		}

@@ -9,7 +9,7 @@ rem Usage: Package.bat [Release^|Shipping]   (default: Release)
 rem ^| 는 | 문자를 파이프로 해석하지 않도록 이스케이프한 것
 
 set "CONFIG=%~1"
-rem 첫 번째 인자를 CONFIG에 저장. %~1은 인자를 감싼 따옴표를 제거한 값
+rem Requested build configuration without surrounding quotes
 rem set "VAR=값" 형태로 쓰면 줄 끝 공백이 값에 섞이는 실수를 막을 수 있음
 
 if "%CONFIG%"=="" set "CONFIG=Release"
@@ -64,34 +64,61 @@ if not exist "%BIN%\HitoriGame.exe" (
 )
 
 rem ---- 2. 출력 폴더 초기화 ----
-if exist "%OUT%" rmdir /s /q "%OUT%"
+if exist "%OUT%" rmdir /s /q "%OUT%" || goto :PackageFailed
 rem 이전 패키지가 있으면 통째로 삭제 (/s: 하위 전부, /q: 확인 묻지 않음)
 rem → 지난번에 남은 쓰레기 파일이 섞이지 않도록 매번 깨끗하게 시작
 
-mkdir "%OUT%"
+mkdir "%OUT%" || goto :PackageFailed
 
-copy /y "%BIN%\HitoriGame.exe" "%OUT%\" >nul
-rem 실행 파일 복사. /y: 덮어쓰기 확인 생략, >nul: 출력 숨김
+rem 공용 목록의 첫 열은 기본 DLL, 둘째 열은 Debug SDK 전용 이름
+set "DLL_LIST=%ROOT%Resources\Packaging\GameRuntimeDlls.txt"
+if not exist "%DLL_LIST%" (
+    echo [Package] Missing runtime DLL list: "%DLL_LIST%"
+    exit /b 1
+)
+set "USE_DEBUG_SDK="
+for %%C in (Debug Benchmark_Debug DebugPublishSymbols) do if /i "%CONFIG%"=="%%C" set "USE_DEBUG_SDK=1"
+set "COPIED_RUNTIME_DLL="
+for /f "usebackq tokens=1,2" %%D in ("%DLL_LIST%") do (
+    call :CopyRuntimeDll "%%D" "%%E" || goto :PackageFailed
+    set "COPIED_RUNTIME_DLL=1"
+)
+if not defined COPIED_RUNTIME_DLL (
+    echo [Package] Empty runtime DLL list: "%DLL_LIST%"
+    exit /b 1
+)
 
 rem ---- 3. 게임 데이터 폴더 복사 ----
 rem Shaders are compiled at runtime, so Resources\Shader must ship as source.
 rem 셰이더를 런타임에 컴파일하므로 .hlsl 원본이 Resources\Shader에 같이 들어가야 함
 
 rem 엔진 셰이더(Resources)와 엔진 콘텐츠(EngineContent)는 엔진 폴더에서, 프로젝트 콘텐츠는 프로젝트 폴더에서 가져온다
-call :CopyFolder "%ROOT%Resources" Resources || exit /b 1
-call :CopyFolder "%ROOT%EngineContent" EngineContent || exit /b 1
+call :CopyFolder "%ROOT%Resources" Resources || goto :PackageFailed
+call :CopyFolder "%ROOT%EngineContent" EngineContent || goto :PackageFailed
 
 for %%D in (Assets Scenes Scripts Config) do (
     rem 배치 파일 안의 for 변수는 %%D처럼 % 두 개 (cmd 직접 입력 시엔 %D)
-    call :CopyFolder "%PROJECT_DIR%%%D" %%D || exit /b 1
+    call :CopyFolder "%PROJECT_DIR%%%D" %%D || goto :PackageFailed
 )
 
-copy /y "%PROJECT%" "%OUT%\" >nul
+copy /y "%PROJECT%" "%OUT%\" >nul || goto :PackageFailed
 rem 게임 exe는 옆에 있는 .hproject를 찾아 그 폴더를 프로젝트 폴더로 쓴다
+
+rem DLL과 콘텐츠가 준비된 뒤 게임 실행 파일 배치
+copy /y "%BIN%\HitoriGame.exe" "%OUT%\" >nul || goto :PackageFailed
 
 echo [Package] Done: %OUT%
 endlocal
 rem setlocal로 만든 변수 범위 종료
+exit /b 0
+
+:CopyRuntimeDll
+set "DLL_NAME=%~1"
+if defined USE_DEBUG_SDK if not "%~2"=="" set "DLL_NAME=%~2"
+copy /b /y "%BIN%\%DLL_NAME%" "%OUT%\" >nul || (
+    echo [Package] Failed to copy runtime dependency: "%DLL_NAME%"
+    exit /b 1
+)
 exit /b 0
 
 :CopyFolder
@@ -109,3 +136,6 @@ if errorlevel 8 (
     exit /b 1
 )
 exit /b 0
+
+:PackageFailed
+exit /b 1

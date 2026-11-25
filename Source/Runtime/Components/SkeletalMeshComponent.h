@@ -2,6 +2,7 @@
 
 #include "SkinnedMeshComponent.h"
 #include "Animation/AnimInstance.h"
+#include "Render/SkeletalMeshObject.h"
 #include "SkeletalMeshComponent.generated.h"
 
 class UAnimInstance;
@@ -9,7 +10,6 @@ class UAnimSequence;
 class UBlendSpace1D;
 class UWorld;
 class FLineBatcher;
-
 // World의 SkeletalMeshComponent마다 root 디버그를 그린다 (DrawCollisionShapes와 같은 방식). PIE의 Show Root에서 호출
 void DrawSkeletalRootDebug(UWorld* World, FLineBatcher* LineBatcher);
 // Settings > Debug Draw (PIE) > Show Root 값. 에디터가 매 프레임 갱신하고, 런타임 액터("root" 라벨 등)가 읽는다
@@ -20,9 +20,30 @@ class UAnimGraphInstance;
 
 struct FBodyInstance;
 struct FConstraintInstance;
+struct FPhysicsOverlapShape;
 class FPhysicsScene;
 class UPhysicsAsset;
 class USkeletalMeshComponent;
+
+namespace physx
+{
+	class PxTransform;
+}
+
+// 네이티브 Cloth Solver의 전방 선언
+namespace nv::cloth
+{
+	class Factory;
+	class Cloth;
+	class Solver;
+}
+
+// 본 포즈 확정 이후 실행되는 Cloth 전용 틱
+struct FSkeletalMeshComponentClothTickFunction : public FTickFunction
+{
+	USkeletalMeshComponent* Target = nullptr;
+	void ExecuteTick(float DeltaTime) override;
+};
 
 struct FSkeletalMeshComponentEndPhysicsTickFunction : public FTickFunction
 {
@@ -62,6 +83,41 @@ public:
 	void ResetPose();
 	void RefreshBoneTransformsNow();
 
+	// 스켈레탈 메쉬 뷰어 관련 함수
+	bool RestartClothPreview();
+	void StopClothPreview();
+	void TickClothPreview(float DeltaTime);
+	bool HasClothSimulation() const { return ClothSolver.get() != nullptr; }
+
+	// Cloth 충돌에 사용할 PhysicsAsset 바디 이름
+	UPROPERTY(EditAnywhere)
+	FString ClothCollisionBody;
+
+	// 게임 월드의 정적·이동 강체와 천의 충돌
+	UPROPERTY(EditAnywhere)
+	bool bCollideClothWithEnvironment = false;
+
+	// Solver에 전달한 몸통 충돌 형상의 프리뷰 표시
+	void DrawClothBodyCollision(FLineBatcher& LineBatcher) const;
+
+	// 같은 천 섹션의 입자 분리 거리(미터), 0이면 자기충돌 해제
+	UPROPERTY(EditAnywhere, meta=(ClampMin=0, Delta=0.001))
+	float ClothSelfCollisionDistance = 0.0f;
+
+	// 자기충돌의 거리 보정 강도
+	UPROPERTY(EditAnywhere, meta=(ClampMin=0, ClampMax=1, Delta=0.01))
+	float ClothSelfCollisionStiffness = 1.0f;
+
+	// 공기의 흐름에 천이 밀리는 항력 계수
+	UPROPERTY(EditAnywhere, meta=(ClampMin=0, ClampMax=1, Delta=0.01))
+	float ClothWindDragCoefficient = 0.0f;
+
+	// 천 표면과 공기의 상대 방향에 따른 양력 계수
+	UPROPERTY(EditAnywhere, meta=(ClampMin=0, ClampMax=1, Delta=0.01))
+	float ClothWindLiftCoefficient = 0.0f;
+
+	void PostEditChangeProperty(const FProperty& Property) override;
+
 	using Super::Serialize;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
 
@@ -99,8 +155,8 @@ public:
 	// 이름이 없으면 루트 바디 (UE와 같음)
 	FBodyInstance* GetBodyInstance(FName BoneName = NAME_None) const override;
 	bool HasValidPhysicsBody() const override;
+	void UpdateCollisionSettings() override;
 	UPhysicsAsset* GetPhysicsAsset() const;
-	void PostEditChangeProperty(const FProperty& Property) override;
 
 	UPROPERTY(EditAnywhere)
 	FString PhysicsAssetOverride;
@@ -122,7 +178,9 @@ protected:
 
 	void RefreshBoneTransforms() override;
 	void OnSkeletalMeshChanged() override;
-
+	bool RequiresCPUSkinning() const override;
+	void OnRegister() override;
+	void OnUnregister() override;
 	void OnCreatePhysicsState() override;
 	void OnDestroyPhysicsState() override;
 	void InstantiatePhysicsAssetBodies_Internal(const UPhysicsAsset& PhysAsset, FPhysicsScene& PhysScene);
@@ -158,4 +216,59 @@ private:
 
 	FTransform PendingRootMotion;           // 월드 공간 누적값
 	bool bHasPendingRootMotion = false;
+
+	// 네이티브 Cloth와 렌더 정점 대응 정보의 공동 소유
+	struct FClothInstance
+	{
+		TUniquePtr<nv::cloth::Cloth> Cloth;
+		TArray<uint32> ParticleToRenderVertex;
+		TArray<float> MotionConstraintRadii;
+		FVector SimulationScale;
+	};
+
+	friend struct FSkeletalMeshComponentClothTickFunction;
+	TUniquePtr<nv::cloth::Solver> ClothSolver;
+	FSkeletalMeshComponentClothTickFunction ClothTickFunction;
+	const USkeletalMesh* ClothSourceMesh = nullptr;
+
+	TArray<FClothInstance> ClothInstances;
+	TArray<FClothVertexPosition> ClothVertexPositions;
+
+	// Cloth 하나가 사용할 수 있는 SDK 충돌 배열의 상한
+	static constexpr int32 MaxClothCollisionSpheres = 32;
+	static constexpr int32 MaxClothCollisionPlanes = 32;
+	static constexpr int32 ClothBoxPlaneCount = 6;
+
+	// 등록된 바디와 Cloth 공간의 충돌 데이터
+	FString ActiveClothCollisionBody;
+	TArray<FVector4> ClothCollisionSpheres;
+	TArray<uint32> ClothCollisionCapsuleIndices;
+	TArray<FVector4> ClothCollisionPlanes;
+	TArray<uint32> ClothCollisionConvexMasks;
+
+	void BuildClothBodyCollision();
+	void UploadClothBodyCollision();
+	void RemoveClothWorldCollision(nv::cloth::Cloth& Cloth) const;
+	void AppendClothWorldCollision(nv::cloth::Cloth& Cloth, const physx::PxTransform& ClothToWorld,
+		const TArray<FPhysicsOverlapShape>& Shapes) const;
+
+	FClothInstance CreateClothInstance(nv::cloth::Factory& Factory,
+		const FSkeletalMeshLODRenderData& LOD, const FClothSectionBinding& Binding,
+		float GravityZ,bool bForPreview = false) const;
+	void ApplyClothSelfCollision(const FClothInstance& Instance, const FSkeletalMeshLODRenderData& LOD) const;
+	void ApplyClothWindCoefficients(nv::cloth::Cloth& Cloth) const;
+	void UpdateClothMotionConstraints();
+	void UpdateClothVertexPositions();
+	const TArray<FClothVertexPosition>* GetClothVertexPositions() const override
+	{
+		return &ClothVertexPositions;
+	}
+
+	// 프리뷰 고정 스텝의 잔여 시간
+	double ClothPreviewAccumulatedSeconds = 0.0;
+
+	void RefreshClothSolver(bool bForPreview = false);
+	void ReleaseClothSolver(bool bRefreshSkinningMode = true);
+	void TickClothing();
+	void AdvanceCloth(int32 StepCount, float StepDelta);
 };

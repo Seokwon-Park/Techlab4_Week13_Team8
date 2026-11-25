@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include "Containers/Array.h"
 #include "Editor/EditorUI/EditorTab.h"
 
@@ -14,12 +16,23 @@ public:
 	void RequestCloseTab(IEditorTab* Tab);
 	void ProcessCloseRequests();
 
+	bool HasTab(const IEditorTab* Tab) const
+	{
+		for (const IEditorTab* Existing : Tabs)
+			if (Existing == Tab)
+				return true;
+		return false;
+	}
+
 	IEditorTab* GetMainSelectedTab() const { return MainSelectedTab; }
 	IEditorTab* GetFocusedTab() const { return FocusedTab; }
 
 	void DrawMainMenuBar();
 
 	void OnRender(bool bPassthruCentralNode = false);
+
+	// 닫을 수 있는 탭마다 ConfirmClose(저장할지 묻기)를 부른다. 하나라도 취소하면 false.
+	bool ConfirmCloseAllTabs();
 
 private:
 	void DrawTabs();

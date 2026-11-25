@@ -145,6 +145,11 @@ void EditorTitleBar::SetLogo(ImTextureID Logo)
 	GLogo = Logo;
 }
 
+ImTextureID EditorTitleBar::GetLogo()
+{
+	return GLogo;
+}
+
 void EditorTitleBar::SetLogoBottom(float ScreenY)
 {
 	bLogoSpansRows = true;

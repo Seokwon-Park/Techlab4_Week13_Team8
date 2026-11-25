@@ -4,12 +4,17 @@
 #include <fstream>
 #include <cstddef>
 #include <type_traits>
+#include <algorithm>
+#include <Windows.h>
+#include "Core/Misc/Guid.h"
 
 namespace
 {
 	constexpr uint32 Magic = 0x58424648; // HFBX, little endian
 	// 장면 전체의 축 변환으로 Bone Local 축과 Bind 행렬 표현이 달라져 기존 출력은 다시 굽는다.
-	constexpr uint32 Version = 6;
+	constexpr uint32 ClothBindingsVersion = 7;
+	constexpr uint32 Version = ClothBindingsVersion;
+	constexpr uint32 SceneAxisConversionVersion = 6;
 	constexpr uint32 QuaternionBoneRotationVersion = 5;
 	constexpr uint32 EulerBoneRotationVersion = 4; // 본 회전을 FRotator로 저장한 마지막 버전. 그대로 읽어 변환한다
 	static_assert(sizeof(FVertex) == 64 && sizeof(FSkinWeight) == 20);
@@ -65,6 +70,41 @@ namespace
 			Value.resize(N);
 			return Bytes(Value.data(), N) && Value.find('\0') == FString::npos;
 		}
+		bool ReadClothBindings(FSkeletalMeshData& Mesh)
+		{
+			// 남은 바이트와 메시 크기로 제한한 바인딩 개수
+			uint32 BindingCount = 0;
+			if (!Count(BindingCount, sizeof(int32) + 2 * sizeof(uint32))
+				|| BindingCount > static_cast<uint32>(Mesh.Sections.Num()))
+			{
+				return false;
+			}
+
+			Mesh.ClothSectionBindings.SetNum(static_cast<int32>(BindingCount));
+			for (FClothSectionBinding& Binding : Mesh.ClothSectionBindings)
+			{
+				uint32 RadiusCount = 0;
+				if (!Pod(Binding.SectionIndex) || !Array(Binding.PinnedRenderVertices)
+					|| !Count(RadiusCount, sizeof(uint32) + sizeof(float))
+					|| RadiusCount > static_cast<uint32>(Mesh.BindVertices.Num()))
+				{
+					return false;
+				}
+
+				Binding.MaxDistanceByRenderVertex.Reserve(static_cast<int32>(RadiusCount));
+				for (uint32 Index = 0; Index < RadiusCount; ++Index)
+				{
+					uint32 Vertex = 0;
+					float Radius = 0.0f;
+					if (!Pod(Vertex) || !Pod(Radius) || Binding.MaxDistanceByRenderVertex.Contains(Vertex))
+					{
+						return false;
+					}
+					Binding.MaxDistanceByRenderVertex.Add(Vertex, Radius);
+				}
+			}
+			return true;
+		}
 	};
 
 	struct FWriter
@@ -87,6 +127,34 @@ namespace
 			if (Value.size() > INT32_MAX) { Stream.setstate(std::ios::failbit); return; }
 			Pod(static_cast<uint32>(Value.size()));
 			Stream.write(Value.data(), Value.size());
+		}
+		void WriteClothBindings(const TArray<FClothSectionBinding>& Bindings)
+		{
+			// 섹션 번호, 고정점 배열, 정점별 양수 반경의 기록
+			Pod(static_cast<uint32>(Bindings.Num()));
+			for (const FClothSectionBinding& Binding : Bindings)
+			{
+				Pod(Binding.SectionIndex);
+				Array(Binding.PinnedRenderVertices);
+
+				TArray<uint32> VertexIds;
+				VertexIds.Reserve(static_cast<int32>(Binding.MaxDistanceByRenderVertex.Num()));
+				for (const auto& Entry : Binding.MaxDistanceByRenderVertex)
+				{
+					VertexIds.Add(Entry.first);
+				}
+				if (VertexIds.Num() > 1)
+				{
+					std::sort(VertexIds.GetData(), VertexIds.GetData() + VertexIds.Num());
+				}
+
+				Pod(static_cast<uint32>(VertexIds.Num()));
+				for (const uint32 Vertex : VertexIds)
+				{
+					Pod(Vertex);
+					Pod(Binding.MaxDistanceByRenderVertex[Vertex]);
+				}
+			}
 		}
 	};
 
@@ -132,6 +200,10 @@ namespace
 				}
 				else if (!In.Pod(B.LocalBindPose.Rotation)) return false;
 				if (!In.Pod(B.LocalBindPose.Scale) || !In.Pod(B.InverseBindPose.M)) return false;
+			}
+			if (FileVersion >= ClothBindingsVersion && !In.ReadClothBindings(D.SkeletalMesh))
+			{
+				return false;
 			}
 			D.SkeletalMesh.SourcePath = D.Source.Path;
 		}
@@ -187,7 +259,7 @@ bool FFbxMeshBake::Read(const FString& Path, FFbxBakedMesh& OutData, FString& Ou
 	FFbxBakedMesh D;
 	uint32 M = 0, V = 0;
 	if (!In.Pod(M) || M != Magic || !In.Pod(V)) { OutError = "FBX binary: invalid header: " + Path; return false; }
-	if (V != Version && V != QuaternionBoneRotationVersion && V != EulerBoneRotationVersion)
+	if (V != Version && V != SceneAxisConversionVersion	&& V != QuaternionBoneRotationVersion && V != EulerBoneRotationVersion)
 	{
 		OutError = "FBX binary: unsupported version " + std::to_string(V) + " (expected " + std::to_string(Version) + "); reimport the source FBX: " + Path;
 		return false;
@@ -213,7 +285,8 @@ bool FFbxMeshBake::Write(const FString& Path, const FFbxBakedMesh& D, FString& O
 {
 	OutError.clear();
 	FWriter Out(Path);
-	Out.Pod(Magic); Out.Pod(Version); Out.Pod(D.Kind); Out.Pod(D.Source.Mode); Out.Pod(D.Source.Outputs);
+	const uint32 FileVersion = D.Kind == EFbxMeshKind::Skeletal ? Version : SceneAxisConversionVersion;
+	Out.Pod(Magic);	Out.Pod(FileVersion); Out.Pod(D.Kind); Out.Pod(D.Source.Mode); Out.Pod(D.Source.Outputs);
 	Out.String(D.Source.Path); Out.Pod(D.Source.ModifiedTime); Out.Pod(D.Source.Size);
 	const auto& Vertices = D.Kind == EFbxMeshKind::Static ? D.StaticMesh.Vertices : D.SkeletalMesh.BindVertices;
 	const auto& Indices = D.Kind == EFbxMeshKind::Static ? D.StaticMesh.Indices : D.SkeletalMesh.Indices;
@@ -234,9 +307,32 @@ bool FFbxMeshBake::Write(const FString& Path, const FFbxBakedMesh& D, FString& O
 		{
 			Out.String(B.Name); Out.Pod(B.ParentIndex); Out.Pod(B.LocalBindPose.Location); Out.Pod(B.LocalBindPose.Rotation); Out.Pod(B.LocalBindPose.Scale); Out.Pod(B.InverseBindPose.M);
 		}
+		Out.WriteClothBindings(D.SkeletalMesh.ClothSectionBindings);
 	}
 	Out.Stream.flush();
 	Out.Stream.close();
 	if (!Out.Stream) { OutError = "FBX binary: write failed: " + Path; return false; }
+	return true;
+}
+
+bool FFbxMeshBake::WriteAtomically(const FString& Path, const FFbxBakedMesh& Data, FString& OutError)
+{
+	// 같은 디렉터리의 임시 파일을 통한 에셋 교체
+	const FString Temporary = Path + ".tmp." + FGuid::NewGuid().ToString();
+	const std::filesystem::path TemporaryFile = FilePath(Temporary);
+	if (!Write(Temporary, Data, OutError))
+	{
+		DeleteFileW(TemporaryFile.c_str());
+		return false;
+	}
+
+	const std::filesystem::path Target = FilePath(Path);
+	if (!MoveFileExW(TemporaryFile.c_str(), Target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+	{
+		const DWORD ErrorCode = GetLastError();
+		DeleteFileW(TemporaryFile.c_str());
+		OutError = "FBX binary: cannot replace " + Path + " (Windows " + std::to_string(ErrorCode) + ")";
+		return false;
+	}
 	return true;
 }

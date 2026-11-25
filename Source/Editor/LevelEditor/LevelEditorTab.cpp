@@ -52,6 +52,12 @@ void FLevelEditorTab::DrawMenuBar()
 
 		ImGui::Separator();
 
+		// 레벨을 저장할 때도 자동으로 찍힌다. 원하는 장면에서 다시 찍을 때 쓴다.
+		if (ImGui::MenuItem("Capture Project Thumbnail")) { OnCaptureThumbnail.Broadcast(); }
+		ImGui::SetItemTooltip("Saves the active level viewport as the project thumbnail shown in the project browser");
+
+		ImGui::Separator();
+
 		if (ImGui::BeginMenu("Import FBX"))
 		{
 			if (ImGui::MenuItem("Static Mesh...")) { OnImportFbx.Broadcast(EFbxImportMode::Static); }
