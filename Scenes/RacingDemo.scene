@@ -327,6 +327,1420 @@
         },
         {
           "Class": "AActor",
+          "Name": "BackStraightCrest",
+          "Components": [
+            {
+              "Class": "USceneComponent",
+              "Name": "DefaultSceneRoot",
+              "Parent": "",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 0,
+                    "Y": 0,
+                    "Z": 0
+                  },
+                  "Rotation": {
+                    "Pitch": 0,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true
+              }
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "Road1",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": -1.02939,
+                    "Y": 46,
+                    "Z": 0.23126
+                  },
+                  "Rotation": {
+                    "Pitch": -3,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestRoadSection.obj",
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": [
+                {},
+                {
+                  "Base": "DefaultMaterial",
+                  "Instance": {
+                    "BaseColor": {
+                      "X": 0.92,
+                      "Y": 0.95,
+                      "Z": 1,
+                      "W": 1
+                    },
+                    "BlendState": "Opaque",
+                    "FlipNormalY": false,
+                    "PSOType": 0,
+                    "Properties": {},
+                    "SamplerState": "LinearWrap",
+                    "Shininess": 7,
+                    "SpecularColor": {
+                      "X": 0.035,
+                      "Y": 0.035,
+                      "Z": 0.035
+                    },
+                    "Textures": [
+                      "Models/RacingDemo/Asphalt.png",
+                      "FlatNormalTexture"
+                    ],
+                    "UVScrollSpeed": [
+                      0,
+                      0
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "NorthRail1",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": -1.02939,
+                    "Y": 54.35,
+                    "Z": 0.23126
+                  },
+                  "Rotation": {
+                    "Pitch": -3,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "SouthRail1",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": -1.02939,
+                    "Y": 37.65,
+                    "Z": 0.23126
+                  },
+                  "Rotation": {
+                    "Pitch": 3,
+                    "Roll": 0,
+                    "Yaw": 180
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "Road2",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 6.4512,
+                    "Y": 46,
+                    "Z": 0.75435
+                  },
+                  "Rotation": {
+                    "Pitch": -5,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestRoadSection.obj",
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": [
+                {},
+                {
+                  "Base": "DefaultMaterial",
+                  "Instance": {
+                    "BaseColor": {
+                      "X": 0.92,
+                      "Y": 0.95,
+                      "Z": 1,
+                      "W": 1
+                    },
+                    "BlendState": "Opaque",
+                    "FlipNormalY": false,
+                    "PSOType": 0,
+                    "Properties": {},
+                    "SamplerState": "LinearWrap",
+                    "Shininess": 7,
+                    "SpecularColor": {
+                      "X": 0.035,
+                      "Y": 0.035,
+                      "Z": 0.035
+                    },
+                    "Textures": [
+                      "Models/RacingDemo/Asphalt.png",
+                      "FlatNormalTexture"
+                    ],
+                    "UVScrollSpeed": [
+                      0,
+                      0
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "NorthRail2",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 6.4512,
+                    "Y": 54.35,
+                    "Z": 0.75435
+                  },
+                  "Rotation": {
+                    "Pitch": -5,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "SouthRail2",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 6.4512,
+                    "Y": 37.65,
+                    "Z": 0.75435
+                  },
+                  "Rotation": {
+                    "Pitch": 5,
+                    "Roll": 0,
+                    "Yaw": 180
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "NorthPier2",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 6.4512,
+                    "Y": 51,
+                    "Z": 0
+                  },
+                  "Rotation": {
+                    "Pitch": 0,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 0.08619,
+                    "Y": 0.08619,
+                    "Z": 0.08619
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/FinishSupport.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "SouthPier2",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 6.4512,
+                    "Y": 41,
+                    "Z": 0
+                  },
+                  "Rotation": {
+                    "Pitch": 0,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 0.08619,
+                    "Y": 0.08619,
+                    "Z": 0.08619
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/FinishSupport.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "Road3",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 13.90044,
+                    "Y": 46,
+                    "Z": 1.60309
+                  },
+                  "Rotation": {
+                    "Pitch": -8,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestRoadSection.obj",
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": [
+                {},
+                {
+                  "Base": "DefaultMaterial",
+                  "Instance": {
+                    "BaseColor": {
+                      "X": 0.92,
+                      "Y": 0.95,
+                      "Z": 1,
+                      "W": 1
+                    },
+                    "BlendState": "Opaque",
+                    "FlipNormalY": false,
+                    "PSOType": 0,
+                    "Properties": {},
+                    "SamplerState": "LinearWrap",
+                    "Shininess": 7,
+                    "SpecularColor": {
+                      "X": 0.035,
+                      "Y": 0.035,
+                      "Z": 0.035
+                    },
+                    "Textures": [
+                      "Models/RacingDemo/Asphalt.png",
+                      "FlatNormalTexture"
+                    ],
+                    "UVScrollSpeed": [
+                      0,
+                      0
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "NorthRail3",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 13.90044,
+                    "Y": 54.35,
+                    "Z": 1.60309
+                  },
+                  "Rotation": {
+                    "Pitch": -8,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "SouthRail3",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 13.90044,
+                    "Y": 37.65,
+                    "Z": 1.60309
+                  },
+                  "Rotation": {
+                    "Pitch": 8,
+                    "Roll": 0,
+                    "Yaw": 180
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "Road4",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 21.30697,
+                    "Y": 46,
+                    "Z": 2.77617
+                  },
+                  "Rotation": {
+                    "Pitch": -10,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestRoadSection.obj",
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": [
+                {},
+                {
+                  "Base": "DefaultMaterial",
+                  "Instance": {
+                    "BaseColor": {
+                      "X": 0.92,
+                      "Y": 0.95,
+                      "Z": 1,
+                      "W": 1
+                    },
+                    "BlendState": "Opaque",
+                    "FlipNormalY": false,
+                    "PSOType": 0,
+                    "Properties": {},
+                    "SamplerState": "LinearWrap",
+                    "Shininess": 7,
+                    "SpecularColor": {
+                      "X": 0.035,
+                      "Y": 0.035,
+                      "Z": 0.035
+                    },
+                    "Textures": [
+                      "Models/RacingDemo/Asphalt.png",
+                      "FlatNormalTexture"
+                    ],
+                    "UVScrollSpeed": [
+                      0,
+                      0
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "NorthRail4",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 21.30697,
+                    "Y": 54.35,
+                    "Z": 2.77617
+                  },
+                  "Rotation": {
+                    "Pitch": -10,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "SouthRail4",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 21.30697,
+                    "Y": 37.65,
+                    "Z": 2.77617
+                  },
+                  "Rotation": {
+                    "Pitch": 10,
+                    "Roll": 0,
+                    "Yaw": 180
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "NorthPier4",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 21.30697,
+                    "Y": 51,
+                    "Z": 0
+                  },
+                  "Rotation": {
+                    "Pitch": 0,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 0.41228,
+                    "Y": 0.41228,
+                    "Z": 0.41228
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/FinishSupport.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "SouthPier4",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 21.30697,
+                    "Y": 41,
+                    "Z": 0
+                  },
+                  "Rotation": {
+                    "Pitch": 0,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 0.41228,
+                    "Y": 0.41228,
+                    "Z": 0.41228
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/FinishSupport.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "Road5",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 28.69303,
+                    "Y": 46,
+                    "Z": 2.77617
+                  },
+                  "Rotation": {
+                    "Pitch": 10,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestRoadSection.obj",
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": [
+                {},
+                {
+                  "Base": "DefaultMaterial",
+                  "Instance": {
+                    "BaseColor": {
+                      "X": 0.92,
+                      "Y": 0.95,
+                      "Z": 1,
+                      "W": 1
+                    },
+                    "BlendState": "Opaque",
+                    "FlipNormalY": false,
+                    "PSOType": 0,
+                    "Properties": {},
+                    "SamplerState": "LinearWrap",
+                    "Shininess": 7,
+                    "SpecularColor": {
+                      "X": 0.035,
+                      "Y": 0.035,
+                      "Z": 0.035
+                    },
+                    "Textures": [
+                      "Models/RacingDemo/Asphalt.png",
+                      "FlatNormalTexture"
+                    ],
+                    "UVScrollSpeed": [
+                      0,
+                      0
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "NorthRail5",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 28.69303,
+                    "Y": 54.35,
+                    "Z": 2.77617
+                  },
+                  "Rotation": {
+                    "Pitch": 10,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "SouthRail5",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 28.69303,
+                    "Y": 37.65,
+                    "Z": 2.77617
+                  },
+                  "Rotation": {
+                    "Pitch": -10,
+                    "Roll": 0,
+                    "Yaw": 180
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "NorthPier5",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 28.69303,
+                    "Y": 51,
+                    "Z": 0
+                  },
+                  "Rotation": {
+                    "Pitch": 0,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 0.41228,
+                    "Y": 0.41228,
+                    "Z": 0.41228
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/FinishSupport.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "SouthPier5",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 28.69303,
+                    "Y": 41,
+                    "Z": 0
+                  },
+                  "Rotation": {
+                    "Pitch": 0,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 0.41228,
+                    "Y": 0.41228,
+                    "Z": 0.41228
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/FinishSupport.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "Road6",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 36.09956,
+                    "Y": 46,
+                    "Z": 1.60309
+                  },
+                  "Rotation": {
+                    "Pitch": 8,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestRoadSection.obj",
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": [
+                {},
+                {
+                  "Base": "DefaultMaterial",
+                  "Instance": {
+                    "BaseColor": {
+                      "X": 0.92,
+                      "Y": 0.95,
+                      "Z": 1,
+                      "W": 1
+                    },
+                    "BlendState": "Opaque",
+                    "FlipNormalY": false,
+                    "PSOType": 0,
+                    "Properties": {},
+                    "SamplerState": "LinearWrap",
+                    "Shininess": 7,
+                    "SpecularColor": {
+                      "X": 0.035,
+                      "Y": 0.035,
+                      "Z": 0.035
+                    },
+                    "Textures": [
+                      "Models/RacingDemo/Asphalt.png",
+                      "FlatNormalTexture"
+                    ],
+                    "UVScrollSpeed": [
+                      0,
+                      0
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "NorthRail6",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 36.09956,
+                    "Y": 54.35,
+                    "Z": 1.60309
+                  },
+                  "Rotation": {
+                    "Pitch": 8,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "SouthRail6",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 36.09956,
+                    "Y": 37.65,
+                    "Z": 1.60309
+                  },
+                  "Rotation": {
+                    "Pitch": -8,
+                    "Roll": 0,
+                    "Yaw": 180
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "Road7",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 43.5488,
+                    "Y": 46,
+                    "Z": 0.75435
+                  },
+                  "Rotation": {
+                    "Pitch": 5,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestRoadSection.obj",
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": [
+                {},
+                {
+                  "Base": "DefaultMaterial",
+                  "Instance": {
+                    "BaseColor": {
+                      "X": 0.92,
+                      "Y": 0.95,
+                      "Z": 1,
+                      "W": 1
+                    },
+                    "BlendState": "Opaque",
+                    "FlipNormalY": false,
+                    "PSOType": 0,
+                    "Properties": {},
+                    "SamplerState": "LinearWrap",
+                    "Shininess": 7,
+                    "SpecularColor": {
+                      "X": 0.035,
+                      "Y": 0.035,
+                      "Z": 0.035
+                    },
+                    "Textures": [
+                      "Models/RacingDemo/Asphalt.png",
+                      "FlatNormalTexture"
+                    ],
+                    "UVScrollSpeed": [
+                      0,
+                      0
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "NorthRail7",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 43.5488,
+                    "Y": 54.35,
+                    "Z": 0.75435
+                  },
+                  "Rotation": {
+                    "Pitch": 5,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "SouthRail7",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 43.5488,
+                    "Y": 37.65,
+                    "Z": 0.75435
+                  },
+                  "Rotation": {
+                    "Pitch": -5,
+                    "Roll": 0,
+                    "Yaw": 180
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "NorthPier7",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 43.5488,
+                    "Y": 51,
+                    "Z": 0
+                  },
+                  "Rotation": {
+                    "Pitch": 0,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 0.08619,
+                    "Y": 0.08619,
+                    "Z": 0.08619
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/FinishSupport.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "SouthPier7",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 43.5488,
+                    "Y": 41,
+                    "Z": 0
+                  },
+                  "Rotation": {
+                    "Pitch": 0,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 0.08619,
+                    "Y": 0.08619,
+                    "Z": 0.08619
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/FinishSupport.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "Road8",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 51.02939,
+                    "Y": 46,
+                    "Z": 0.23126
+                  },
+                  "Rotation": {
+                    "Pitch": 3,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestRoadSection.obj",
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": [
+                {},
+                {
+                  "Base": "DefaultMaterial",
+                  "Instance": {
+                    "BaseColor": {
+                      "X": 0.92,
+                      "Y": 0.95,
+                      "Z": 1,
+                      "W": 1
+                    },
+                    "BlendState": "Opaque",
+                    "FlipNormalY": false,
+                    "PSOType": 0,
+                    "Properties": {},
+                    "SamplerState": "LinearWrap",
+                    "Shininess": 7,
+                    "SpecularColor": {
+                      "X": 0.035,
+                      "Y": 0.035,
+                      "Z": 0.035
+                    },
+                    "Textures": [
+                      "Models/RacingDemo/Asphalt.png",
+                      "FlatNormalTexture"
+                    ],
+                    "UVScrollSpeed": [
+                      0,
+                      0
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "NorthRail8",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 51.02939,
+                    "Y": 54.35,
+                    "Z": 0.23126
+                  },
+                  "Rotation": {
+                    "Pitch": 3,
+                    "Roll": 0,
+                    "Yaw": 0
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "SouthRail8",
+              "Parent": "DefaultSceneRoot",
+              "ParentActor": "",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 51.02939,
+                    "Y": 37.65,
+                    "Z": 0.23126
+                  },
+                  "Rotation": {
+                    "Pitch": -3,
+                    "Roll": 0,
+                    "Yaw": 180
+                  },
+                  "Scale": {
+                    "X": 1,
+                    "Y": 1,
+                    "Z": 1
+                  }
+                },
+                "bAutoActivate": true,
+                "bHiddenInGame": false,
+                "bVisible": true,
+                "StaticMesh": "Models/RacingDemo/CrestGuardrail.obj",
+                "bBlockComponent": true,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": false,
+                "bReceiveShadow": true,
+                "bSimulatePhysics": false
+              },
+              "OverrideMaterials": []
+            }
+          ],
+          "Properties": {
+            "ScriptPath": "",
+            "bActorEnableCollision": true
+          }
+        },
+        {
+          "Class": "AActor",
           "Name": "PerimeterGuardrails",
           "Components": [
             {
