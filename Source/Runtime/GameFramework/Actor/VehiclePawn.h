@@ -22,6 +22,7 @@ public:
 	AVehiclePawn();
 	~AVehiclePawn() override;
 	void BeginPlay() override;
+	void Tick(float DeltaTime) override;
 	void EndPlay() override;
 
 private:
