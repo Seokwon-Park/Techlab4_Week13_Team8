@@ -8,6 +8,7 @@
 #include "Core/Stats/LightweightStats.h"
 #include "Render/RenderCommand.h"
 #include "Engine/World.h"
+#include "Physics/NvClothSDK.h"
 #include "Physics/PhysicsScene.h"
 #include <algorithm>
 #include <cassert>
@@ -362,6 +363,7 @@ void FViewportsPanel::DrawStatOverlay(ImDrawList* DrawList, const ImVec2& ViewMi
 		{
 			Lines.Add({ "  No physics scene", ValueColor });
 		}
+		Lines.Add({ std::format("  NvCloth backend  {}", NvClothSDK::GetBackendName()), ValueColor });
 	}
 
 	if (FStatOverlay::IsEnabled(EStatFlags::Memory)) {
