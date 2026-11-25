@@ -147,7 +147,7 @@ private:
 	FMatrix PreSimulationComponentWorld;
 	UBodySetup* FloorBodySetup = nullptr;
 	FBodyInstance FloorBody;
-	FBox FloorBox;
+	class UStaticMeshComponent* FloorMeshComponent = nullptr;
 
 	FPhysicsHandle MouseHandle;
 	// 카메라 전방 축 기준 깊이. 마우스는 이 깊이의 카메라 평면 위에서 움직인다

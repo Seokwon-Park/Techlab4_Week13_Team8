@@ -2,6 +2,7 @@
 #include "PhysicsAssetEditor.h"
 #include "PhysicsAssetEditorTab.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Physics/PhysicsAsset.h"
 #include "Physics/PhysicsAssetFile.h"
 #include "Physics/PhysicsAssetUtils.h"
@@ -660,18 +661,6 @@ void FPhysicsAssetEditor::OnRenderLine(FLineBatcher& LineBatcher)
 
 	if (bSimulating)
 	{
-		const FVector4 FloorColor(0.5f, 0.5f, 0.5f, 1.0f);
-		constexpr int32 FloorLines = 20;
-		const float Z = FloorBox.Max.Z;
-		for (int32 i = 0; i <= FloorLines; ++i)
-		{
-			const float T = static_cast<float>(i) / FloorLines;
-			const float X = FloorBox.Min.X + (FloorBox.Max.X - FloorBox.Min.X) * T;
-			const float Y = FloorBox.Min.Y + (FloorBox.Max.Y - FloorBox.Min.Y) * T;
-			LineBatcher.AddLine(FVector(X, FloorBox.Min.Y, Z), FVector(X, FloorBox.Max.Y, Z), FloorColor);
-			LineBatcher.AddLine(FVector(FloorBox.Min.X, Y, Z), FVector(FloorBox.Max.X, Y, Z), FloorColor);
-		}
-
 		if (MouseHandle.IsGrabbing())
 		{
 			const FVector4 GrabColor(1.0f, 0.2f, 0.2f, 1.0f);
@@ -699,11 +688,17 @@ void FPhysicsAssetEditor::StartSimulation()
 	PhysicsGizmo.EndDrag();
 	PreSimulationComponentWorld = MeshComponent->GetWorldMatrix();
 
+	// 프리뷰 액터는 충돌이 꺼진 채 만들어진다. 켜지 않으면 바디 Shape가 시뮬레이션에서 빠져 바닥을 뚫는다
+	if (AActor* Owner = MeshComponent->GetOwner())
+		Owner->SetActorEnableCollision(true);
+
 	// 인스턴스는 에디터를 열 때 만들어져 그 뒤의 에셋 편집이 빠져 있다
 	MeshComponent->RecreatePhysicsState();
 	if (MeshComponent->Bodies.IsEmpty())
 	{
 		HTR_LOG(Warning, "Cannot simulate: no physics bodies were created for {}", GetAssetPath());
+		if (AActor* Owner = MeshComponent->GetOwner())
+			Owner->SetActorEnableCollision(false);
 		return;
 	}
 
@@ -728,11 +723,15 @@ void FPhysicsAssetEditor::StopSimulation()
 		World->bShouldSimulatePhysics = false;
 	}
 	FloorBody.TermBody();
+	if (FloorMeshComponent)
+		FloorMeshComponent->SetVisibility(false);
 
 	if (MeshComponent)
 	{
 		// SetSimulatePhysics(false)가 컴포넌트를 세워 옮기므로 그 뒤에 원위치로 덮어쓴다
 		MeshComponent->SetSimulatePhysics(false);
+		if (AActor* Owner = MeshComponent->GetOwner())
+			Owner->SetActorEnableCollision(false);
 		MeshComponent->SetWorldTransform(PreSimulationComponentWorld, false);
 		MeshComponent->ResetPose();
 		MeshComponent->RefreshBoneTransformsNow();
@@ -770,10 +769,18 @@ void FPhysicsAssetEditor::CreateSimulationFloor(FPhysicsScene& Scene)
 
 	const FVector HalfExtent(Box.X * 0.5f, Box.Y * 0.5f, Box.Z * 0.5f);
 	const FVector Center((Bounds.Min.X + Bounds.Max.X) * 0.5f, (Bounds.Min.Y + Bounds.Max.Y) * 0.5f, Bounds.Min.Z - HalfExtent.Z);
-	FloorBox = FBox{ Center - HalfExtent, Center + HalfExtent };
 	if (!FloorBody.InitBody(*FloorBodySetup, FTransform(FRotator(0, 0, 0), Center), nullptr, Scene, EPhysicsBodyType::Static))
 	{
 		HTR_LOG(Warning, "Failed to create the simulation floor");
+	}
+
+	// 충돌은 FloorBody가 맡고, 메시는 같은 크기의 Cube(한 변 1)로 보여주기만 한다
+	if (!FloorMeshComponent)
+		FloorMeshComponent = Cast<UStaticMeshComponent>(PreviewScene.AddComponent(UStaticMeshComponent::StaticClass()));
+	if (FloorMeshComponent)
+	{
+		FloorMeshComponent->SetWorldTransform(FTransform(FRotator(0, 0, 0), Center, FVector(Box.X, Box.Y, Box.Z)).GetLocalMatrix(), false);
+		FloorMeshComponent->SetVisibility(true);
 	}
 }
 
