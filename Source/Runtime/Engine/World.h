@@ -29,6 +29,7 @@ class APlayerState;
 class AHUD;
 class AParticleEventManager;
 class FPhysicsScene;
+class UWindDirectionalSourceComponent;
 struct FViewContext;
 
 UCLASS()
@@ -114,6 +115,11 @@ public:
 
 	FScene& GetScene() { return Scene; }
 	FPhysicsScene* GetPhysicsScene() const { return PhysicsScene.get(); }
+	// 월드에 등록된 방향성 바람의 관리와 풍속 조회(m/s)
+	void RegisterWindSource(UWindDirectionalSourceComponent& Source);
+	void UnregisterWindSource(UWindDirectionalSourceComponent& Source);
+	FVector GetWindVelocity() const;
+
 	FTickTaskManager& GetTickTaskManager() { return TickTaskManager; }
 
 	bool bShouldSimulatePhysics = false;
@@ -225,6 +231,8 @@ private:
 
 	FScene Scene;
 	TUniquePtr<FPhysicsScene> PhysicsScene;
+	// 등록 중인 이 월드의 바람 컴포넌트에 대한 비소유 참조
+	TArray<UWindDirectionalSourceComponent*> WindSources;
 
 	// GatherRenderPackets가 매 프레임 채우는 컬링 결과. 용량을 재사용한다.
 	TArray<FPrimitiveSceneProxy*> VisibleProxies;

@@ -701,6 +701,7 @@ USkeletalMeshComponent::FClothInstance USkeletalMeshComponent::CreateClothInstan
 	Cloth->setPhaseConfig({ Phases.GetData(), Phases.GetData() + Phases.Num() });
 	Cloth->teleportToLocation(U2PVector(GetWorldLocation() * WorldToCloth), Rotation);
 	Cloth->setGravity(physx::PxVec3(0.0f, 0.0f, GravityZ));
+	ApplyClothWindCoefficients(*Cloth);
 	Instance.Cloth = std::move(Cloth);
 	ApplyClothSelfCollision(Instance, LOD);
 	return Instance;
@@ -745,9 +746,25 @@ void USkeletalMeshComponent::ApplyClothSelfCollision(const FClothInstance& Insta
 	Cloth.setSelfCollisionStiffness(Stiffness);
 }
 
+void USkeletalMeshComponent::ApplyClothWindCoefficients(nv::cloth::Cloth& Cloth) const
+{
+	// 에셋과 Details의 항력·양력을 NvCloth 유효 범위로 제한
+	Cloth.setDragCoefficient(std::clamp(ClothWindDragCoefficient, 0.0f, 1.0f));
+	Cloth.setLiftCoefficient(std::clamp(ClothWindLiftCoefficient, 0.0f, 1.0f));
+}
+
 void USkeletalMeshComponent::PostEditChangeProperty(const FProperty& Property)
 {
 	Super::PostEditChangeProperty(Property);
+	if (Property.Name == "ClothWindDragCoefficient" || Property.Name == "ClothWindLiftCoefficient")
+	{
+		// Solver 재생성 없이 실행 중인 섹션에 공기력 계수 반영
+		for (const FClothInstance& Instance : ClothInstances)
+		{
+			ApplyClothWindCoefficients(*Instance.Cloth);
+		}
+		return;
+	}
 	if (!ClothSourceMesh
 		|| (Property.Name != "ClothSelfCollisionDistance" && Property.Name != "ClothSelfCollisionStiffness"))
 	{
@@ -1326,15 +1343,20 @@ void USkeletalMeshComponent::AdvanceCloth(int32 StepCount, float StepDelta)
 	}
 	UpdateClothMotionConstraints();
 
+	// 섹션과 고정 스텝이 공유하는 월드 좌표계 풍속(m/s)
+	const UWorld* World = GetWorld();
+	const bool bUsesWind = ClothWindDragCoefficient > 0.0f || ClothWindLiftCoefficient > 0.0f;
+	const physx::PxVec3 WindVelocity = World && bUsesWind ? U2PVector(World->GetWindVelocity()) : physx::PxVec3(0.0f);
+
 	// 이전 몸통 개수로 월드 슬롯을 분리한 뒤 새 몸통 갱신
 	for (FClothInstance& Instance : ClothInstances)
 	{
+		Instance.Cloth->setWindVelocity(WindVelocity);
 		RemoveClothWorldCollision(*Instance.Cloth);
 	}
 	BuildClothBodyCollision();
 	UploadClothBodyCollision();
 
-	const UWorld* World = GetWorld();
 	const float WorldToCloth = World && World->GetWorldType() == EWorldType::EditorPreview ? CmToWorld : 1.0f;
 	const physx::PxVec3 TargetLocation = U2PVector(GetWorldLocation() * WorldToCloth);
 	const FQuat TargetRotation = GetWorldRotation().Quaternion();

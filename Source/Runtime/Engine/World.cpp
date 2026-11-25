@@ -27,6 +27,7 @@
 #include "Components/ParticleSubUVComponent.h"
 #include "Components/ParticleSystemComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
+#include "Components/WindDirectionalSourceComponent.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkinnedMeshComponent.h"
@@ -83,6 +84,33 @@ UWorld::UWorld()
 UWorld::~UWorld()
 {
 
+}
+
+void UWorld::RegisterWindSource(UWindDirectionalSourceComponent& Source)
+{
+	// 같은 바람의 중복 기여 방지
+	WindSources.AddUnique(&Source);
+}
+
+void UWorld::UnregisterWindSource(UWindDirectionalSourceComponent& Source)
+{
+	// 바람 컴포넌트 해제 전 비소유 참조 제거
+	const int32 Index = WindSources.Find(&Source);
+	if (Index != INDEX_NONE)
+	{
+		WindSources.RemoveAtSwap(Index);
+	}
+}
+
+FVector UWorld::GetWindVelocity() const
+{
+	// 월드 좌표계에서 방향성 풍속의 벡터 합산
+	FVector Velocity = FVector::ZeroVector;
+	for (const UWindDirectionalSourceComponent* Source : WindSources)
+	{
+		Velocity += Source->GetWindVelocity();
+	}
+	return Velocity;
 }
 
 bool UWorld::Init()

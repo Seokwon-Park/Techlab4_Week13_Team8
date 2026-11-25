@@ -108,6 +108,14 @@ public:
 	UPROPERTY(EditAnywhere, meta=(ClampMin=0, ClampMax=1, Delta=0.01))
 	float ClothSelfCollisionStiffness = 1.0f;
 
+	// 공기의 흐름에 천이 밀리는 항력 계수
+	UPROPERTY(EditAnywhere, meta=(ClampMin=0, ClampMax=1, Delta=0.01))
+	float ClothWindDragCoefficient = 0.0f;
+
+	// 천 표면과 공기의 상대 방향에 따른 양력 계수
+	UPROPERTY(EditAnywhere, meta=(ClampMin=0, ClampMax=1, Delta=0.01))
+	float ClothWindLiftCoefficient = 0.0f;
+
 	void PostEditChangeProperty(const FProperty& Property) override;
 
 	using Super::Serialize;
@@ -241,6 +249,7 @@ private:
 		const FSkeletalMeshLODRenderData& LOD, const FClothSectionBinding& Binding,
 		float GravityZ,bool bForPreview = false) const;
 	void ApplyClothSelfCollision(const FClothInstance& Instance, const FSkeletalMeshLODRenderData& LOD) const;
+	void ApplyClothWindCoefficients(nv::cloth::Cloth& Cloth) const;
 	void UpdateClothMotionConstraints();
 	void UpdateClothVertexPositions();
 	const TArray<FClothVertexPosition>* GetClothVertexPositions() const override
